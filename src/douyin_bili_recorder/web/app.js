@@ -196,6 +196,7 @@ function renderTargets() {
 function buildTargetRow(target, latest) {
   const row = document.createElement("article");
   row.className = "target-row";
+  row.dataset.targetId = target.id;
   const header = document.createElement("div");
   header.className = "target-header";
   const identity = document.createElement("div");
@@ -227,11 +228,15 @@ function buildTargetRow(target, latest) {
 
   const main = document.createElement("div");
   main.className = "target-main-grid";
-  main.append(
-    labelledInput("主播名称", target.name, (value) => { target.name = value; }),
-    labelledInput("链接", target.url, (value) => { target.url = value; }, "url-field"),
-    labelledInput("合集名称", target.collection_name || target.name, (value) => { target.collection_name = value; }),
-  );
+  const nameField = labelledInput("主播名称", target.name, (value) => { target.name = value; });
+  const urlField = labelledInput("链接", target.url, (value) => { target.url = value; }, "url-field");
+  const collectionField = labelledInput("合集名称", target.collection_name || target.name, (value) => {
+    target.collection_name = value;
+  });
+  nameField.querySelector("input").dataset.field = "name";
+  urlField.querySelector("input").dataset.field = "url";
+  collectionField.querySelector("input").dataset.field = "collection_name";
+  main.append(nameField, urlField, collectionField);
 
   const controls = document.createElement("div");
   controls.className = "target-option-grid";
@@ -253,7 +258,17 @@ function buildTargetRow(target, latest) {
   const summary = document.createElement("summary");
   summary.textContent = `直播排班 · ${(target.schedule || []).length} 个时段`;
   schedule.append(summary, buildScheduleList(target));
-  row.append(header, main, controls, schedule);
+  const saveBar = document.createElement("div");
+  saveBar.className = "target-save-bar";
+  const saveTarget = document.createElement("button");
+  saveTarget.type = "button";
+  saveTarget.className = "save-button compact-save";
+  saveTarget.append(icon("save"), document.createTextNode("保存主播设置"));
+  saveTarget.addEventListener("click", () => saveState(`${target.name} 的设置已保存`));
+  const saveHint = document.createElement("small");
+  saveHint.textContent = "排班、权限、合集和监控模式会一起保存";
+  saveBar.append(saveTarget, saveHint);
+  row.append(header, main, controls, schedule, saveBar);
   return row;
 }
 
@@ -265,13 +280,16 @@ function buildScheduleList(target) {
   slots.forEach((slot, index) => {
     const line = document.createElement("div");
     line.className = "schedule-row";
-    line.append(
-      labelledInput("星期（1-7，逗号分隔）", (slot.days || []).join(","), (value) => {
+    line.dataset.slotIndex = String(index);
+    const daysField = labelledInput("星期（1-7，逗号分隔）", (slot.days || []).join(","), (value) => {
         slot.days = value.split(",").map(Number).filter((day) => day >= 1 && day <= 7);
-      }),
-      labelledInput("预计开播", slot.start || "20:00", (value) => { slot.start = value; }, "", "time"),
-      labelledInput("预计结束", slot.end || "23:00", (value) => { slot.end = value; }, "", "time"),
-    );
+      });
+    const startField = labelledInput("预计开播", slot.start || "20:00", (value) => { slot.start = value; }, "", "time");
+    const endField = labelledInput("预计结束", slot.end || "23:00", (value) => { slot.end = value; }, "", "time");
+    daysField.querySelector("input").dataset.scheduleField = "days";
+    startField.querySelector("input").dataset.scheduleField = "start";
+    endField.querySelector("input").dataset.scheduleField = "end";
+    line.append(daysField, startField, endField);
     const remove = actionButton("minus", "删除时段", () => { slots.splice(index, 1); renderTargets(); });
     line.append(remove);
     wrapper.append(line);
@@ -347,16 +365,52 @@ function formatDuration(seconds) {
   return [hours, minutes, secs].map((part) => String(part).padStart(2, "0")).join(":");
 }
 
-async function saveState() {
+async function saveState(message = "") {
   if (!state.config) return;
-  if (!state.config.targets.length) return toast("至少添加一个监视主播", "error");
+  if (!state.config.targets.length) {
+    toast("至少添加一个监视主播", "error");
+    return false;
+  }
   try {
+    syncStateFromDom();
     const payload = await api("/api/state", { method: "PUT", body: JSON.stringify(state.config) });
     state.config = payload.config;
     render();
-    toast(payload.restart_required ? "设置已保存；缓存将在下一分段或重启后生效" : "设置已保存");
+    toast(message || (payload.restart_required ? "设置已保存；缓存将在下一分段或重启后生效" : "设置已保存"));
+    return true;
   } catch (error) {
     toast(`保存失败：${error.message}`, "error");
+    return false;
+  }
+}
+
+function syncStateFromDom() {
+  if (!state.config) return;
+  for (const row of els.targetList.querySelectorAll(".target-row[data-target-id]")) {
+    const target = state.config.targets.find((item) => item.id === row.dataset.targetId);
+    if (!target) continue;
+    for (const input of row.querySelectorAll("input[data-field]")) {
+      target[input.dataset.field] = input.value;
+    }
+    const scheduleRows = [...row.querySelectorAll(".schedule-row[data-slot-index]")];
+    if (scheduleRows.length) {
+      target.schedule = scheduleRows.map((scheduleRow) => {
+        const slot = {
+          days: [],
+          start: "20:00",
+          end: "23:00",
+          enabled: true,
+        };
+        for (const input of scheduleRow.querySelectorAll("input[data-schedule-field]")) {
+          if (input.dataset.scheduleField === "days") {
+            slot.days = input.value.split(",").map(Number).filter((day) => day >= 1 && day <= 7);
+          } else {
+            slot[input.dataset.scheduleField] = input.value;
+          }
+        }
+        return slot;
+      });
+    }
   }
 }
 
@@ -381,9 +435,38 @@ async function resolveTargetUrl() {
   els.resolveButton.disabled = true;
   try {
     const result = await api("/api/targets/resolve", { method: "POST", body: JSON.stringify({ url }) });
-    els.targetUrl.value = result.canonical_url || url;
-    if (!els.targetName.value.trim() && result.anchor_name) els.targetName.value = result.anchor_name;
-    toast(result.live ? `已解析，当前正在直播：${result.room_title || result.anchor_name}` : "已解析，当前未开播");
+    const resolvedUrl = result.canonical_url || url;
+    const resolvedName = els.targetName.value.trim() || result.anchor_name || `主播-${state.config.targets.length + 1}`;
+    let target = state.config.targets.find((item) => item.url === resolvedUrl || item.url === url);
+    if (!target) {
+      target = {
+        id: Math.random().toString(16).slice(2, 12),
+        name: resolvedName,
+        url: resolvedUrl,
+        enabled: true,
+        public: Boolean(state.config.public),
+        record_mode: "record",
+        collection_name: resolvedName,
+        collection_id: "",
+        title_template: "{name}｜{start_date} {start_time} 开播｜{room_title}",
+        tags: ["直播录像", "抖音"],
+        tid: 171,
+        copyright: 2,
+        source: "",
+        schedule: [{ days: [1, 3, 5], start: "20:00", end: "23:00", enabled: true }],
+      };
+      state.config.targets.push(target);
+    } else {
+      target.url = resolvedUrl;
+      if (!target.name && result.anchor_name) target.name = result.anchor_name;
+      if (!target.collection_name) target.collection_name = target.name;
+    }
+    const saved = await saveState(`${target.name} 已解析并自动保存`);
+    if (saved) {
+      els.targetForm.reset();
+      renderTargets();
+      renderSettings();
+    }
   } catch (error) {
     toast(`解析失败：${error.message}`, "error");
   } finally {
@@ -540,7 +623,13 @@ els.targetForm.addEventListener("submit", (event) => {
     tags: ["直播录像", "抖音"], tid: 171, copyright: 2, source: "",
     schedule: [{ days: [1, 3, 5], start: "20:00", end: "23:00", enabled: true }],
   });
-  els.targetForm.reset(); renderTargets(); renderSettings(); toast("已添加，保存后生效");
+  saveState(`${name} 已添加并保存`).then((saved) => {
+    if (saved) {
+      els.targetForm.reset();
+      renderTargets();
+      renderSettings();
+    }
+  });
 });
 els.loginButton.addEventListener("click", openLogin);
 els.closeLoginButton.addEventListener("click", closeLogin);

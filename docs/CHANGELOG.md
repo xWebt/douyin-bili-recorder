@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.1.1
+
+- Added a per-anchor save button so schedule, visibility, monitor mode, and collection settings can be saved directly from the anchor card.
+- Profile-link resolution now adds or updates the anchor and persists it automatically.
+- Adding an anchor through the form now saves immediately instead of requiring a separate global save.
+
 ## v2.1.0
 
 - Added per-anchor public/private submissions, record-only or monitor-only mode, independent Bilibili collections, and weekly schedules.

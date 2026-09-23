@@ -1040,6 +1040,27 @@ input::placeholder {
   font-size: 10px;
 }
 
+.target-save-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.target-save-bar small {
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.save-button.compact-save {
+  width: auto;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
 .dialog {
   position: relative;
   width: min(560px, 100%);
