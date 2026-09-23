@@ -34,6 +34,10 @@ def resolve_executable(name: str, config_dir: Path) -> str:
     if project_candidate.exists():
         return str(project_candidate)
 
+    current_candidate = Path.cwd() / ".tools" / "ffmpeg" / name
+    if current_candidate.exists():
+        return str(current_candidate)
+
     return shutil.which(name) or name
 
 
@@ -139,9 +143,9 @@ def load_config(path: str | Path) -> AppConfig:
         ),
         late_threshold_minutes=int(storage.get("late_threshold_minutes", 5)),
         reconnect_grace_minutes=int(storage.get("reconnect_grace_minutes", 15)),
-        biliup_bin=str(upload.get("biliup_bin", "biliup")),
-        ffmpeg_bin=str(upload.get("ffmpeg_bin", "ffmpeg")),
-        ffprobe_bin=str(upload.get("ffprobe_bin", "ffprobe")),
+        biliup_bin=resolve_executable(str(upload.get("biliup_bin", "biliup")), base),
+        ffmpeg_bin=resolve_executable(str(upload.get("ffmpeg_bin", "ffmpeg")), base),
+        ffprobe_bin=resolve_executable(str(upload.get("ffprobe_bin", "ffprobe")), base),
         cookie_file=_expand_path(upload.get("cookie_file", "cookies.json"), base),
         upload_line=str(upload.get("line", "bda2")),
         public=bool(upload.get("public", False)),

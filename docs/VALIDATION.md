@@ -104,3 +104,18 @@ The test also confirmed that a direct network connection is attempted before the
 - The video library, per-anchor detail view, schedule editor, per-anchor visibility, record/monitor mode, and collection fields were present and functional.
 - A real authenticated request to the current Bilibili collection list endpoint succeeded.
 - No live Douyin room was available at the final packaging moment, so the final packaged run did not repeat a real live download. The multipart state machine was validated with deterministic recorder/media/uploader test doubles.
+
+## v2.1.5 live multipart and watch-mode validation
+
+The source build was validated on 2026-09-24 against a real Douyin live room at `https://live.douyin.com/385030864044`.
+
+- Four consecutive segments were recorded and remuxed without transcoding to MP4.
+- P1 created Bilibili submission `BV1xJhf6pELR`; P2, P3, and P4 were appended successfully to the same BVID.
+- The final session state was `UPLOADED`, and all four part states were `UPLOADED`.
+- The title retained the anchor name and detected live-start timestamp: `安琪拉大王｜2026-09-24 00:50 开播｜全流程验证`.
+- Monthly and aggregate analytics JSON files were written under the anchor video directory.
+- Real browser interaction confirmed that fixed schedules save and remain selected after later status refreshes.
+- Real browser interaction confirmed that all-day polling and manual-start modes hide the schedule editor, including after the periodic refresh.
+- DOM geometry checks confirmed the anchor-name, link, resolver, and add buttons share one aligned form row.
+
+The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRBS9` during validation.

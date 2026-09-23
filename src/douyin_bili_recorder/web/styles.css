@@ -483,7 +483,7 @@ h2 {
 
 .target-form {
   display: grid;
-  grid-template-columns: 0.7fr 1.6fr auto;
+  grid-template-columns: 0.7fr 1.6fr auto auto;
   gap: 10px;
   padding: 14px;
   border: 1px solid var(--line);
@@ -494,6 +494,10 @@ h2 {
   display: grid;
   gap: 7px;
   min-width: 0;
+}
+
+.target-form > button {
+  align-self: end;
 }
 
 .target-form label span {
@@ -1013,6 +1017,14 @@ input::placeholder {
 .schedule-editor {
   margin-top: 13px;
   border-top: 1px solid var(--line);
+}
+
+.watch-mode-hint {
+  margin-top: 13px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 12px;
 }
 
 .schedule-editor summary {

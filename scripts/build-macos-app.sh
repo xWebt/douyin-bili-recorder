@@ -11,7 +11,7 @@ APP_NAME="DouyinBiliRecorder"
 DIST_APP="$ROOT_DIR/dist/$APP_NAME.app"
 RUNTIME_DIR="$ROOT_DIR/dist/$APP_NAME"
 ZIP="$ROOT_DIR/dist/${APP_NAME}-macos-arm64.zip"
-VERSION="${APP_VERSION:-2.1.4}"
+VERSION="${APP_VERSION:-2.1.5}"
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/DouyinBiliRecorder-build.XXXXXX")"
 APP="$BUILD_ROOT/$APP_NAME.app"
 
@@ -72,7 +72,6 @@ xattr -cr "$APP" 2>/dev/null || true
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 ditto -c -k --norsrc --keepParent "$APP" "$ZIP"
-cp -R "$APP" "$DIST_APP"
+rm -rf "$RUNTIME_DIR"
 
-print "$DIST_APP"
 print "$ZIP"

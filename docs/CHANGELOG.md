@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.5
+
+- Fixed unsaved anchor settings being replaced by the three-second service status refresh.
+- Fixed fixed-schedule mode jumping back to all-day polling after saving.
+- Hid the schedule editor completely in all-day polling and manual-start modes.
+- Fixed the link resolver and add-anchor buttons being placed on a second, poorly aligned form row.
+- Validated a real multipart Douyin recording and Bilibili upload through P04 with the live-start title preserved.
+
 ## v2.1.4
 
 - Added a native macOS app icon combining an eye outline with a red recording dot.

@@ -130,11 +130,6 @@ class RecorderService:
         self._reload_runtime_settings(target)
         if target.record_mode == "monitor":
             return self._monitor_target(target)
-        status = self._resolve_status(target)
-        if status is not None and status.web_rid and not status.live:
-            self.logger.info("target %s is offline", target.name)
-            return False
-
         self.storage.enforce_limit(self.config.max_cache_gb)
         if not self.storage.can_start_session(self.config.max_cache_gb):
             self.logger.warning(
@@ -348,7 +343,11 @@ class RecorderService:
         return False
 
     def _bind_collection(self, target: TargetConfig, session: SessionRecord) -> None:
-        if session.collection_status == "BOUND" or not session.bvid:
+        if (
+            session.collection_status == "BOUND"
+            or not session.bvid
+            or (not target.collection_id and not target.collection_name)
+        ):
             return
         try:
             manager = BilibiliCollectionManager(self.config.cookie_file)

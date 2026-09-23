@@ -116,7 +116,6 @@ async function loadState(showErrors = false) {
 async function refreshService() {
   try {
     const payload = await api("/api/state");
-    state.config = payload.config;
     state.service = payload.service;
     state.authenticated = payload.authenticated;
     renderService();
@@ -219,7 +218,9 @@ function buildTargetRow(target, latest) {
   enabled.addEventListener("change", () => { target.enabled = enabled.checked; renderTargets(); });
   actions.append(
     enabled,
-    actionButton("play-circle", "手动开始", () => manualStartTarget(target.name)),
+    ...(target.watch_mode === "manual"
+      ? [actionButton("play-circle", "手动开始", () => manualStartTarget(target.name))]
+      : []),
     actionButton("bar-chart-3", "数据详情", () => openAnalytics(target.name)),
     actionButton("folder-open", "打开目录", () => openFolder("anchor", target.name)),
     actionButton("trash-2", "删除主播", () => {
@@ -246,30 +247,19 @@ function buildTargetRow(target, latest) {
   controls.append(
     segmentedControl("稿件权限", target.public ? "public" : "private", [
       ["private", "仅自己"], ["public", "公开"],
-    ], (value) => { target.public = value === "public"; }),
+    ], (value) => { target.public = value === "public"; }, "public"),
     segmentedControl("监控模式", target.record_mode || "record", [
       ["record", "录制视频"], ["monitor", "仅数据"],
-    ], (value) => { target.record_mode = value; }),
+    ], (value) => { target.record_mode = value; }, "record_mode"),
     segmentedControl("监控方式", target.watch_mode || "all_day", [
       ["scheduled", "固定排班"], ["all_day", "全天轮询"], ["manual", "手动开启"],
-    ], (value) => { target.watch_mode = value; }),
+    ], (value) => { target.watch_mode = value; }, "watch_mode"),
   );
   const collection = document.createElement("div");
   collection.className = "collection-state";
   collection.innerHTML = `<span>合集 ID</span><code>${target.collection_id || "保存后自动创建"}</code>`;
   controls.append(collection);
 
-  const schedule = document.createElement("details");
-  schedule.className = "schedule-editor";
-  const summary = document.createElement("summary");
-  if (target.watch_mode === "scheduled") {
-    summary.textContent = `固定排班 · ${(target.schedule || []).length} 个时段`;
-  } else if (target.watch_mode === "manual") {
-    summary.textContent = "手动开启 · 仅点击“手动开始”后检查";
-  } else {
-    summary.textContent = `全天轮询 · 每 ${state.config?.poll_interval_seconds || 30} 秒检查`;
-  }
-  schedule.append(summary, buildScheduleList(target));
   const saveBar = document.createElement("div");
   saveBar.className = "target-save-bar";
   const saveTarget = document.createElement("button");
@@ -277,10 +267,29 @@ function buildTargetRow(target, latest) {
   saveTarget.className = "save-button compact-save";
   saveTarget.append(icon("save"), document.createTextNode("保存主播设置"));
   saveTarget.addEventListener("click", () => saveState(`${target.name} 的设置已保存`));
+  const modePanel = document.createElement("div");
+  modePanel.className = "watch-mode-panel";
+  if (target.watch_mode === "scheduled") {
+    const schedule = document.createElement("details");
+    schedule.className = "schedule-editor";
+    const summary = document.createElement("summary");
+    summary.textContent = `固定排班 · ${(target.schedule || []).length} 个时段`;
+    schedule.append(summary, buildScheduleList(target));
+    modePanel.append(schedule);
+  } else {
+    const modeHint = document.createElement("div");
+    modeHint.className = "watch-mode-hint";
+    modeHint.textContent = target.watch_mode === "manual"
+      ? "手动开启：不会自动轮询，只有点击“手动开始”后才检查。"
+      : `全天轮询：每 ${state.config?.poll_interval_seconds || 30} 秒自动检查一次。`;
+    modePanel.append(modeHint);
+  }
   const saveHint = document.createElement("small");
-  saveHint.textContent = "排班、权限、合集和监控模式会一起保存";
+  saveHint.textContent = target.watch_mode === "scheduled"
+    ? "排班、权限、合集和监控模式会一起保存"
+    : "监控方式、权限和合集会一起保存";
   saveBar.append(saveTarget, saveHint);
-  row.append(header, main, controls, schedule, saveBar);
+  row.append(header, main, controls, modePanel, saveBar);
   return row;
 }
 
@@ -341,19 +350,24 @@ function labelledInput(label, value, onChange, className = "", type = "text") {
   return wrapper;
 }
 
-function segmentedControl(label, value, options, onChange) {
+function segmentedControl(label, value, options, onChange, field = "") {
   const wrapper = document.createElement("div");
   wrapper.className = "compact-control";
   const title = document.createElement("span");
   title.textContent = label;
   const group = document.createElement("div");
   group.className = "segmented compact";
+  if (field) group.dataset.segmentedField = field;
   for (const [key, text] of options) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = text;
+    button.dataset.value = key;
     button.classList.toggle("active", key === value);
-    button.addEventListener("click", () => { onChange(key); renderTargets(); });
+    button.onclick = () => {
+      onChange(key);
+      renderTargets();
+    };
     group.append(button);
   }
   wrapper.append(title, group);
@@ -418,6 +432,12 @@ function syncStateFromDom() {
     if (!target) continue;
     for (const input of row.querySelectorAll("input[data-field]")) {
       target[input.dataset.field] = input.value;
+    }
+    for (const group of row.querySelectorAll("[data-segmented-field]")) {
+      const active = group.querySelector("button.active");
+      if (!active) continue;
+      const field = group.dataset.segmentedField;
+      target[field] = field === "public" ? active.dataset.value === "public" : active.dataset.value;
     }
     const scheduleRows = [...row.querySelectorAll(".schedule-row[data-slot-index]")];
     if (scheduleRows.length) {
