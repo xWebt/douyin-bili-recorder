@@ -8,11 +8,12 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlencode
 
 import qrcode
 import requests
-from biliup.plugins.bili_webup import BiliBili, Data
+from .network import session_proxies
 
 APP_KEY = "4409e2ce8ffd12b8"
 APP_SECRET = "59b43e04ad6965f34319062b478f83dd"
@@ -31,11 +32,31 @@ class QRSession:
 class BilibiliAuth:
     def __init__(self, cookie_file: Path) -> None:
         self.cookie_file = cookie_file
+        self.session = requests.Session()
+        self.session.trust_env = True
+        self.session.proxies.update(session_proxies())
+        self.session.headers.update(
+            {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/142.0.0.0 Safari/537.36"
+                ),
+                "Referer": "https://www.bilibili.com/",
+                "Origin": "https://www.bilibili.com",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+            }
+        )
         self.sessions: dict[str, QRSession] = {}
 
-    def begin(self) -> dict[str, str]:
-        client = BiliBili(Data())
-        response = client.get_qrcode()
+    def begin(self) -> dict[str, Any]:
+        params = {"appkey": APP_KEY, "local_id": "0", "ts": int(time.time())}
+        params["sign"] = hashlib.md5((urlencode(params) + APP_SECRET).encode()).hexdigest()
+        response = self.session.post(
+            "https://passport.bilibili.com/x/passport-tv-login/qrcode/auth_code",
+            data=params,
+            timeout=15,
+        ).json()
         if not response or response.get("code") != 0:
             raise RuntimeError("failed to create Bilibili login QR code")
         data = response["data"]
@@ -76,7 +97,7 @@ class BilibiliAuth:
             "ts": int(time.time()),
         }
         params["sign"] = hashlib.md5((urlencode(params) + APP_SECRET).encode()).hexdigest()
-        response = requests.post(
+        response = self.session.post(
             "https://passport.bilibili.com/x/passport-tv-login/qrcode/poll",
             data=params,
             timeout=10,

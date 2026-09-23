@@ -64,7 +64,7 @@ def create_app(config: AppConfig) -> FastAPI:
         raise HTTPException(status_code=404, detail="unknown service action")
 
     @app.post("/api/auth/qrcode")
-    async def auth_qrcode() -> dict[str, str]:
+    async def auth_qrcode() -> dict[str, Any]:
         return auth.begin()
 
     @app.get("/api/auth/poll")

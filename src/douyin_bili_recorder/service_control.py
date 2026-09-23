@@ -48,15 +48,25 @@ class ServiceController:
             ]
         )
         log_handle = self.store.worker_log_path.open("a", encoding="utf-8")
-        process = subprocess.Popen(
-            [
+        if getattr(sys, "frozen", False):
+            command = [
+                sys.executable,
+                "--internal-recorder",
+                "run",
+                "--config",
+                str(config_path),
+            ]
+        else:
+            command = [
                 sys.executable,
                 "-m",
                 "douyin_bili_recorder",
                 "run",
                 "--config",
                 str(config_path),
-            ],
+            ]
+        process = subprocess.Popen(
+            command,
             cwd=str(self.config.config_path.parent),
             stdout=log_handle,
             stderr=subprocess.STDOUT,

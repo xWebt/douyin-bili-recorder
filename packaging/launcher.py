@@ -9,6 +9,24 @@ from douyin_bili_recorder.desktop import run_desktop
 
 
 def main() -> int:
+    if "--internal-ui" in sys.argv:
+        sys.argv.remove("--internal-ui")
+        import argparse
+        import uvicorn
+
+        from douyin_bili_recorder.webapp import create_app
+
+        parser = argparse.ArgumentParser(prog="DouyinBiliRecorderUI")
+        parser.add_argument("--config", required=True)
+        parser.add_argument("--port", type=int, default=8765)
+        args = parser.parse_args()
+        uvicorn.run(create_app(load_config(args.config)), host="127.0.0.1", port=args.port, log_level="info")
+        return 0
+    if "--internal-recorder" in sys.argv:
+        sys.argv.remove("--internal-recorder")
+        from douyin_bili_recorder.cli import main as recorder_main
+
+        return recorder_main()
     if "--internal-biliup" in sys.argv:
         sys.argv.remove("--internal-biliup")
         from stream_gears import main_loop

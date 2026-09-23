@@ -32,10 +32,11 @@ rm -rf "$ROOT_DIR/build" "$APP" "$ZIP"
   --collect-submodules "uvicorn" \
   "$ROOT_DIR/packaging/launcher.py"
 
-/usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 2.0.0' "$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c 'Add :CFBundleVersion string 2.0.0' "$APP/Contents/Info.plist" 2>/dev/null \
-  || /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 2.0.0' "$APP/Contents/Info.plist"
-xattr -cr "$APP" || true
+/usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 2.0.1' "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Add :CFBundleVersion string 2.0.1' "$APP/Contents/Info.plist" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 2.0.1' "$APP/Contents/Info.plist"
+xattr -dr com.apple.FinderInfo "$APP" 2>/dev/null || true
+xattr -dr com.apple.provenance "$APP" 2>/dev/null || true
 codesign --force --deep --sign - "$APP"
 ditto -c -k --norsrc --keepParent "$APP" "$ZIP"
 

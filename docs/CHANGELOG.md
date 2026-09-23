@@ -17,6 +17,12 @@
 - Added launchd generation and dependency checks.
 - Added unit tests and local validation of the offline target path.
 
+## v2.0.1
+
+- Fixed packaged-app recorder startup by routing internal worker execution through the app entrypoint.
+- Fixed Bilibili QR generation by using browser-compatible request headers.
+- Added automatic macOS system proxy detection for Bilibili login.
+
 ## v2.0.0
 
 - Added a local control deck with target management and one-click service control.
