@@ -120,11 +120,12 @@ The source build was validated on 2026-09-24 against a real Douyin live room at 
 
 The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRBS9` during validation.
 
-## v2.2.0 encoding, space, queue, and progress validation
+## v2.2.1 encoding, space, queue, progress, and continuous-capture validation
 
 - Unit tests cover the new quality/frame-rate estimates, direct-source media path, optional transcode path, and progress store.
 - Pipeline tests verify that recording continues while the previous part is blocked in the upload queue.
-- Regression coverage verifies that a newly-created boundary `.part` is discarded instead of being uploaded as a 10-second P2/P4 fragment.
+- Regression coverage verifies a continuous process can finalize multiple full parts without an intermediate restart and that the final real partial is preserved.
+- Recording is now driven by one continuous pull process; completed hourly files are detected and queued while the same process keeps receiving the next segment.
 - A private 3-second FLV was uploaded directly to Bilibili without MP4 remuxing and verified as `BV1nPhZ6yEwT`.
 - The control deck was exercised in a browser with a synthetic active upload and displayed 42% progress, speed, ETA, and part metadata.
 - Changing quality to `720P` and frame rate to `30 FPS` updated the estimate to `1.75 GB / 小时` and showed a roughly `11 GB` transient peak warning including the original segment.

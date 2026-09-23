@@ -21,7 +21,7 @@ from .media import MediaProcessor
 from .models import MediaFile, SessionPart, SessionRecord, SessionStatus
 from .paths import safe_path_name, session_output_dir, target_key
 from .process import ProcessRunner
-from .recorder import BiliupRecorder
+from .recorder import BiliupRecorder, discover_media
 from .scheduling import active_slot, expected_start_for_moment, is_late_detection, next_poll_delay_seconds, should_poll_now
 from .state import SessionStore, SingleInstanceLock, slugify
 from .storage_guard import StorageGuard
@@ -154,69 +154,66 @@ class RecorderService:
                 final_status = SessionStatus.UPLOAD_FAILED
                 session.error = "space budget is insufficient for the next segment"
                 break
-            attempt_started = int(time.time())
-            attempt = self.recorder.record(
-                target,
-                session_dir,
-                timeout_seconds=segment_seconds,
-                allow_partials=True,
-            )
-            media_paths = self._completed_media_paths(attempt, seen_sources)
+
+            process = self.recorder.start(target, session_dir)
+            connection_started = int(time.time())
+            if session.detected_start_epoch is None:
+                session.detected_start_epoch = connection_started
+                session.detected_start_iso = epoch_iso(connection_started, self.config.timezone)
+                self._apply_schedule(target, session, connection_started)
             media_found = False
 
-            if media_paths:
-                media_found = True
-                if session.detected_start_epoch is None:
-                    session.detected_start_epoch = attempt_started
-                    session.detected_start_iso = epoch_iso(attempt_started, self.config.timezone)
-                    self._apply_schedule(target, session, attempt_started)
-                if not session.room_title:
-                    status = self._resolve_status(target)
-                    if status is not None:
-                        session.room_title = status.room_title or session.room_title
-                session.status = SessionStatus.RECORDING
-                self.store.save(session)
-                self.analytics.upsert(session)
-                for source in media_paths:
-                    seen_sources.add(str(source))
-                    upload_allowed = self.pause_mode() != "keep"
-                    part = self._prepare_part(
+            while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
+                new_media = self._new_media_paths(
+                    session_dir,
+                    seen_sources,
+                    allow_partials=False,
+                )
+                if new_media:
+                    media_found = True
+                    self._mark_recording_started(target, session)
+                    part_index = self._process_media_batch(
                         target,
                         session,
                         session_dir,
-                        source,
+                        new_media,
+                        seen_sources,
                         part_index,
-                        upload_allowed=upload_allowed,
+                        upload_futures,
                     )
-                    if part is None:
-                        final_status = SessionStatus.UPLOAD_FAILED
-                        break
-                    if part.status == "PENDING":
-                        future = self.upload_executor.submit(
-                            self._upload_part_job,
-                            target,
-                            session,
-                            part,
-                        )
-                        upload_futures.append(future)
-                        self._pending_uploads.setdefault(session.session_id, []).append(future)
-                    part_index += 1
+                if process.poll() is not None:
+                    break
+                self.shutdown_event.wait(2)
+
+            tail_media = self._final_media_paths(
+                session_dir,
+                seen_sources,
+            )
+            if tail_media:
+                media_found = True
+                self._mark_recording_started(target, session)
+                part_index = self._process_media_batch(
+                    target,
+                    session,
+                    session_dir,
+                    tail_media,
+                    seen_sources,
+                    part_index,
+                    upload_futures,
+                )
 
             if self.interrupt_event.is_set():
                 break
-            if attempt.stream_offline or (attempt.returncode == 0 and not attempt.timed_out and not media_found):
+            offline = any("stream is offline" in line.lower() for line in process.output())
+            if offline or process.poll() != 0 or not media_found:
                 if session.last_seen_live_epoch is None:
-                    session.last_seen_live_epoch = attempt_started
+                    session.last_seen_live_epoch = connection_started
                 self.store.save(session)
                 if self._wait_for_reconnect(target, session):
                     continue
                 break
-            if attempt.timed_out:
-                continue
-            if not media_found:
-                if self._wait_for_reconnect(target, session):
-                    continue
-                break
+            self.shutdown_event.wait(0.25)
+            continue
 
         self._wait_for_uploads(session.session_id, upload_futures)
         if session.parts and all(part.status == "UPLOADED" for part in session.parts):
@@ -276,20 +273,84 @@ class RecorderService:
             self.shutdown_event.set()
         return True
 
-    def _completed_media_paths(self, attempt, seen_sources: set[str]) -> list[Path]:
-        paths = [path for path in attempt.media_paths if str(path) not in seen_sources]
-        if not attempt.timed_out:
-            return paths
-        completed = [path for path in paths if not path.name.lower().endswith(".part")]
-        if not completed:
-            return paths
-        result: list[Path] = []
-        for path in paths:
-            if path.name.lower().endswith(".part"):
-                self.logger.info("discarding boundary tail segment %s", path)
-                path.unlink(missing_ok=True)
+    def _new_media_paths(
+        self,
+        session_dir: Path,
+        seen_sources: set[str],
+        *,
+        allow_partials: bool,
+    ) -> list[Path]:
+        return [
+            path
+            for path in discover_media(
+                session_dir,
+                self.config.min_file_size_mb,
+                allow_partials=allow_partials,
+            )
+            if str(path) not in seen_sources
+        ]
+
+    def _mark_recording_started(self, target: TargetConfig, session: SessionRecord) -> None:
+        if not session.room_title:
+            status = self._resolve_status(target)
+            if status is not None:
+                session.room_title = status.room_title or session.room_title
+        session.status = SessionStatus.RECORDING
+        self.store.save(session)
+        self.analytics.upsert(session)
+
+    def _process_media_batch(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        session_dir: Path,
+        media_paths: list[Path],
+        seen_sources: set[str],
+        part_index: int,
+        upload_futures: list[Future[bool]],
+    ) -> int:
+        for source in media_paths:
+            seen_sources.add(str(source))
+            upload_allowed = self.pause_mode() != "keep"
+            part = self._prepare_part(
+                target,
+                session,
+                session_dir,
+                source,
+                part_index,
+                upload_allowed=upload_allowed,
+            )
+            if part is None:
+                session.error = f"failed to prepare part {part_index}"
+                self.store.save(session)
                 continue
-            result.append(path)
+            if part.status == "PENDING":
+                future = self.upload_executor.submit(
+                    self._upload_part_job,
+                    target,
+                    session,
+                    part,
+                )
+                upload_futures.append(future)
+                self._pending_uploads.setdefault(session.session_id, []).append(future)
+            part_index += 1
+        return part_index
+
+    def _final_media_paths(
+        self,
+        session_dir: Path,
+        seen_sources: set[str],
+    ) -> list[Path]:
+        result: list[Path] = []
+        for path in self._new_media_paths(session_dir, seen_sources, allow_partials=True):
+            try:
+                has_data = path.stat().st_size > 0
+            except OSError:
+                has_data = False
+            if has_data:
+                result.append(path)
+            else:
+                path.unlink(missing_ok=True)
         return result
 
     def _wait_for_capacity(self, target: TargetConfig) -> bool:
@@ -381,7 +442,7 @@ class RecorderService:
         output_dir.mkdir(parents=True, exist_ok=True)
         started = datetime.fromtimestamp(start_epoch, ZoneInfo(self.config.timezone))
         base_name = f"{started.strftime('%H%M')}_{safe_path_name(session.room_title or '直播录像')}_P{part_index:02d}"
-        suffix = ".flv" if source_path.name.lower().endswith(".flv.part") else source_path.suffix.lower()
+        suffix = Path(source_path.name[:-5]).suffix.lower() if source_path.name.lower().endswith(".part") else source_path.suffix.lower()
         final_media = output_dir / f"{base_name}{suffix}"
         if source_path != final_media:
             shutil.move(str(source_path), str(final_media))

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import AppConfig, TargetConfig
-from .process import ProcessRunner
+from .process import ProcessRunner, RunningProcess
 
 
 @dataclass(slots=True)
@@ -26,6 +26,23 @@ class BiliupRecorder:
         self.config = config
         self.runner = runner
         self.logger = logger
+
+    def start(
+        self,
+        target: TargetConfig,
+        session_dir: Path,
+    ) -> RunningProcess:
+        output_template = session_dir / "%Y-%m-%dT%H_%M_%S{title}"
+        command = [
+            self.config.biliup_bin,
+            "download",
+            target.url,
+            "-o",
+            str(output_template),
+            "--split-time",
+            self.config.segment_time,
+        ]
+        return self.runner.start(command)
 
     def record(
         self,

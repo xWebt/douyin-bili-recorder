@@ -144,5 +144,6 @@ Per-anchor settings:
 - Before starting each segment, the recorder checks both the configured allocation and physical free space against the selected transcode peak.
 - When space is insufficient, the recorder pauses before the next segment and resumes after uploads release storage.
 - Completed segments are uploaded through a serialized background queue so recording the next segment does not wait for the previous upload.
+- Normal hourly splitting keeps the same upstream pull process running across boundaries so no content is omitted while a part is prepared or uploaded.
 - The main control deck shows current part, uploaded bytes, total bytes, percent, speed, ETA, stage, and BVID.
 - Upload failure is shown without stopping the active recording.

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "douyin-bili-recorder"
-version = "2.2.0"
+version = "2.2.1"
 description = "Reliable Douyin live recorder with timestamped Bilibili uploads"
 readme = "README.md"
 requires-python = ">=3.11"

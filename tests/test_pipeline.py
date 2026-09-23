@@ -11,9 +11,42 @@ from douyin_bili_recorder.recorder import RecordAttempt
 from douyin_bili_recorder.uploader import UploadResult
 
 
+class FakeRunningProcess:
+    def __init__(self, lines: list[str], returncode: int) -> None:
+        self._lines = lines
+        self.returncode = returncode
+
+    def poll(self) -> int:
+        return self.returncode
+
+    def output(self) -> list[str]:
+        return self._lines
+
+
+class ContinuousProcess:
+    def __init__(self, session_dir: Path) -> None:
+        self.session_dir = session_dir
+        self.stage = 0
+        self.returncode = 0
+
+    def poll(self) -> int | None:
+        if self.stage == 0:
+            self.stage = 1
+            (self.session_dir / "full-002.ts").write_bytes(b"b" * 64)
+            return None
+        return 0
+
+    def output(self) -> list[str]:
+        return []
+
+
 class FakeRecorder:
     def __init__(self) -> None:
         self.calls = 0
+
+    def start(self, target, session_dir: Path):
+        attempt = self.record(target, session_dir)
+        return FakeRunningProcess(attempt.lines, attempt.returncode)
 
     def record(self, target, session_dir: Path, **_kwargs) -> RecordAttempt:
         self.calls += 1
@@ -24,9 +57,25 @@ class FakeRecorder:
         return RecordAttempt(0, [], [media], True)
 
 
+class ContinuousRecorder:
+    def __init__(self) -> None:
+        self.starts = 0
+
+    def start(self, _target, session_dir: Path):
+        self.starts += 1
+        if self.starts == 1:
+            (session_dir / "full-001.ts").write_bytes(b"a" * 64)
+            return ContinuousProcess(session_dir)
+        return FakeRunningProcess(["stream is offline"], 1)
+
+
 class MultiSegmentRecorder:
     def __init__(self) -> None:
         self.calls = 0
+
+    def start(self, target, session_dir: Path):
+        attempt = self.record(target, session_dir)
+        return FakeRunningProcess(attempt.lines, attempt.returncode)
 
     def record(self, _target, session_dir: Path, **_kwargs) -> RecordAttempt:
         self.calls += 1
@@ -41,6 +90,10 @@ class OverlapRecorder:
     def __init__(self, uploader: OverlapUploader) -> None:
         self.uploader = uploader
         self.calls = 0
+
+    def start(self, target, session_dir: Path):
+        attempt = self.record(target, session_dir)
+        return FakeRunningProcess(attempt.lines, attempt.returncode)
 
     def record(self, _target, session_dir: Path, **_kwargs) -> RecordAttempt:
         self.calls += 1
@@ -59,6 +112,10 @@ class OverlapRecorder:
 class BoundaryRecorder:
     def __init__(self) -> None:
         self.calls = 0
+
+    def start(self, target, session_dir: Path):
+        attempt = self.record(target, session_dir)
+        return FakeRunningProcess(attempt.lines, attempt.returncode)
 
     def record(self, _target, session_dir: Path, **_kwargs) -> RecordAttempt:
         self.calls += 1
@@ -130,7 +187,7 @@ class FakeResolver:
 
     def resolve(self, _url):
         self.calls += 1
-        return FakeStatus() if self.calls == 1 else type(
+        return FakeStatus() if self.calls <= 2 else type(
             "Offline", (), {"live": False, "web_rid": "123", "room_title": ""}
         )()
 
@@ -174,7 +231,7 @@ url = "https://live.douyin.com/123"
 
 
 
-def test_boundary_tail_partial_is_not_uploaded_as_short_part(tmp_path: Path) -> None:
+def test_final_partial_content_is_preserved(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
@@ -208,8 +265,48 @@ url = "https://live.douyin.com/123"
 
     assert service.record_and_upload(config.targets[0]) is True
     record = service.status()[0]
-    assert [part.index for part in record.parts] == [1, 2]
+    assert [part.index for part in record.parts] == [1, 2, 3]
+    assert record.parts[1].path.endswith(".ts")
     assert not (config.sessions_dir / record.session_id / "full-002.ts.part").exists()
+
+
+def test_one_process_can_finalize_multiple_full_parts(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[recording]
+min_file_size_mb = 0
+
+[storage]
+video_dir = "videos"
+reconnect_grace_minutes = 0
+
+[upload]
+cookie_file = "cookies.json"
+retry_count = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "cookies.json").write_text("{}", encoding="utf-8")
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    recorder = ContinuousRecorder()
+    service.recorder = recorder  # type: ignore[assignment]
+    service.media = FakeMedia()  # type: ignore[assignment]
+    service.resolver = FakeResolver()  # type: ignore[assignment]
+    service.uploader = FakeUploader()  # type: ignore[assignment]
+
+    assert service.record_and_upload(config.targets[0]) is True
+    record = service.status()[0]
+    assert [part.index for part in record.parts] == [1, 2]
+    assert recorder.starts == 2
 
 
 def test_pipeline_records_and_uploads_with_anchor_title(tmp_path: Path) -> None:

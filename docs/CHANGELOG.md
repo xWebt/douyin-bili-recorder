@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.1
+
+- Fixed hourly boundaries being split into 10-second P2/P4 fragments by keeping the upstream pull process alive across splits.
+- Changed normal recording to keep one continuous upstream pull process across hourly splits, eliminating the old stop/restart recording gap.
+- Preserved the final partial segment when a stream truly ends, so tail content is not discarded.
+- Added regression coverage for continuous capture and final-part preservation.
+
 ## v2.2.0
 
 - Added global recording quality and frame-rate selection with one-hour storage estimates.
@@ -7,7 +14,6 @@
 - Added configured-allocation and physical free-space guards before each segment; recording pauses rather than overrunning the budget.
 - Added a serialized background upload queue so the next hour records while the previous part uploads.
 - Added live upload progress to the main control deck with part, bytes, percent, speed, ETA, stage, and BVID.
-- Fixed one-hour boundary tails being uploaded as 10-second P2/P4 fragments; the newly-created boundary `.part` is now discarded before the next full segment is recorded.
 - Validated direct FLV submission with a private Bilibili test upload (`BV1nPhZ6yEwT`).
 
 ## v2.1.5
