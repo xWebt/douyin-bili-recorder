@@ -4,19 +4,22 @@ build-backend = "hatchling.build"
 
 [project]
 name = "douyin-bili-recorder"
-version = "1.0.1"
+version = "2.0.0"
 description = "Reliable Douyin live recorder with timestamped Bilibili uploads"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Webt", email = "gg2050361034@gmail.com" }]
-dependencies = []
+dependencies = ["biliup>=1.2.7", "fastapi>=0.115", "pywebview>=5.4", "qrcode[pil]>=8.0", "requests>=2.32", "uvicorn>=0.34"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+build = ["pyinstaller>=6.10"]
 
 [project.scripts]
 douyin-recorder = "douyin_bili_recorder.cli:main"
+douyin-recorder-desktop = "douyin_bili_recorder.desktop_main:main"
+douyin-recorder-ui = "douyin_bili_recorder.webui_main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/douyin_bili_recorder"]

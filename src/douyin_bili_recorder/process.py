@@ -33,6 +33,8 @@ class ProcessRunner:
         timeout_seconds: int | None = None,
     ) -> ProcessResult:
         command = [str(item) for item in args]
+        if command and command[0] == "__INTERNAL_BILIUP__":
+            command = [sys.executable, "--internal-biliup", *command[1:]]
         self.logger.info("running command: %s", " ".join(command))
         process = subprocess.Popen(
             command,

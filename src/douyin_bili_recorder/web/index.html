@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0e1412" />
+    <title>Douyin Recorder Control Deck</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div>
+            <p class="eyebrow">BROADCAST OPERATIONS</p>
+            <h1>直播录制控制台</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-button" id="loginButton" type="button">
+            <i data-lucide="scan-qr-code"></i>
+            <span id="loginLabel">B站登录</span>
+          </button>
+          <div class="connection-state" id="connectionState">
+            <span class="status-dot"></span>
+            <span>正在连接</span>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section class="status-strip" aria-label="服务状态">
+          <div class="status-block">
+            <span class="status-label">录制进程</span>
+            <strong id="workerState">读取中</strong>
+            <small id="workerPid">PID -</small>
+          </div>
+          <div class="status-block">
+            <span class="status-label">运行时长</span>
+            <strong id="workerUptime">00:00:00</strong>
+            <small id="workerMode">后台守护</small>
+          </div>
+          <div class="status-block">
+            <span class="status-label">磁盘余量</span>
+            <strong id="cacheUsage">-- / 10 GB</strong>
+            <small>本地缓存空间</small>
+          </div>
+          <div class="status-block">
+            <span class="status-label">稿件权限</span>
+            <strong id="visibilityState">仅自己可见</strong>
+            <small id="targetCount">0 个主播</small>
+          </div>
+        </section>
+
+        <section class="control-grid">
+          <aside class="control-rail">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">SERVICE</p>
+                <h2>录制服务</h2>
+              </div>
+              <span class="pulse-indicator" id="servicePulse"></span>
+            </div>
+
+            <div class="primary-actions">
+              <button class="primary-button" id="startButton" type="button">
+                <i data-lucide="play"></i>
+                <span>一键开始</span>
+              </button>
+              <button class="secondary-button" id="restartButton" type="button">
+                <i data-lucide="rotate-cw"></i>
+                <span>重启</span>
+              </button>
+              <button class="danger-button" id="stopButton" type="button">
+                <i data-lucide="square"></i>
+                <span>停止</span>
+              </button>
+            </div>
+
+            <div class="control-group">
+              <span class="control-label">投稿可见性</span>
+              <div class="segmented" id="visibilityControl">
+                <button type="button" data-value="private" class="active">
+                  <i data-lucide="lock"></i><span>仅自己</span>
+                </button>
+                <button type="button" data-value="public">
+                  <i data-lucide="globe-2"></i><span>公开</span>
+                </button>
+              </div>
+            </div>
+
+            <label class="switch-row">
+              <span>
+                <strong>异常自动拉起</strong>
+                <small>进程退出后自动恢复</small>
+              </span>
+              <input type="checkbox" id="autoRestart" />
+              <span class="switch-track"></span>
+            </label>
+
+            <label class="switch-row">
+              <span>
+                <strong>投稿成功后删除本地</strong>
+                <small>仅在确认 BVID 后删除</small>
+              </span>
+              <input type="checkbox" id="deleteAfterUpload" />
+              <span class="switch-track"></span>
+            </label>
+
+            <label class="number-row">
+              <span>
+                <strong>本地缓存上限</strong>
+                <small>默认 10 GB</small>
+              </span>
+              <span class="unit-input">
+                <input type="number" id="maxCacheGb" min="1" max="2000" step="1" value="10" />
+                <span>GB</span>
+              </span>
+            </label>
+            <button class="save-button" id="saveButton" type="button">
+              <i data-lucide="save"></i>
+              <span>保存设置</span>
+            </button>
+          </aside>
+
+          <section class="targets-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">TARGETS</p>
+                <h2>监视主播</h2>
+              </div>
+              <button class="icon-button" id="refreshButton" type="button" title="刷新状态">
+                <i data-lucide="refresh-cw"></i>
+              </button>
+            </div>
+
+            <form class="target-form" id="targetForm">
+              <label>
+                <span>主播名称</span>
+                <input id="targetName" name="name" placeholder="例如 imxiaoxin" required />
+              </label>
+              <label class="url-field">
+                <span>直播间或主页链接</span>
+                <input id="targetUrl" name="url" placeholder="https://www.douyin.com/user/..." required />
+              </label>
+              <button class="add-button" type="submit">
+                <i data-lucide="plus"></i>
+                <span>添加主播</span>
+              </button>
+            </form>
+
+            <div class="target-list" id="targetList"></div>
+            <div class="empty-state" id="targetEmpty">
+              <i data-lucide="radio-tower"></i>
+              <strong>还没有监视主播</strong>
+              <span>添加直播间或主播主页后即可开始。</span>
+            </div>
+          </section>
+
+          <aside class="log-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">LIVE FEED</p>
+                <h2>运行日志</h2>
+              </div>
+              <button class="icon-button" id="clearLogButton" type="button" title="刷新日志">
+                <i data-lucide="list-restart"></i>
+              </button>
+            </div>
+            <pre class="log-view" id="logView">等待日志...</pre>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="loginModal" hidden>
+      <section class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+        <button class="icon-button modal-close" id="closeLoginButton" type="button" title="关闭">
+          <i data-lucide="x"></i>
+        </button>
+        <p class="eyebrow">BILIBILI AUTH</p>
+        <h2 id="loginTitle">扫码登录</h2>
+        <div class="qr-frame">
+          <img id="qrImage" alt="B站登录二维码" />
+          <div class="qr-loading" id="qrLoading">正在生成二维码</div>
+        </div>
+        <p class="login-message" id="loginMessage">请使用 B 站手机客户端扫码。</p>
+      </section>
+    </div>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+
+    <script src="/static/vendor/lucide.min.js"></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

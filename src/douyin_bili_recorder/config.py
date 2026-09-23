@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,6 +11,28 @@ from typing import Any
 
 class ConfigError(ValueError):
     pass
+
+
+def resolve_executable(name: str, config_dir: Path) -> str:
+    candidate = Path(os.path.expanduser(name))
+    if candidate.is_absolute() and candidate.exists():
+        return str(candidate)
+
+    venv_candidate = Path(sys.executable).parent / name
+    if venv_candidate.exists():
+        return str(venv_candidate)
+
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    for bundle_dir in (bundle_root / "bin", Path(sys.executable).parent / "bin"):
+        bundled_candidate = bundle_dir / name
+        if bundled_candidate.exists():
+            return str(bundled_candidate)
+
+    project_candidate = config_dir / ".tools" / "ffmpeg" / name
+    if project_candidate.exists():
+        return str(project_candidate)
+
+    return shutil.which(name) or name
 
 
 def _expand_path(value: str | os.PathLike[str], base: Path) -> Path:
@@ -38,6 +62,7 @@ class AppConfig:
     reconnect_backoff_seconds: int
     segment_time: str
     min_file_size_mb: int
+    max_cache_gb: int
     keep_original_files: bool
     biliup_bin: str
     ffmpeg_bin: str
@@ -68,6 +93,7 @@ def load_config(path: str | Path) -> AppConfig:
 
     app = _table(raw, "app")
     recording = _table(raw, "recording")
+    storage = _table(raw, "storage", required=False)
     upload = _table(raw, "upload")
     launchd = _table(raw, "launchd", required=False)
     base = config_path.parent
@@ -89,6 +115,7 @@ def load_config(path: str | Path) -> AppConfig:
         reconnect_backoff_seconds=int(app.get("reconnect_backoff_seconds", 15)),
         segment_time=str(recording.get("segment_time", "1h")),
         min_file_size_mb=int(recording.get("min_file_size_mb", 10)),
+        max_cache_gb=int(storage.get("max_cache_gb", 10)),
         keep_original_files=bool(recording.get("keep_original_files", True)),
         biliup_bin=str(upload.get("biliup_bin", "biliup")),
         ffmpeg_bin=str(upload.get("ffmpeg_bin", "ffmpeg")),
@@ -140,5 +167,7 @@ def _validate(config: AppConfig) -> None:
         raise ConfigError("max_reconnect_attempts cannot be negative")
     if config.min_file_size_mb < 0:
         raise ConfigError("min_file_size_mb cannot be negative")
+    if config.max_cache_gb < 1:
+        raise ConfigError("max_cache_gb must be at least 1")
     if config.upload_retry_count < 0:
         raise ConfigError("retry_count cannot be negative")

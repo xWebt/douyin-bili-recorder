@@ -17,6 +17,16 @@
 - Added launchd generation and dependency checks.
 - Added unit tests and local validation of the offline target path.
 
+## v2.0.0
+
+- Added a local control deck with target management and one-click service control.
+- Added Bilibili QR login in the interface.
+- Added public/private upload selection.
+- Added a configurable 10 GB default local recording cache limit.
+- Added the option to delete local media after a verified BVID is returned.
+- Added multi-target concurrent recording support.
+- Added a packaged macOS desktop application and ZIP distribution artifact.
+
 ## v1.0.1
 
 - Include the anchor name and live start time in every additional Bilibili part title.

@@ -24,3 +24,8 @@ See `docs/VALIDATION.md` for the completed local validation results.
 The production implementation is under `src/douyin_bili_recorder`.
 See `docs/PRODUCT.md` for installation and commands.
 See `docs/TITLE_FORMAT.md` for the required title format, which always starts with the anchor name.
+
+## Desktop application
+
+A distributable macOS desktop application is documented in `docs/DESKTOP.md`.
+Build it with `./scripts/build-macos-app.sh`.

@@ -11,6 +11,9 @@ segment_time = "1h"
 min_file_size_mb = 10
 keep_original_files = true
 
+[storage]
+max_cache_gb = 10
+
 [upload]
 biliup_bin = "biliup"
 ffmpeg_bin = "ffmpeg"

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import hashlib
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -13,6 +15,7 @@ from .models import SessionRecord, SessionStatus
 from .process import ProcessRunner
 from .recorder import BiliupRecorder, discover_media
 from .state import SessionStore, SingleInstanceLock, slugify
+from .storage_guard import StorageGuard
 from .timeutil import build_title, epoch_iso
 from .uploader import BiliupUploader
 
@@ -32,8 +35,10 @@ class RecorderService:
         self.recorder = BiliupRecorder(config, self.runner, logger)
         self.media = MediaProcessor(config, self.runner, logger)
         self.uploader = BiliupUploader(config, self.runner, logger)
+        self.storage = StorageGuard(config.sessions_dir, logger)
 
     def run_forever(self) -> None:
+        self._start_external_stop_watcher()
         self.config.sessions_dir.mkdir(parents=True, exist_ok=True)
         lock_path = self.config.data_dir / "recorder.lock"
         with SingleInstanceLock(lock_path):
@@ -86,6 +91,13 @@ class RecorderService:
             self.shutdown_event.wait(self.config.poll_interval_seconds)
 
     def record_and_upload(self, target: TargetConfig) -> bool:
+        self.storage.enforce_limit(self.config.max_cache_gb)
+        if not self.storage.can_start_session(self.config.max_cache_gb):
+            self.logger.warning(
+                "local cache is at the configured limit (%s GB), waiting for uploads to finish", 
+                self.config.max_cache_gb,
+            )
+            return False
         session = self._new_session(target)
         session_dir = self.store.session_dir(session.session_id)
         self.store.save(session)
@@ -158,6 +170,7 @@ class RecorderService:
                 if result.verified:
                     session.status = SessionStatus.UPLOADED
                     self.store.save(session)
+                    self.storage.enforce_limit(self.config.max_cache_gb)
                     self.logger.info("session %s uploaded as %s", session.session_id, result.bvid)
                     if self.config.delete_after_upload:
                         self.store.delete(session.session_id)
@@ -176,7 +189,8 @@ class RecorderService:
 
     def _new_session(self, target: TargetConfig) -> SessionRecord:
         now = datetime.now(ZoneInfo(self.config.timezone))
-        session_id = f"{now.strftime('%Y%m%d-%H%M%S')}-{slugify(target.name)}"
+        target_hash = hashlib.sha1(target.name.encode("utf-8")).hexdigest()[:6]
+        session_id = f"{now.strftime('%Y%m%d-%H%M%S')}-{slugify(target.name)}-{target_hash}"
         return SessionRecord(
             session_id=session_id,
             target_name=target.name,
@@ -204,3 +218,18 @@ class RecorderService:
     def stop(self) -> None:
         self.shutdown_event.set()
         self.runner.terminate_active()
+
+    def _start_external_stop_watcher(self) -> None:
+        stop_path = os.environ.get("DOUYIN_RECORDER_STOP_FILE", "").strip()
+        if not stop_path:
+            return
+
+        def watch() -> None:
+            while not self.shutdown_event.wait(2):
+                if os.path.exists(stop_path):
+                    self.logger.info("external stop request received")
+                    self.shutdown_event.set()
+                    self.runner.terminate_active()
+                    return
+
+        threading.Thread(target=watch, name="external-stop-watcher", daemon=True).start()
