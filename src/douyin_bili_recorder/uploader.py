@@ -89,7 +89,8 @@ class BiliupUploader:
         if not bvid:
             return UploadResult(None, False, messages + ["submission was sent but BVID lookup timed out"])
 
-        for media_path in files[1:]:
+        for index, media_path in enumerate(files[1:], start=2):
+            part_title = f"{target.name}｜{session.detected_start_iso or session.session_id}｜P{index:02d}"
             append_command = [
                 self.config.biliup_bin,
                 "-u",
@@ -101,7 +102,7 @@ class BiliupUploader:
                 self.config.upload_line,
                 str(media_path),
                 "--title",
-                media_path.stem,
+                part_title,
                 "--desc",
                 self._description(target, session),
                 "--copyright",

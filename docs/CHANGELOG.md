@@ -17,6 +17,10 @@
 - Added launchd generation and dependency checks.
 - Added unit tests and local validation of the offline target path.
 
+## v1.0.1
+
+- Include the anchor name and live start time in every additional Bilibili part title.
+
 ## v1.0.0
 
 - Finalized documentation and operational workflow.
