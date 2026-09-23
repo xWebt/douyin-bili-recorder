@@ -21,7 +21,7 @@ class TargetConfig:
     name: str
     url: str
     enabled: bool = True
-    title_template: str = "{name}｜{start_date} {start_time} 开播"
+    title_template: str = "{name}｜{start_date} {start_time} 开播｜{room_title}"
     tags: list[str] = field(default_factory=list)
     tid: int = 171
     copyright: int = 2
@@ -125,7 +125,7 @@ def _target(raw: dict[str, Any]) -> TargetConfig:
         name=name,
         url=url,
         enabled=bool(raw.get("enabled", True)),
-        title_template=str(raw.get("title_template", "{name}｜{start_date} {start_time} 开播")),
+        title_template=str(raw.get("title_template", "{name}｜{start_date} {start_time} 开播｜{room_title}")),
         tags=[str(item) for item in raw.get("tags", [])],
         tid=int(raw.get("tid", 171)),
         copyright=int(raw.get("copyright", 2)),

@@ -18,3 +18,9 @@ It performs the following steps:
 4. remuxes TS to MP4 without re-encoding.
 
 See `docs/VALIDATION.md` for the completed local validation results.
+
+## Production recorder
+
+The production implementation is under `src/douyin_bili_recorder`.
+See `docs/PRODUCT.md` for installation and commands.
+See `docs/TITLE_FORMAT.md` for the required title format, which always starts with the anchor name.
