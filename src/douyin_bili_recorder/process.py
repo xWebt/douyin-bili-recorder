@@ -17,13 +17,20 @@ from typing import Iterable
 class ProcessResult:
     returncode: int
     lines: list[str]
+    timed_out: bool = False
 
 
 class ProcessRunner:
-    def __init__(self, logger: logging.Logger, shutdown_event: threading.Event) -> None:
+    def __init__(
+        self,
+        logger: logging.Logger,
+        shutdown_event: threading.Event,
+        interrupt_event: threading.Event | None = None,
+    ) -> None:
         self.logger = logger
         self.shutdown_event = shutdown_event
-        self._active: subprocess.Popen[str] | None = None
+        self.interrupt_event = interrupt_event
+        self._active: set[subprocess.Popen[str]] = set()
         self._lock = threading.Lock()
 
     def run(
@@ -49,7 +56,7 @@ class ProcessRunner:
             start_new_session=True,
         )
         with self._lock:
-            self._active = process
+            self._active.add(process)
 
         lines: deque[str] = deque(maxlen=5000)
 
@@ -63,25 +70,29 @@ class ProcessRunner:
         thread = threading.Thread(target=reader, name="process-output", daemon=True)
         thread.start()
         started = time.monotonic()
+        timed_out = False
 
         try:
             while process.poll() is None:
-                if self.shutdown_event.is_set():
+                if self.shutdown_event.is_set() or (
+                    self.interrupt_event is not None and self.interrupt_event.is_set()
+                ):
                     self.logger.warning("shutdown requested, terminating child process")
                     self.terminate(process)
                     break
                 if timeout_seconds is not None and time.monotonic() - started > timeout_seconds:
                     self.logger.warning("child process timed out after %s seconds", timeout_seconds)
                     self.terminate(process)
+                    timed_out = True
                     break
                 time.sleep(0.25)
         finally:
             process.wait()
             thread.join(timeout=2)
             with self._lock:
-                self._active = None
+                self._active.discard(process)
 
-        return ProcessResult(returncode=process.returncode, lines=list(lines))
+        return ProcessResult(returncode=process.returncode, lines=list(lines), timed_out=timed_out)
 
     def terminate(self, process: subprocess.Popen[str]) -> None:
         if process.poll() is not None:
@@ -100,6 +111,6 @@ class ProcessRunner:
 
     def terminate_active(self) -> None:
         with self._lock:
-            process = self._active
-        if process is not None:
+            processes = list(self._active)
+        for process in processes:
             self.terminate(process)

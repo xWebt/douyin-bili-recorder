@@ -18,22 +18,31 @@ def _target_id() -> str:
 
 def _default_state(config: AppConfig) -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": 2,
         "public": config.public,
         "max_cache_gb": config.max_cache_gb,
         "delete_after_upload": config.delete_after_upload,
         "auto_restart": True,
         "worker_running": False,
+        "video_dir": str(config.video_dir),
+        "late_threshold_minutes": config.late_threshold_minutes,
+        "reconnect_grace_minutes": config.reconnect_grace_minutes,
         "targets": [
             {
                 "id": _target_id(),
                 "name": target.name,
                 "url": target.url,
                 "enabled": target.enabled,
+                "public": target.public,
+                "record_mode": target.record_mode,
+                "collection_name": target.collection_name,
+                "collection_id": target.collection_id,
                 "title_template": target.title_template,
                 "tags": list(target.tags),
                 "tid": target.tid,
                 "copyright": target.copyright,
+                "source": target.source,
+                "schedule": [slot.to_dict() for slot in target.schedule],
             }
             for target in config.targets
         ],
@@ -102,6 +111,9 @@ class UIStateStore:
             "",
             "[storage]",
             f"max_cache_gb = {int(state.get('max_cache_gb', self.config.max_cache_gb))}",
+            f'video_dir = {json.dumps(str(state.get("video_dir", self.config.video_dir)))}',
+            f"late_threshold_minutes = {int(state.get('late_threshold_minutes', self.config.late_threshold_minutes))}",
+            f"reconnect_grace_minutes = {int(state.get('reconnect_grace_minutes', self.config.reconnect_grace_minutes))}",
             "",
             "[upload]",
             f'biliup_bin = {json.dumps(biliup_bin)}',
@@ -125,6 +137,10 @@ class UIStateStore:
                     f'name = {json.dumps(str(target["name"]), ensure_ascii=False)}',
                     f'url = {json.dumps(str(target["url"]))}',
                     f"enabled = {str(bool(target.get('enabled', True))).lower()}",
+                    f"public = {str(bool(target.get('public', public))).lower()}",
+                    f"record_mode = {json.dumps(str(target.get('record_mode', 'record')))}",
+                    f"collection_name = {json.dumps(str(target.get('collection_name', '')), ensure_ascii=False)}",
+                    f"collection_id = {json.dumps(str(target.get('collection_id', '')))}",
                     f"title_template = {json.dumps(str(target.get('title_template') or '{name}｜{start_date} {start_time} 开播｜{room_title}'), ensure_ascii=False)}",
                     f"tags = {json.dumps(target.get('tags') or ['直播录像', '抖音'], ensure_ascii=False)}",
                     f"tid = {int(target.get('tid', 171))}",
@@ -132,6 +148,20 @@ class UIStateStore:
                     f'source = {json.dumps(str(target.get("source", "")), ensure_ascii=False)}',
                 ]
             )
+            schedule = target.get("schedule") or []
+            for slot in schedule:
+                if not isinstance(slot, dict):
+                    continue
+                lines.extend(
+                    [
+                        "",
+                        "[[targets.schedule]]",
+                        f"days = {json.dumps([int(day) for day in slot.get('days', []) if 1 <= int(day) <= 7])}",
+                        f"start = {json.dumps(str(slot.get('start', '20:00')))}",
+                        f"end = {json.dumps(str(slot.get('end', '23:00')))}",
+                        f"enabled = {str(bool(slot.get('enabled', True))).lower()}",
+                    ]
+                )
         self.runtime_config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return self.runtime_config_path
 
@@ -164,12 +194,40 @@ class UIStateStore:
             if target_id in seen:
                 target_id = _target_id()
             seen.add(target_id)
+            target_schedule = []
+            for slot in item.get("schedule", []):
+                if not isinstance(slot, dict):
+                    continue
+                days = []
+                for day in slot.get("days", []):
+                    try:
+                        value = int(day)
+                    except (TypeError, ValueError):
+                        continue
+                    if 1 <= value <= 7 and value not in days:
+                        days.append(value)
+                target_schedule.append(
+                    {
+                        "days": sorted(days),
+                        "start": str(slot.get("start", "20:00")),
+                        "end": str(slot.get("end", "23:00")),
+                        "enabled": bool(slot.get("enabled", True)),
+                    }
+                )
             targets.append(
                 {
                     "id": target_id,
                     "name": name,
                     "url": url,
                     "enabled": bool(item.get("enabled", True)),
+                    "public": bool(item.get("public", state.get("public", self.config.public))),
+                    "record_mode": (
+                        str(item.get("record_mode", "record"))
+                        if str(item.get("record_mode", "record")) in {"record", "monitor"}
+                        else "record"
+                    ),
+                    "collection_name": str(item.get("collection_name", name)),
+                    "collection_id": str(item.get("collection_id", "")),
                     "title_template": str(
                         item.get("title_template")
                         or "{name}｜{start_date} {start_time} 开播｜{room_title}"
@@ -178,15 +236,25 @@ class UIStateStore:
                     "tid": int(item.get("tid", 171)),
                     "copyright": int(item.get("copyright", 2)),
                     "source": str(item.get("source", "")),
+                    "schedule": target_schedule,
                 }
             )
         return {
-            "version": 1,
+            "version": 2,
             "public": bool(state.get("public", self.config.public)),
             "max_cache_gb": max(1, int(state.get("max_cache_gb", self.config.max_cache_gb))),
             "delete_after_upload": bool(state.get("delete_after_upload", self.config.delete_after_upload)),
             "auto_restart": bool(state.get("auto_restart", True)),
             "worker_running": bool(state.get("worker_running", False)),
+            "video_dir": str(state.get("video_dir", self.config.video_dir)),
+            "late_threshold_minutes": max(
+                0,
+                int(state.get("late_threshold_minutes", self.config.late_threshold_minutes)),
+            ),
+            "reconnect_grace_minutes": max(
+                0,
+                int(state.get("reconnect_grace_minutes", self.config.reconnect_grace_minutes)),
+            ),
             "targets": targets,
         }
 

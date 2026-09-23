@@ -45,6 +45,7 @@ url = "https://live.douyin.com/123"
 title_template = "{name}｜{start_date} {start_time} 开播｜{room_title}"
 tags = ["直播录像"]
 enabled = true
+public = true
 """.strip(),
         encoding="utf-8",
     )
@@ -74,4 +75,4 @@ enabled = true
     assert result.bvid == "BV0000000001"
     upload_command = next(command for command in runner.commands if "upload" in command)
     assert expected_title in upload_command
-    assert "--is-only-self" in upload_command
+    assert "--is-only-self" not in upload_command

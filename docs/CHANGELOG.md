@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.1.0
+
+- Added per-anchor public/private submissions, record-only or monitor-only mode, independent Bilibili collections, and weekly schedules.
+- Added one-hour multipart uploads with a new BVID for P1 and append operations for later parts.
+- Added safe pause/stop handling that finalizes the active partial file and asks whether to upload or keep it locally.
+- Added reconnect grace handling so brief stream drops continue the same session and do not count as another late arrival.
+- Added five-minute late detection, late-day and late-session analytics, monthly JSON records, and anchor detail charts.
+- Added configurable video storage rooted at `video root / anchor / date / recording`.
+- Added profile-link resolution for stable anchor names and fallback live probing when a fixed web room id is not exposed.
+- Fixed cache display to show current usage versus saved allocation and added next-segment hot reload.
+
 ## v2.0.2
 
 - Replaced the fragile PyInstaller macOS app wrapper with a standard native launcher and relocatable runtime directory.

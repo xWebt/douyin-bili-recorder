@@ -77,7 +77,7 @@ class BiliupUploader:
             "--tag",
             ",".join(target.tags),
         ]
-        if not self.config.public:
+        if not target.public:
             command.extend(["--is-only-self", "1"])
 
         result = self.runner.run(command)
@@ -114,7 +114,7 @@ class BiliupUploader:
                 "--tag",
                 ",".join(target.tags),
             ]
-            if not self.config.public:
+            if not target.public:
                 append_command.extend(["--is-only-self", "1"])
             append_result = self.runner.run(append_command)
             messages.extend(append_result.lines)
@@ -122,6 +122,83 @@ class BiliupUploader:
                 raise RuntimeError(f"failed to append {media_path.name} to {bvid}")
 
         return UploadResult(bvid, True, messages)
+
+    def upload_part(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        media_path: Path,
+        *,
+        part_index: int,
+        title: str,
+        bvid: str | None = None,
+    ) -> UploadResult:
+        if not self.config.cookie_file.exists():
+            raise RuntimeError(f"Bilibili cookie file does not exist: {self.config.cookie_file}")
+        source = target.source or target.url
+        description = self._description(target, session)
+        if bvid:
+            command = [
+                self.config.biliup_bin,
+                "-u",
+                str(self.config.cookie_file),
+                "append",
+                "--vid",
+                bvid,
+                "--line",
+                self.config.upload_line,
+                str(media_path),
+                "--title",
+                title,
+                "--desc",
+                description,
+                "--copyright",
+                str(target.copyright),
+                "--source",
+                source,
+                "--tid",
+                str(target.tid),
+                "--tag",
+                ",".join(target.tags),
+            ]
+            if not target.public:
+                command.extend(["--is-only-self", "1"])
+            result = self.runner.run(command)
+            if result.returncode != 0:
+                raise RuntimeError(f"Bilibili append command failed with code {result.returncode}")
+            return UploadResult(bvid, True, list(result.lines))
+
+        existing = self.find_bvid_by_title(title)
+        if existing:
+            return UploadResult(existing, True, ["submission already exists"])
+        command = [
+            self.config.biliup_bin,
+            "-u",
+            str(self.config.cookie_file),
+            "upload",
+            str(media_path),
+            "--line",
+            self.config.upload_line,
+            "--title",
+            title,
+            "--desc",
+            description,
+            "--copyright",
+            str(target.copyright),
+            "--source",
+            source,
+            "--tid",
+            str(target.tid),
+            "--tag",
+            ",".join(target.tags),
+        ]
+        if not target.public:
+            command.extend(["--is-only-self", "1"])
+        result = self.runner.run(command)
+        if result.returncode != 0:
+            raise RuntimeError(f"Bilibili submission command failed with code {result.returncode}")
+        found = self._wait_for_bvid(title)
+        return UploadResult(found, bool(found), list(result.lines))
 
     def find_bvid_by_title(self, title: str) -> str | None:
         filters = (["--is-pubing"], ["--not-pubed"], ["--pubed"])

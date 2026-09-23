@@ -6,6 +6,17 @@ from zoneinfo import ZoneInfo
 from .models import SessionRecord
 
 
+def parse_duration_seconds(value: str) -> int:
+    text = value.strip().lower()
+    if text.endswith("s"):
+        return max(1, int(float(text[:-1])))
+    if text.endswith("m"):
+        return max(1, int(float(text[:-1]) * 60))
+    if text.endswith("h"):
+        return max(1, int(float(text[:-1]) * 3600))
+    return max(1, int(float(text)))
+
+
 def now_in_timezone(timezone: str) -> datetime:
     return datetime.now(ZoneInfo(timezone))
 

@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .models import ScheduleSlot
+
 
 class ConfigError(ValueError):
     pass
@@ -45,11 +47,16 @@ class TargetConfig:
     name: str
     url: str
     enabled: bool = True
+    public: bool = False
+    record_mode: str = "record"
+    collection_name: str = ""
+    collection_id: str = ""
     title_template: str = "{name}｜{start_date} {start_time} 开播｜{room_title}"
     tags: list[str] = field(default_factory=list)
     tid: int = 171
     copyright: int = 2
     source: str = ""
+    schedule: list[ScheduleSlot] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -64,6 +71,9 @@ class AppConfig:
     min_file_size_mb: int
     max_cache_gb: int
     keep_original_files: bool
+    video_dir: Path
+    late_threshold_minutes: int
+    reconnect_grace_minutes: int
     biliup_bin: str
     ffmpeg_bin: str
     ffprobe_bin: str
@@ -98,7 +108,12 @@ def load_config(path: str | Path) -> AppConfig:
     launchd = _table(raw, "launchd", required=False)
     base = config_path.parent
 
-    targets = [_target(item) for item in raw.get("targets", []) if isinstance(item, dict)]
+    default_public = bool(upload.get("public", False))
+    targets = [
+        _target(item, default_public=default_public)
+        for item in raw.get("targets", [])
+        if isinstance(item, dict)
+    ]
     if not targets:
         raise ConfigError("At least one [[targets]] entry is required")
 
@@ -117,6 +132,12 @@ def load_config(path: str | Path) -> AppConfig:
         min_file_size_mb=int(recording.get("min_file_size_mb", 10)),
         max_cache_gb=int(storage.get("max_cache_gb", 10)),
         keep_original_files=bool(recording.get("keep_original_files", True)),
+        video_dir=_expand_path(
+            storage.get("video_dir", "~/Movies/DouyinBiliRecorder"),
+            base,
+        ),
+        late_threshold_minutes=int(storage.get("late_threshold_minutes", 5)),
+        reconnect_grace_minutes=int(storage.get("reconnect_grace_minutes", 15)),
         biliup_bin=str(upload.get("biliup_bin", "biliup")),
         ffmpeg_bin=str(upload.get("ffmpeg_bin", "ffmpeg")),
         ffprobe_bin=str(upload.get("ffprobe_bin", "ffprobe")),
@@ -143,7 +164,7 @@ def _table(raw: dict[str, Any], name: str, *, required: bool = True) -> dict[str
     return {}
 
 
-def _target(raw: dict[str, Any]) -> TargetConfig:
+def _target(raw: dict[str, Any], *, default_public: bool = False) -> TargetConfig:
     name = str(raw.get("name", "")).strip()
     url = str(raw.get("url", "")).strip()
     if not name or not url:
@@ -152,11 +173,20 @@ def _target(raw: dict[str, Any]) -> TargetConfig:
         name=name,
         url=url,
         enabled=bool(raw.get("enabled", True)),
+        public=bool(raw.get("public", default_public)),
+        record_mode=str(raw.get("record_mode", "record")),
+        collection_name=str(raw.get("collection_name", "")),
+        collection_id=str(raw.get("collection_id", "")),
         title_template=str(raw.get("title_template", "{name}｜{start_date} {start_time} 开播｜{room_title}")),
         tags=[str(item) for item in raw.get("tags", [])],
         tid=int(raw.get("tid", 171)),
         copyright=int(raw.get("copyright", 2)),
         source=str(raw.get("source", "")),
+        schedule=[
+            ScheduleSlot.from_dict(item)
+            for item in raw.get("schedule", [])
+            if isinstance(item, dict)
+        ],
     )
 
 
@@ -169,5 +199,12 @@ def _validate(config: AppConfig) -> None:
         raise ConfigError("min_file_size_mb cannot be negative")
     if config.max_cache_gb < 1:
         raise ConfigError("max_cache_gb must be at least 1")
+    if config.late_threshold_minutes < 0:
+        raise ConfigError("late_threshold_minutes cannot be negative")
+    if config.reconnect_grace_minutes < 0:
+        raise ConfigError("reconnect_grace_minutes cannot be negative")
     if config.upload_retry_count < 0:
         raise ConfigError("retry_count cannot be negative")
+    for target in config.targets:
+        if target.record_mode not in {"record", "monitor"}:
+            raise ConfigError(f"target {target.name} has invalid record_mode: {target.record_mode}")

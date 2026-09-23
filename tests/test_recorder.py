@@ -18,3 +18,14 @@ def test_discover_media_sorts_and_filters(tmp_path: Path) -> None:
 
     files = discover_media(tmp_path, min_file_size_mb=1)
     assert files == []
+
+
+def test_discover_media_keeps_active_partial_below_normal_threshold(tmp_path: Path) -> None:
+    initialized = tmp_path / "live.flv"
+    initialized.write_bytes(b"a" * 1024)
+    active = tmp_path / "live.flv.part"
+    active.write_bytes(b"b" * 4096)
+
+    files = discover_media(tmp_path, min_file_size_mb=10, allow_partials=True)
+
+    assert files == [active]

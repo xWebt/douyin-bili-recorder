@@ -13,6 +13,7 @@ class RecordAttempt:
     returncode: int
     lines: list[str]
     media_paths: list[Path]
+    timed_out: bool = False
 
     @property
     def stream_offline(self) -> bool:
@@ -26,7 +27,14 @@ class BiliupRecorder:
         self.runner = runner
         self.logger = logger
 
-    def record(self, target: TargetConfig, session_dir: Path) -> RecordAttempt:
+    def record(
+        self,
+        target: TargetConfig,
+        session_dir: Path,
+        *,
+        timeout_seconds: int | None = None,
+        allow_partials: bool = False,
+    ) -> RecordAttempt:
         output_template = session_dir / "%Y-%m-%dT%H_%M_%S{title}"
         command = [
             self.config.biliup_bin,
@@ -37,19 +45,39 @@ class BiliupRecorder:
             "--split-time",
             self.config.segment_time,
         ]
-        result = self.runner.run(command)
-        media_paths = discover_media(session_dir, self.config.min_file_size_mb)
-        return RecordAttempt(result.returncode, result.lines, media_paths)
+        result = self.runner.run(command, timeout_seconds=timeout_seconds)
+        media_paths = discover_media(
+            session_dir,
+            self.config.min_file_size_mb,
+            allow_partials=allow_partials,
+        )
+        return RecordAttempt(result.returncode, result.lines, media_paths, result.timed_out)
 
 
 MEDIA_EXTENSIONS = {".mp4", ".mkv", ".flv", ".ts", ".m4s"}
 
 
-def discover_media(root: Path, min_file_size_mb: int = 0) -> list[Path]:
+def discover_media(
+    root: Path,
+    min_file_size_mb: int = 0,
+    *,
+    allow_partials: bool = False,
+) -> list[Path]:
     minimum = min_file_size_mb * 1024 * 1024
-    files = [
-        path
-        for path in root.rglob("*")
-        if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS and path.stat().st_size >= minimum
-    ]
+    files = []
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        is_partial = path.name.lower().endswith(".part")
+        if is_partial:
+            if not allow_partials:
+                continue
+            media_name = path.name[: -len(".part")]
+        else:
+            media_name = path.name
+        if Path(media_name).suffix.lower() not in MEDIA_EXTENSIONS:
+            continue
+        if not (is_partial and allow_partials) and path.stat().st_size < minimum:
+            continue
+        files.append(path)
     return sorted(files, key=lambda item: (item.stat().st_mtime, str(item)))

@@ -28,6 +28,12 @@ segment_time = "1h"
 min_file_size_mb = 10
 keep_original_files = true
 
+[storage]
+max_cache_gb = 10
+video_dir = "~/Movies/DouyinBiliRecorder"
+late_threshold_minutes = 5
+reconnect_grace_minutes = 15
+
 [upload]
 biliup_bin = "biliup"
 ffmpeg_bin = "ffmpeg"
@@ -46,11 +52,21 @@ label = "com.webt.douyin-bili-recorder"
 name = "example-anchor"
 url = "https://www.douyin.com/user/REPLACE_ME"
 enabled = false
+public = false
+record_mode = "record"
+collection_name = "example-anchor"
+collection_id = ""
 title_template = "{name}｜{start_date} {start_time} 开播｜{room_title}"
 tags = ["直播录像", "抖音"]
 tid = 171
 copyright = 2
 source = ""
+
+[[targets.schedule]]
+days = [1, 3, 5]
+start = "20:00"
+end = "23:00"
+enabled = true
 """
 
 

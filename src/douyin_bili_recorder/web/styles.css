@@ -581,6 +581,10 @@ input::placeholder {
   text-align: center;
 }
 
+.empty-state[hidden] {
+  display: none;
+}
+
 .empty-state svg {
   width: 34px;
   height: 34px;
@@ -821,5 +825,380 @@ input::placeholder {
 
   .primary-actions .primary-button {
     grid-column: auto;
+  }
+}
+
+.meter {
+  height: 4px;
+  margin-top: 10px;
+  overflow: hidden;
+  background: #26342f;
+}
+
+.meter span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--signal);
+  transition: width 300ms ease;
+}
+
+.field-row,
+.split-fields label,
+.compact-control,
+.schedule-row label {
+  display: grid;
+  gap: 6px;
+}
+
+.field-row {
+  padding: 17px 0 20px;
+  border-top: 1px solid var(--line);
+}
+
+.field-row strong,
+.field-row small,
+.split-fields small {
+  display: block;
+}
+
+.field-row small,
+.split-fields small {
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.field-row input,
+.split-fields input {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.split-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 17px 0 20px;
+  border-top: 1px solid var(--line);
+}
+
+.split-fields label {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.split-fields label span {
+  grid-column: 1 / -1;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.target-form {
+  grid-template-columns: 0.7fr 1.5fr auto auto;
+}
+
+.target-row {
+  display: block;
+  padding: 16px;
+}
+
+.target-header,
+.target-actions,
+.target-identity,
+.row-checkbox,
+.library-row,
+.library-root,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+}
+
+.target-header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.target-identity {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+}
+
+.target-identity .target-status {
+  grid-row: 1 / 3;
+}
+
+.target-identity strong,
+.target-identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.target-identity small {
+  color: var(--ink-dim);
+}
+
+.target-actions {
+  gap: 6px;
+}
+
+.row-checkbox {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--signal);
+}
+
+.target-main-grid,
+.target-option-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.target-main-grid {
+  grid-template-columns: 0.7fr 1.5fr 0.9fr;
+}
+
+.target-option-grid {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.target-main-grid label,
+.compact-control {
+  min-width: 0;
+}
+
+.target-main-grid label span,
+.compact-control > span {
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.segmented.compact {
+  margin-top: 7px;
+}
+
+.segmented.compact button {
+  min-height: 34px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.collection-state {
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #0d1411;
+}
+
+.collection-state span {
+  display: block;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.collection-state code {
+  display: block;
+  margin-top: 7px;
+  overflow: hidden;
+  color: var(--signal);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.schedule-editor {
+  margin-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.schedule-editor summary {
+  padding: 13px 0 0;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.schedule-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.schedule-row {
+  display: grid;
+  grid-template-columns: 1.3fr 0.7fr 0.7fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.schedule-row label span {
+  color: var(--ink-dim);
+  font-size: 10px;
+}
+
+.dialog {
+  position: relative;
+  width: min(560px, 100%);
+  padding: 30px;
+  border: 1px solid var(--line-bright);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.dialog.wide,
+.analytics-dialog {
+  width: min(980px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.dialog-copy {
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.dialog-actions {
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.library-root {
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #0d1411;
+}
+
+.library-root code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--signal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.library-row {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  background: rgba(23, 33, 29, 0.78);
+}
+
+.library-row strong,
+.library-row small {
+  display: block;
+}
+
+.library-row small {
+  margin-top: 4px;
+  color: var(--ink-dim);
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.metric-card {
+  padding: 13px;
+  border: 1px solid var(--line);
+  background: #0d1411;
+}
+
+.metric-card span {
+  display: block;
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 7px;
+  font-family: var(--display);
+  font-size: 22px;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.chart-panel {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  background: #0d1411;
+}
+
+.chart-panel h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.chart-panel svg {
+  display: block;
+  width: 100%;
+  height: 180px;
+}
+
+.table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+th,
+td {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+th {
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+@media (max-width: 900px) {
+  .target-main-grid,
+  .target-option-grid,
+  .chart-grid,
+  .metric-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .target-form,
+  .target-main-grid,
+  .target-option-grid,
+  .chart-grid,
+  .metric-grid,
+  .schedule-row,
+  .split-fields {
+    grid-template-columns: 1fr;
   }
 }

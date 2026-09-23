@@ -21,31 +21,33 @@ class MediaProcessor:
     def process(self, session_dir: Path) -> list[MediaFile]:
         results: list[MediaFile] = []
         for source in discover_media(session_dir, self.config.min_file_size_mb):
-            uploaded_path = source
-            if source.suffix.lower() != ".mp4":
-                target = source.with_suffix(".mp4")
-                if not target.exists() or target.stat().st_mtime < source.stat().st_mtime:
-                    self._remux(source, target)
-                uploaded_path = target
-                if not self.config.keep_original_files:
-                    source.unlink(missing_ok=True)
-
-            if not uploaded_path.exists() or uploaded_path.stat().st_size == 0:
-                self.logger.warning("skipping empty media output: %s", uploaded_path)
-                continue
-
-            duration = self._probe_duration(uploaded_path)
-            checksum = self._sha256(uploaded_path)
-            results.append(
-                MediaFile(
-                    path=str(uploaded_path.relative_to(session_dir)),
-                    size=uploaded_path.stat().st_size,
-                    duration_seconds=duration,
-                    sha256=checksum,
-                    source=str(source.relative_to(session_dir)) if source != uploaded_path else None,
-                )
-            )
+            result = self.process_file(source, session_dir)
+            if result is not None:
+                results.append(result)
         return results
+
+    def process_file(self, source: Path, session_dir: Path, *, part_index: int | None = None) -> MediaFile | None:
+        uploaded_path = source
+        if source.suffix.lower() != ".mp4":
+            stem = f"part-{part_index:03d}" if part_index is not None else source.stem
+            target = session_dir / f"{stem}.mp4"
+            if not target.exists() or target.stat().st_mtime < source.stat().st_mtime:
+                self._remux(source, target)
+            uploaded_path = target
+            if not self.config.keep_original_files:
+                source.unlink(missing_ok=True)
+
+        if not uploaded_path.exists() or uploaded_path.stat().st_size == 0:
+            self.logger.warning("skipping empty media output: %s", uploaded_path)
+            return None
+
+        return MediaFile(
+            path=str(uploaded_path.relative_to(session_dir)),
+            size=uploaded_path.stat().st_size,
+            duration_seconds=self._probe_duration(uploaded_path),
+            sha256=self._sha256(uploaded_path),
+            source=str(source.relative_to(session_dir)) if source != uploaded_path else None,
+        )
 
     def _remux(self, source: Path, target: Path) -> None:
         command = [

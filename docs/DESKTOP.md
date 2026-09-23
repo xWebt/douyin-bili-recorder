@@ -7,10 +7,11 @@
 1. Open the app.
 2. Click `B站登录` and scan the QR code with the Bilibili mobile client.
 3. Add one or more Douyin live-room or profile URLs.
-4. Choose `仅自己` or `公开`.
-5. Choose whether uploaded local media should be deleted.
-6. Set the recording cache limit. The default is `10 GB`.
-7. Click `一键开始`.
+4. For each anchor, choose `仅自己` or `公开`, recording or monitor-only mode, a collection name, and one or more weekly schedule rows.
+5. Choose whether uploaded local media should be deleted. This remains a global setting.
+6. Set the recording cache limit. The display shows current usage divided by the saved allocation.
+7. Open the video library to view the root and per-anchor folders.
+8. Click `一键开始`. Pause or stop asks whether the active segment should be uploaded or kept locally.
 
 The application displays process PID, uptime, cache usage, current sessions, and live logs.
 
@@ -19,6 +20,8 @@ The application displays process PID, uptime, cache usage, current sessions, and
 The recorder is started as a detached process. The control deck supervises it every few seconds and automatically restarts it after an unexpected exit when `异常自动拉起` is enabled. A stop request is written to disk before a signal is sent, so the worker can exit cleanly even if process signaling is restricted.
 
 Multiple enabled targets run concurrently. Each target gets its own session directory and recorder process. The cache limit is shared across all targets.
+
+One live event is uploaded as one BVID. Every completed hour becomes a part: P1 creates the BVID and later parts are appended. A brief disconnect inside the reconnect grace period continues the same session and part sequence. A longer disconnect starts a new live event. Monitor-only mode records analytics without downloading video. Analytics are mirrored to `video root / anchor / 直播数据`.
 
 ## macOS build
 

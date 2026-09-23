@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0e1412" />
-    <title>Douyin Recorder Control Deck</title>
+    <title>DouyinBiliRecorder</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -18,13 +18,14 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <button class="ghost-button" id="videoLibraryButton" type="button">
+            <i data-lucide="folder-open"></i><span>视频库</span>
+          </button>
           <button class="ghost-button" id="loginButton" type="button">
-            <i data-lucide="scan-qr-code"></i>
-            <span id="loginLabel">B站登录</span>
+            <i data-lucide="scan-qr-code"></i><span id="loginLabel">B站登录</span>
           </button>
           <div class="connection-state" id="connectionState">
-            <span class="status-dot"></span>
-            <span>正在连接</span>
+            <span class="status-dot"></span><span>正在连接</span>
           </div>
         </div>
       </header>
@@ -42,131 +43,80 @@
             <small id="workerMode">后台守护</small>
           </div>
           <div class="status-block">
-            <span class="status-label">磁盘余量</span>
+            <span class="status-label">本地缓存</span>
             <strong id="cacheUsage">-- / 10 GB</strong>
-            <small>本地缓存空间</small>
+            <small id="activeCache">当前运行实例 -</small>
+            <div class="meter"><span id="cacheBar"></span></div>
           </div>
           <div class="status-block">
-            <span class="status-label">稿件权限</span>
-            <strong id="visibilityState">仅自己可见</strong>
-            <small id="targetCount">0 个主播</small>
+            <span class="status-label">主播与稿件</span>
+            <strong id="targetCount">0 个主播</strong>
+            <small id="collectionState">合集待绑定</small>
           </div>
         </section>
 
         <section class="control-grid">
           <aside class="control-rail">
             <div class="section-heading">
-              <div>
-                <p class="eyebrow">SERVICE</p>
-                <h2>录制服务</h2>
-              </div>
+              <div><p class="eyebrow">SERVICE</p><h2>录制服务</h2></div>
               <span class="pulse-indicator" id="servicePulse"></span>
             </div>
-
             <div class="primary-actions">
-              <button class="primary-button" id="startButton" type="button">
-                <i data-lucide="play"></i>
-                <span>一键开始</span>
-              </button>
-              <button class="secondary-button" id="restartButton" type="button">
-                <i data-lucide="rotate-cw"></i>
-                <span>重启</span>
-              </button>
-              <button class="danger-button" id="stopButton" type="button">
-                <i data-lucide="square"></i>
-                <span>停止</span>
-              </button>
+              <button class="primary-button" id="startButton" type="button"><i data-lucide="play"></i><span>一键开始</span></button>
+              <button class="secondary-button" id="restartButton" type="button"><i data-lucide="rotate-cw"></i><span>重启</span></button>
+              <button class="danger-button" id="stopButton" type="button"><i data-lucide="square"></i><span>暂停 / 停止</span></button>
             </div>
 
             <div class="control-group">
-              <span class="control-label">投稿可见性</span>
-              <div class="segmented" id="visibilityControl">
-                <button type="button" data-value="private" class="active">
-                  <i data-lucide="lock"></i><span>仅自己</span>
-                </button>
-                <button type="button" data-value="public">
-                  <i data-lucide="globe-2"></i><span>公开</span>
-                </button>
+              <span class="control-label">新增主播默认权限</span>
+              <div class="segmented" id="defaultVisibility">
+                <button type="button" data-value="private" class="active"><i data-lucide="lock"></i><span>仅自己</span></button>
+                <button type="button" data-value="public"><i data-lucide="globe-2"></i><span>公开</span></button>
               </div>
             </div>
 
             <label class="switch-row">
-              <span>
-                <strong>异常自动拉起</strong>
-                <small>进程退出后自动恢复</small>
-              </span>
-              <input type="checkbox" id="autoRestart" />
-              <span class="switch-track"></span>
+              <span><strong>异常自动拉起</strong><small>全局设置，进程退出后自动恢复</small></span>
+              <input type="checkbox" id="autoRestart" /><span class="switch-track"></span>
             </label>
-
             <label class="switch-row">
-              <span>
-                <strong>投稿成功后删除本地</strong>
-                <small>仅在确认 BVID 后删除</small>
-              </span>
-              <input type="checkbox" id="deleteAfterUpload" />
-              <span class="switch-track"></span>
+              <span><strong>投稿成功后删除本地</strong><small>全局设置，仅在确认 BVID 后删除对应 P</small></span>
+              <input type="checkbox" id="deleteAfterUpload" /><span class="switch-track"></span>
             </label>
-
             <label class="number-row">
-              <span>
-                <strong>本地缓存上限</strong>
-                <small>默认 10 GB</small>
-              </span>
-              <span class="unit-input">
-                <input type="number" id="maxCacheGb" min="1" max="2000" step="1" value="10" />
-                <span>GB</span>
-              </span>
+              <span><strong>本地缓存总分配</strong><small id="cacheSettingHint">默认 10 GB</small></span>
+              <span class="unit-input"><input type="number" id="maxCacheGb" min="1" max="2000" step="1" value="10" /><span>GB</span></span>
             </label>
-            <button class="save-button" id="saveButton" type="button">
-              <i data-lucide="save"></i>
-              <span>保存设置</span>
-            </button>
+            <label class="field-row">
+              <span><strong>视频根目录</strong><small>主播 / 日期 / 录像</small></span>
+              <input id="videoDir" placeholder="~/Movies/DouyinBiliRecorder" />
+            </label>
+            <div class="split-fields">
+              <label><span>迟到阈值</span><input type="number" id="lateThreshold" min="0" max="120" /><small>分钟</small></label>
+              <label><span>断流宽限</span><input type="number" id="reconnectGrace" min="0" max="180" /><small>分钟</small></label>
+            </div>
+            <button class="save-button" id="saveButton" type="button"><i data-lucide="save"></i><span>保存设置</span></button>
           </aside>
 
           <section class="targets-panel">
             <div class="section-heading">
-              <div>
-                <p class="eyebrow">TARGETS</p>
-                <h2>监视主播</h2>
-              </div>
-              <button class="icon-button" id="refreshButton" type="button" title="刷新状态">
-                <i data-lucide="refresh-cw"></i>
-              </button>
+              <div><p class="eyebrow">TARGETS</p><h2>监视主播</h2></div>
+              <button class="icon-button" id="refreshButton" type="button" title="刷新状态"><i data-lucide="refresh-cw"></i></button>
             </div>
-
             <form class="target-form" id="targetForm">
-              <label>
-                <span>主播名称</span>
-                <input id="targetName" name="name" placeholder="例如 imxiaoxin" required />
-              </label>
-              <label class="url-field">
-                <span>直播间或主页链接</span>
-                <input id="targetUrl" name="url" placeholder="https://www.douyin.com/user/..." required />
-              </label>
-              <button class="add-button" type="submit">
-                <i data-lucide="plus"></i>
-                <span>添加主播</span>
-              </button>
+              <label><span>主播名称</span><input id="targetName" placeholder="可留空，解析后自动填写" /></label>
+              <label class="url-field"><span>直播间、主页或短链接</span><input id="targetUrl" placeholder="https://www.douyin.com/user/..." required /></label>
+              <button class="secondary-button" id="resolveButton" type="button"><i data-lucide="search-check"></i><span>解析链接</span></button>
+              <button class="add-button" type="submit"><i data-lucide="plus"></i><span>添加主播</span></button>
             </form>
-
             <div class="target-list" id="targetList"></div>
-            <div class="empty-state" id="targetEmpty">
-              <i data-lucide="radio-tower"></i>
-              <strong>还没有监视主播</strong>
-              <span>添加直播间或主播主页后即可开始。</span>
-            </div>
+            <div class="empty-state" id="targetEmpty"><i data-lucide="radio-tower"></i><strong>还没有监视主播</strong><span>添加链接后即可按排班检测、录制或仅统计数据。</span></div>
           </section>
 
           <aside class="log-panel">
             <div class="section-heading">
-              <div>
-                <p class="eyebrow">LIVE FEED</p>
-                <h2>运行日志</h2>
-              </div>
-              <button class="icon-button" id="clearLogButton" type="button" title="刷新日志">
-                <i data-lucide="list-restart"></i>
-              </button>
+              <div><p class="eyebrow">LIVE FEED</p><h2>运行日志</h2></div>
+              <button class="icon-button" id="clearLogButton" type="button" title="刷新日志"><i data-lucide="list-restart"></i></button>
             </div>
             <pre class="log-view" id="logView">等待日志...</pre>
           </aside>
@@ -175,22 +125,49 @@
     </div>
 
     <div class="modal-backdrop" id="loginModal" hidden>
-      <section class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
-        <button class="icon-button modal-close" id="closeLoginButton" type="button" title="关闭">
-          <i data-lucide="x"></i>
-        </button>
-        <p class="eyebrow">BILIBILI AUTH</p>
-        <h2 id="loginTitle">扫码登录</h2>
-        <div class="qr-frame">
-          <img id="qrImage" alt="B站登录二维码" />
-          <div class="qr-loading" id="qrLoading">正在生成二维码</div>
+      <section class="login-modal" role="dialog" aria-modal="true">
+        <button class="icon-button modal-close" id="closeLoginButton" type="button" title="关闭"><i data-lucide="x"></i></button>
+        <p class="eyebrow">BILIBILI AUTH</p><h2>扫码登录</h2>
+        <div class="qr-frame"><img id="qrImage" alt="B站登录二维码" /><div class="qr-loading" id="qrLoading">正在生成二维码</div></div>
+        <p class="login-message" id="loginMessage">请使用 B站手机客户端扫码。</p>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="stopModal" hidden>
+      <section class="dialog" role="dialog" aria-modal="true">
+        <p class="eyebrow">PAUSE SAFETY</p><h2>暂停前如何处理已录内容？</h2>
+        <p class="dialog-copy">系统会先正常收尾当前分段，不会直接杀进程。上传失败时本地文件会保留。</p>
+        <div class="dialog-actions">
+          <button class="primary-button" id="pauseUploadButton" type="button"><i data-lucide="upload-cloud"></i><span>暂停并上传</span></button>
+          <button class="secondary-button" id="pauseKeepButton" type="button"><i data-lucide="hard-drive-download"></i><span>暂停并保留本地</span></button>
+          <button class="ghost-button" id="pauseCancelButton" type="button"><i data-lucide="play"></i><span>继续录制</span></button>
         </div>
-        <p class="login-message" id="loginMessage">请使用 B 站手机客户端扫码。</p>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="videoLibraryModal" hidden>
+      <section class="dialog wide" role="dialog" aria-modal="true">
+        <button class="icon-button modal-close" id="closeVideoLibrary" type="button" title="关闭"><i data-lucide="x"></i></button>
+        <p class="eyebrow">VIDEO LIBRARY</p><h2>视频库</h2>
+        <div class="library-root"><code id="videoRootPath"></code><button class="secondary-button" id="openRootButton" type="button"><i data-lucide="folder-open"></i><span>打开总目录</span></button></div>
+        <div class="library-list" id="libraryList"></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="analyticsModal" hidden>
+      <section class="dialog analytics-dialog" role="dialog" aria-modal="true">
+        <button class="icon-button modal-close" id="closeAnalytics" type="button" title="关闭"><i data-lucide="x"></i></button>
+        <p class="eyebrow">ANCHOR ANALYTICS</p><h2 id="analyticsTitle">主播详情</h2>
+        <div class="metric-grid" id="analyticsMetrics"></div>
+        <div class="chart-grid">
+          <div class="chart-panel"><h3>开播延迟</h3><svg id="delayChart" viewBox="0 0 520 180" role="img"></svg></div>
+          <div class="chart-panel"><h3>直播时长</h3><svg id="durationChart" viewBox="0 0 520 180" role="img"></svg></div>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>日期</th><th>开播</th><th>时长</th><th>迟到</th><th>重连</th><th>BVID</th></tr></thead><tbody id="analyticsRows"></tbody></table></div>
       </section>
     </div>
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-
     <script src="/static/vendor/lucide.min.js"></script>
     <script src="/static/app.js"></script>
   </body>

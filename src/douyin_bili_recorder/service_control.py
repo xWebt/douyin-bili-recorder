@@ -28,6 +28,11 @@ class ServiceController:
     def start(self) -> dict[str, Any]:
         self.stop_request_path.unlink(missing_ok=True)
         state = self.store.load()
+        self.config.max_cache_gb = max(1, int(state.get("max_cache_gb", self.config.max_cache_gb)))
+        self.config.delete_after_upload = bool(
+            state.get("delete_after_upload", self.config.delete_after_upload)
+        )
+        self.config.public = bool(state.get("public", self.config.public))
         state["worker_running"] = True
         state = self.store.save(state)
         config_path = self.store.render_runtime_config(state)
@@ -85,25 +90,31 @@ class ServiceController:
         )
         return self.status()
 
-    def stop(self) -> dict[str, Any]:
+    def stop(self, mode: str = "upload") -> dict[str, Any]:
         state = self.store.load()
         state["worker_running"] = False
         self.store.save(state)
         self.store.root.mkdir(parents=True, exist_ok=True)
-        self.stop_request_path.write_text(str(int(time.time())), encoding="utf-8")
+        self.stop_request_path.write_text(mode if mode in {"upload", "keep"} else "upload", encoding="utf-8")
         runtime = self.store.load_runtime_state()
         pid = int(runtime.get("pid", 0) or 0)
         if pid and self._pid_alive(pid):
+            if mode == "upload":
+                try:
+                    os.killpg(pid, signal.SIGINT)
+                except (PermissionError, ProcessLookupError):
+                    pass
+                return self.status()
             self._terminate(pid)
-        self.store.save_runtime_state({})
+            self.store.save_runtime_state({})
         return self.status()
 
-    def restart(self) -> dict[str, Any]:
-        self.stop()
+    def restart(self, mode: str = "upload") -> dict[str, Any]:
+        self.stop(mode)
         time.sleep(0.5)
         return self.start()
 
-    def status(self) -> dict[str, Any]:
+    def status(self, cache_limit_gb: int | None = None) -> dict[str, Any]:
         runtime = self.store.load_runtime_state()
         pid = int(runtime.get("pid", 0) or 0)
         alive = bool(pid and self._pid_alive(pid))
@@ -111,10 +122,17 @@ class ServiceController:
         sessions = self._sessions()
         storage = StorageGuard(self.config.sessions_dir, logging.getLogger(self.config.name))
         cache_used_gb = storage.usage_gb()
+        if cache_limit_gb is None:
+            try:
+                cache_limit_gb = int(self.store.load().get("max_cache_gb", self.config.max_cache_gb))
+            except (TypeError, ValueError):
+                cache_limit_gb = self.config.max_cache_gb
+        saved_cache_limit = int(cache_limit_gb or self.config.max_cache_gb)
         return {
             "cache_used_gb": cache_used_gb,
-            "cache_limit_gb": self.config.max_cache_gb,
-            "cache_used_percent": round(cache_used_gb / self.config.max_cache_gb * 100, 1),
+            "cache_limit_gb": saved_cache_limit,
+            "active_cache_limit_gb": self.config.max_cache_gb,
+            "cache_used_percent": round(cache_used_gb / saved_cache_limit * 100, 1) if saved_cache_limit else 0,
             "running": alive,
             "pid": pid if alive else None,
             "started_at": started_at if alive else None,
@@ -165,6 +183,8 @@ class ServiceController:
             "started_at": session.detected_start_iso,
             "title": session.title,
             "bvid": session.bvid,
+            "parts": len(session.parts),
+            "collection_status": session.collection_status,
             "error": session.error,
         }
 

@@ -93,3 +93,14 @@ Validated behavior:
 - The resulting BVID was `BV1JBhb6ZEPZ` and was found by the title lookup path.
 
 The test also confirmed that a direct network connection is attempted before the optional system-proxy fallback.
+
+## v2.1.0 multipart, schedule, and analytics validation
+
+- Unit and integration tests cover configuration migration, five-minute late detection, overnight schedules, late-day and late-session aggregation, active partial-file preservation, multipart P1/P2 uploads, and collection API request construction.
+- The final macOS bundle reports version `2.1.0` and biliup version `1.2.7`.
+- The installed application passed ad-hoc signature verification and opened through the macOS application launcher.
+- The control deck displayed cache usage as `0.00 / 30 GB` while separately showing the active process allocation.
+- The pause confirmation dialog exposed upload, keep-local, and continue-recording choices.
+- The video library, per-anchor detail view, schedule editor, per-anchor visibility, record/monitor mode, and collection fields were present and functional.
+- A real authenticated request to the current Bilibili collection list endpoint succeeded.
+- No live Douyin room was available at the final packaging moment, so the final packaged run did not repeat a real live download. The multipart state machine was validated with deterministic recorder/media/uploader test doubles.
