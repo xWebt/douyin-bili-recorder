@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.3
+
+- Added explicit per-anchor watch modes: fixed schedule, all-day polling, and manual start.
+- Removed the automatic `1,3,5` schedule row when no schedule was configured.
+- Added a configurable global polling interval, defaulting to 30 seconds.
+- Added a per-anchor manual-start action that asks the running service to check immediately.
+- Migrated existing anchors without a schedule to all-day polling compatibility.
+
 ## v2.1.2
 
 - Fixed schedule polling when the current time includes a timezone and the schedule time did not.

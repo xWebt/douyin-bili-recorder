@@ -33,6 +33,7 @@ const els = {
   videoDir: document.querySelector("#videoDir"),
   lateThreshold: document.querySelector("#lateThreshold"),
   reconnectGrace: document.querySelector("#reconnectGrace"),
+  pollInterval: document.querySelector("#pollInterval"),
   targetList: document.querySelector("#targetList"),
   targetEmpty: document.querySelector("#targetEmpty"),
   targetForm: document.querySelector("#targetForm"),
@@ -175,6 +176,7 @@ function renderSettings() {
   els.videoDir.value = state.config.video_dir || "~/Movies/DouyinBiliRecorder";
   els.lateThreshold.value = state.config.late_threshold_minutes ?? 5;
   els.reconnectGrace.value = state.config.reconnect_grace_minutes ?? 15;
+  els.pollInterval.value = state.config.poll_interval_seconds ?? 30;
   for (const button of els.defaultVisibility.querySelectorAll("button")) {
     button.classList.toggle("active", button.dataset.value === (state.config.public ? "public" : "private"));
   }
@@ -217,6 +219,7 @@ function buildTargetRow(target, latest) {
   enabled.addEventListener("change", () => { target.enabled = enabled.checked; renderTargets(); });
   actions.append(
     enabled,
+    actionButton("play-circle", "手动开始", () => manualStartTarget(target.name)),
     actionButton("bar-chart-3", "数据详情", () => openAnalytics(target.name)),
     actionButton("folder-open", "打开目录", () => openFolder("anchor", target.name)),
     actionButton("trash-2", "删除主播", () => {
@@ -247,6 +250,9 @@ function buildTargetRow(target, latest) {
     segmentedControl("监控模式", target.record_mode || "record", [
       ["record", "录制视频"], ["monitor", "仅数据"],
     ], (value) => { target.record_mode = value; }),
+    segmentedControl("监控方式", target.watch_mode || "all_day", [
+      ["scheduled", "固定排班"], ["all_day", "全天轮询"], ["manual", "手动开启"],
+    ], (value) => { target.watch_mode = value; }),
   );
   const collection = document.createElement("div");
   collection.className = "collection-state";
@@ -256,7 +262,13 @@ function buildTargetRow(target, latest) {
   const schedule = document.createElement("details");
   schedule.className = "schedule-editor";
   const summary = document.createElement("summary");
-  summary.textContent = `直播排班 · ${(target.schedule || []).length} 个时段`;
+  if (target.watch_mode === "scheduled") {
+    summary.textContent = `固定排班 · ${(target.schedule || []).length} 个时段`;
+  } else if (target.watch_mode === "manual") {
+    summary.textContent = "手动开启 · 仅点击“手动开始”后检查";
+  } else {
+    summary.textContent = `全天轮询 · 每 ${state.config?.poll_interval_seconds || 30} 秒检查`;
+  }
   schedule.append(summary, buildScheduleList(target));
   const saveBar = document.createElement("div");
   saveBar.className = "target-save-bar";
@@ -272,11 +284,26 @@ function buildTargetRow(target, latest) {
   return row;
 }
 
+async function manualStartTarget(name) {
+  try {
+    await api(`/api/targets/${encodeURIComponent(name)}/manual-start`, { method: "POST" });
+    toast(`${name} 已发送手动检查请求`);
+    window.setTimeout(refreshLogs, 800);
+  } catch (error) {
+    toast(`手动开始失败：${error.message}`, "error");
+  }
+}
+
 function buildScheduleList(target) {
   const wrapper = document.createElement("div");
   wrapper.className = "schedule-list";
   const slots = target.schedule || (target.schedule = []);
-  if (!slots.length) slots.push({ days: [1, 3, 5], start: "20:00", end: "23:00", enabled: true });
+  if (!slots.length) {
+    const empty = document.createElement("p");
+    empty.className = "schedule-empty";
+    empty.textContent = "尚未设置固定时段。点击“添加时段”后再保存。";
+    wrapper.append(empty);
+  }
   slots.forEach((slot, index) => {
     const line = document.createElement("div");
     line.className = "schedule-row";
@@ -295,7 +322,7 @@ function buildScheduleList(target) {
     wrapper.append(line);
   });
   wrapper.append(actionButton("plus", "添加时段", () => {
-    slots.push({ days: [1, 3, 5], start: "20:00", end: "23:00", enabled: true });
+    slots.push({ days: [1, 2, 3, 4, 5, 6, 7], start: "20:00", end: "23:00", enabled: true });
     renderTargets();
   }));
   return wrapper;
@@ -446,6 +473,7 @@ async function resolveTargetUrl() {
         enabled: true,
         public: Boolean(state.config.public),
         record_mode: "record",
+        watch_mode: "manual",
         collection_name: resolvedName,
         collection_id: "",
         title_template: "{name}｜{start_date} {start_time} 开播｜{room_title}",
@@ -606,7 +634,8 @@ els.deleteAfterUpload.addEventListener("change", () => { state.config.delete_aft
 els.maxCacheGb.addEventListener("input", () => { state.config.max_cache_gb = Math.max(1, Number(els.maxCacheGb.value) || 10); });
 els.videoDir.addEventListener("input", () => { state.config.video_dir = els.videoDir.value; });
 els.lateThreshold.addEventListener("input", () => { state.config.late_threshold_minutes = Math.max(0, Number(els.lateThreshold.value) || 0); });
-els.reconnectGrace.addEventListener("input", () => { state.config.reconnect_grace_minutes = Math.max(0, Number(els.reconnectGrace.value) || 0); });
+  els.reconnectGrace.addEventListener("input", () => { state.config.reconnect_grace_minutes = Math.max(0, Number(els.reconnectGrace.value) || 0); });
+  els.pollInterval.addEventListener("input", () => { state.config.poll_interval_seconds = Math.max(5, Number(els.pollInterval.value) || 30); });
 els.defaultVisibility.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-value]"); if (!button) return;
   state.config.public = button.dataset.value === "public"; renderSettings();
@@ -619,6 +648,7 @@ els.targetForm.addEventListener("submit", (event) => {
   state.config.targets.push({
     id: Math.random().toString(16).slice(2, 12), name, url, enabled: true,
     public: Boolean(state.config.public), record_mode: "record", collection_name: name, collection_id: "",
+    watch_mode: "manual",
     title_template: "{name}｜{start_date} {start_time} 开播｜{room_title}",
     tags: ["直播录像", "抖音"], tid: 171, copyright: 2, source: "",
     schedule: [{ days: [1, 3, 5], start: "20:00", end: "23:00", enabled: true }],

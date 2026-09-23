@@ -962,7 +962,7 @@ input::placeholder {
 }
 
 .target-option-grid {
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
 }
 
 .target-main-grid label,
@@ -1026,6 +1026,12 @@ input::placeholder {
   display: grid;
   gap: 8px;
   margin-top: 12px;
+}
+
+.schedule-empty {
+  margin: 8px 0 0;
+  color: var(--ink-dim);
+  font-size: 12px;
 }
 
 .schedule-row {

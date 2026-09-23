@@ -24,6 +24,7 @@ def _default_state(config: AppConfig) -> dict[str, Any]:
         "delete_after_upload": config.delete_after_upload,
         "auto_restart": True,
         "worker_running": False,
+        "poll_interval_seconds": config.poll_interval_seconds,
         "video_dir": str(config.video_dir),
         "late_threshold_minutes": config.late_threshold_minutes,
         "reconnect_grace_minutes": config.reconnect_grace_minutes,
@@ -35,6 +36,7 @@ def _default_state(config: AppConfig) -> dict[str, Any]:
                 "enabled": target.enabled,
                 "public": target.public,
                 "record_mode": target.record_mode,
+                "watch_mode": target.watch_mode,
                 "collection_name": target.collection_name,
                 "collection_id": target.collection_id,
                 "title_template": target.title_template,
@@ -100,7 +102,7 @@ class UIStateStore:
             f'name = {json.dumps(self.config.name, ensure_ascii=False)}',
             f'timezone = {json.dumps(self.config.timezone)}',
             f'data_dir = {json.dumps(str(self.config.data_dir))}',
-            f"poll_interval_seconds = {self.config.poll_interval_seconds}",
+            f"poll_interval_seconds = {int(state.get('poll_interval_seconds', self.config.poll_interval_seconds))}",
             f"max_reconnect_attempts = {self.config.max_reconnect_attempts}",
             f"reconnect_backoff_seconds = {self.config.reconnect_backoff_seconds}",
             "",
@@ -139,6 +141,7 @@ class UIStateStore:
                     f"enabled = {str(bool(target.get('enabled', True))).lower()}",
                     f"public = {str(bool(target.get('public', public))).lower()}",
                     f"record_mode = {json.dumps(str(target.get('record_mode', 'record')))}",
+                    f"watch_mode = {json.dumps(str(target.get('watch_mode', 'scheduled')))}",
                     f"collection_name = {json.dumps(str(target.get('collection_name', '')), ensure_ascii=False)}",
                     f"collection_id = {json.dumps(str(target.get('collection_id', '')))}",
                     f"title_template = {json.dumps(str(target.get('title_template') or '{name}｜{start_date} {start_time} 开播｜{room_title}'), ensure_ascii=False)}",
@@ -226,6 +229,11 @@ class UIStateStore:
                         if str(item.get("record_mode", "record")) in {"record", "monitor"}
                         else "record"
                     ),
+                    "watch_mode": (
+                        str(item.get("watch_mode", "all_day"))
+                        if str(item.get("watch_mode", "all_day")) in {"scheduled", "all_day", "manual"}
+                        else "all_day"
+                    ),
                     "collection_name": str(item.get("collection_name", name)),
                     "collection_id": str(item.get("collection_id", "")),
                     "title_template": str(
@@ -246,6 +254,10 @@ class UIStateStore:
             "delete_after_upload": bool(state.get("delete_after_upload", self.config.delete_after_upload)),
             "auto_restart": bool(state.get("auto_restart", True)),
             "worker_running": bool(state.get("worker_running", False)),
+            "poll_interval_seconds": max(
+                5,
+                int(state.get("poll_interval_seconds", self.config.poll_interval_seconds)),
+            ),
             "video_dir": str(state.get("video_dir", self.config.video_dir)),
             "late_threshold_minutes": max(
                 0,

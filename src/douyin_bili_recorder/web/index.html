@@ -95,6 +95,10 @@
               <label><span>迟到阈值</span><input type="number" id="lateThreshold" min="0" max="120" /><small>分钟</small></label>
               <label><span>断流宽限</span><input type="number" id="reconnectGrace" min="0" max="180" /><small>分钟</small></label>
             </div>
+            <label class="number-row">
+              <span><strong>全天轮询间隔</strong><small>手动和固定排班模式不受此项影响</small></span>
+              <span class="unit-input"><input type="number" id="pollInterval" min="5" max="3600" step="5" /><span>秒</span></span>
+            </label>
             <button class="save-button" id="saveButton" type="button"><i data-lucide="save"></i><span>保存设置</span></button>
           </aside>
 

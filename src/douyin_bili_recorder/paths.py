@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -37,3 +38,8 @@ def session_output_dir(
 
 def analytics_dir(video_dir: Path, anchor_name: str) -> Path:
     return anchor_dir(video_dir, anchor_name) / "直播数据"
+
+
+def target_key(anchor_name: str) -> str:
+    digest = hashlib.sha1(anchor_name.encode("utf-8")).hexdigest()[:8]
+    return f"{safe_path_name(anchor_name, 'target')}-{digest}"

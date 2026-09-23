@@ -13,7 +13,7 @@ from .auth import BilibiliAuth
 from .analytics import AnalyticsStore
 from .config import AppConfig
 from .douyin import DouyinResolver
-from .paths import anchor_dir, session_output_dir
+from .paths import anchor_dir, session_output_dir, target_key
 from .service_control import ServiceController
 from .ui_state import UIStateStore
 from datetime import datetime
@@ -100,6 +100,20 @@ def create_app(config: AppConfig) -> FastAPI:
     async def target_analytics(target_name: str, month: str | None = None) -> dict[str, Any]:
         selected_month = month or datetime.now(ZoneInfo(config.timezone)).strftime("%Y-%m")
         return analytics.summary(target_name, selected_month)
+
+    @app.post("/api/targets/{target_name}/manual-start")
+    async def manual_start_target(target_name: str) -> dict[str, Any]:
+        state = state_store.load()
+        target = next((item for item in state.get("targets", []) if item.get("name") == target_name), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="target not found")
+        status = controller.status(int(state.get("max_cache_gb", config.max_cache_gb)))
+        if not status.get("running"):
+            controller.start()
+        request_path = config.data_dir / "ui" / "manual" / f"{target_key(target_name)}.request"
+        request_path.parent.mkdir(parents=True, exist_ok=True)
+        request_path.write_text("1", encoding="utf-8")
+        return {"ok": True, "target": target_name}
 
     @app.get("/api/videos")
     async def video_library() -> dict[str, Any]:

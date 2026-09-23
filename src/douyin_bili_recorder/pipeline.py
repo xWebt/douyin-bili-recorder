@@ -17,7 +17,7 @@ from .config import AppConfig, TargetConfig, load_config
 from .douyin import DouyinResolver
 from .media import MediaProcessor
 from .models import MediaFile, SessionPart, SessionRecord, SessionStatus
-from .paths import safe_path_name, session_output_dir
+from .paths import safe_path_name, session_output_dir, target_key
 from .process import ProcessRunner
 from .recorder import BiliupRecorder
 from .scheduling import active_slot, expected_start_for_moment, is_late_detection, next_poll_delay_seconds, should_poll_now
@@ -101,8 +101,15 @@ class RecorderService:
                     if self._wait_for_stop(max(10, self.config.poll_interval_seconds)):
                         break
                     continue
+                if target.watch_mode == "manual":
+                    if not self._consume_manual_request(target):
+                        if self._wait_for_stop(2):
+                            break
+                        continue
                 now = datetime.now(ZoneInfo(self.config.timezone))
-                if target.schedule and not should_poll_now(target.schedule, now):
+                if target.watch_mode == "scheduled" and (
+                    not target.schedule or not should_poll_now(target.schedule, now)
+                ):
                     if self._wait_for_stop(next_poll_delay_seconds(target.schedule, now)):
                         break
                     continue
@@ -492,6 +499,7 @@ class RecorderService:
                 "enabled",
                 "public",
                 "record_mode",
+                "watch_mode",
                 "collection_name",
                 "collection_id",
                 "title_template",
@@ -626,6 +634,20 @@ class RecorderService:
             if remaining <= 0:
                 return False
             self.shutdown_event.wait(min(1, remaining))
+        return True
+
+    def _manual_request_path(self, target: TargetConfig) -> Path:
+        return self.config.data_dir / "ui" / "manual" / f"{target_key(target.name)}.request"
+
+    def _consume_manual_request(self, target: TargetConfig) -> bool:
+        path = self._manual_request_path(target)
+        if not path.exists():
+            return False
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return False
+        self.logger.info("manual check requested for %s", target.name)
         return True
 
     def pause_mode(self) -> str:

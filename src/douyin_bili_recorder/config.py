@@ -49,6 +49,7 @@ class TargetConfig:
     enabled: bool = True
     public: bool = False
     record_mode: str = "record"
+    watch_mode: str = "scheduled"
     collection_name: str = ""
     collection_id: str = ""
     title_template: str = "{name}｜{start_date} {start_time} 开播｜{room_title}"
@@ -175,6 +176,7 @@ def _target(raw: dict[str, Any], *, default_public: bool = False) -> TargetConfi
         enabled=bool(raw.get("enabled", True)),
         public=bool(raw.get("public", default_public)),
         record_mode=str(raw.get("record_mode", "record")),
+        watch_mode=str(raw.get("watch_mode", "scheduled" if raw.get("schedule") else "all_day")),
         collection_name=str(raw.get("collection_name", "")),
         collection_id=str(raw.get("collection_id", "")),
         title_template=str(raw.get("title_template", "{name}｜{start_date} {start_time} 开播｜{room_title}")),
@@ -208,3 +210,5 @@ def _validate(config: AppConfig) -> None:
     for target in config.targets:
         if target.record_mode not in {"record", "monitor"}:
             raise ConfigError(f"target {target.name} has invalid record_mode: {target.record_mode}")
+        if target.watch_mode not in {"scheduled", "all_day", "manual"}:
+            raise ConfigError(f"target {target.name} has invalid watch_mode: {target.watch_mode}")
