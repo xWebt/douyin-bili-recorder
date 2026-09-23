@@ -69,3 +69,27 @@ A second recording was appended as another part to verify the multi-part path. B
 - The default upload line probe encountered an expired TLS certificate for one CDN endpoint and was skipped.
 - biliup emitted a checkpoint warning when the sandbox blocked its user data directory. Upload and submission still completed successfully.
 - Production runs should give biliup a writable user data directory.
+
+## v2.0.2 desktop and end-to-end validation
+
+The final macOS package was rebuilt on 2026-09-23 and verified against the installed application at:
+
+```text
+/Users/webt/Applications/DouyinBiliRecorder.app
+```
+
+Validated behavior:
+
+- The standard native launcher opened the desktop window successfully.
+- The embedded Python runtime reported version `2.0.2`.
+- The embedded biliup runtime reported version `1.2.7`.
+- The control deck loaded with the default cache limit of `10 GB`, private upload selected, and delete-after-upload disabled.
+- `一键开始` launched the recorder from the installed app and `停止` returned it to the stopped state.
+- QR login produced a valid PNG without any proxy environment variables.
+- A real Douyin live stream was recorded with the packaged biliup runtime for approximately 36 seconds.
+- The packaged FFmpeg remuxed the recording to a valid 36.0 second MP4.
+- The packaged biliup CLI uploaded the MP4 as a private Bilibili submission.
+- The title included the anchor name and live start time.
+- The resulting BVID was `BV1JBhb6ZEPZ` and was found by the title lookup path.
+
+The test also confirmed that a direct network connection is attempted before the optional system-proxy fallback.

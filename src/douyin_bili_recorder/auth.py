@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 import qrcode
 import requests
-from .network import session_proxies
+from .network import detect_system_proxy, session_proxies
 
 APP_KEY = "4409e2ce8ffd12b8"
 APP_SECRET = "59b43e04ad6965f34319062b478f83dd"
@@ -32,10 +32,15 @@ class QRSession:
 class BilibiliAuth:
     def __init__(self, cookie_file: Path) -> None:
         self.cookie_file = cookie_file
-        self.session = requests.Session()
-        self.session.trust_env = True
-        self.session.proxies.update(session_proxies())
-        self.session.headers.update(
+        self.session = self._new_session()
+        self.proxy_session: requests.Session | None = None
+        self.sessions: dict[str, QRSession] = {}
+
+    def _new_session(self, proxies: dict[str, str] | None = None) -> requests.Session:
+        session = requests.Session()
+        session.trust_env = False
+        session.proxies.update(proxies or {})
+        session.headers.update(
             {
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -47,12 +52,23 @@ class BilibiliAuth:
                 "Accept-Language": "zh-CN,zh;q=0.9",
             }
         )
-        self.sessions: dict[str, QRSession] = {}
+        return session
+
+    def _post(self, url: str, **kwargs: Any) -> requests.Response:
+        try:
+            return self.session.post(url, **kwargs)
+        except requests.RequestException:
+            proxy = detect_system_proxy()
+            if not proxy:
+                raise
+            if self.proxy_session is None:
+                self.proxy_session = self._new_session(session_proxies(proxy))
+            return self.proxy_session.post(url, **kwargs)
 
     def begin(self) -> dict[str, Any]:
         params = {"appkey": APP_KEY, "local_id": "0", "ts": int(time.time())}
         params["sign"] = hashlib.md5((urlencode(params) + APP_SECRET).encode()).hexdigest()
-        response = self.session.post(
+        response = self._post(
             "https://passport.bilibili.com/x/passport-tv-login/qrcode/auth_code",
             data=params,
             timeout=15,
@@ -97,7 +113,7 @@ class BilibiliAuth:
             "ts": int(time.time()),
         }
         params["sign"] = hashlib.md5((urlencode(params) + APP_SECRET).encode()).hexdigest()
-        response = self.session.post(
+        response = self._post(
             "https://passport.bilibili.com/x/passport-tv-login/qrcode/poll",
             data=params,
             timeout=10,

@@ -11,7 +11,6 @@ from douyin_bili_recorder.desktop import run_desktop
 def main() -> int:
     if "--internal-ui" in sys.argv:
         sys.argv.remove("--internal-ui")
-        import argparse
         import uvicorn
 
         from douyin_bili_recorder.webapp import create_app

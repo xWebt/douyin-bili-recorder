@@ -1,6 +1,6 @@
 # Desktop application
 
-`DouyinBiliRecorder.app` is the distributable macOS application. It embeds the local control deck and opens it in a native WebKit window, so users do not need a terminal.
+`DouyinBiliRecorder.app` is the distributable Apple Silicon macOS application. It embeds the local control deck and opens it in a native WebKit window, so users do not need a terminal. macOS 12 or later is required.
 
 ## User workflow
 
@@ -37,6 +37,12 @@ dist/DouyinBiliRecorder-macos-arm64.zip
 
 The app is ad-hoc signed. Public distribution to users outside your own Mac requires an Apple Developer ID signature and notarization to avoid Gatekeeper warnings.
 
+The build assembles a standard app bundle from a native launcher and a relocatable PyInstaller onedir runtime. It does not depend on the PyInstaller `.app` wrapper.
+
+## Network behavior
+
+Bilibili QR login tries a direct connection first. If the direct network request fails and macOS has an active system proxy, the login code retries through that proxy automatically. The application does not require a VPN or a hard-coded proxy.
+
 ## Bundled components
 
 - Python runtime
@@ -50,3 +56,5 @@ User data is stored under:
 ```text
 ~/Library/Application Support/DouyinBiliRecorder
 ```
+
+The folder contains `config.toml`, the login cookie, UI settings, logs, and recorded sessions. Removing the application bundle does not remove this user data.
