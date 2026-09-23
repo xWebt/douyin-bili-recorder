@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.1.2
+
+- Fixed schedule polling when the current time includes a timezone and the schedule time did not.
+- Added regression coverage for timezone-aware weekly schedules.
+
 ## v2.1.1
 
 - Added a per-anchor save button so schedule, visibility, monitor mode, and collection settings can be saved directly from the anchor card.

@@ -124,6 +124,9 @@ class DouyinResolver:
                 payload = response.json()
                 user = payload.get("user_info") or {}
                 result["anchor_name"] = str(user.get("nickname") or "")
+                unique_id = str(user.get("unique_id") or "").strip()
+                if unique_id:
+                    result["web_rid"] = unique_id
                 for entry in user.get("card_entries") or []:
                     if int(entry.get("type") or 0) != 6:
                         continue
@@ -137,10 +140,15 @@ class DouyinResolver:
         try:
             response = self._get(url)
             text = response.text
-            result["web_rid"] = self._first_match(text, r'web_rid["\\:]+\s*["\']?(\d+)')
-            result["room_id"] = self._first_match(text, r'room_id["\\:]+\s*["\']?(\d+)')
-            result.setdefault("anchor_name", self._first_match(text, r'nickname["\\:]+\s*["\']([^"\']+)'))
-            result["room_title"] = self._first_match(text, r'room_title["\\:]+\s*["\']([^"\']+)')
+            for key, pattern in (
+                ("web_rid", r'web_rid["\\:]+\s*["\']?(\d+)'),
+                ("room_id", r'room_id["\\:]+\s*["\']?(\d+)'),
+                ("anchor_name", r'nickname["\\:]+\s*["\']([^"\']+)'),
+                ("room_title", r'room_title["\\:]+\s*["\']([^"\']+)'),
+            ):
+                value = self._first_match(text, pattern)
+                if value and not result.get(key):
+                    result[key] = value
         except requests.RequestException:
             pass
 
@@ -174,6 +182,10 @@ class DouyinResolver:
         return {key: value for key, value in result.items() if value}
 
     def _room_status(self, web_rid: str) -> dict[str, Any]:
+        if not web_rid.isdigit():
+            page_status = self._room_status_from_page(web_rid)
+            if page_status is not None:
+                return page_status
         endpoint = "https://live.douyin.com/webcast/room/web/enter/"
         params = {
             "aid": "6383",
@@ -195,7 +207,7 @@ class DouyinResolver:
             response = self._get(endpoint, params=params)
             payload = response.json()
         except (requests.RequestException, ValueError):
-            return {"web_rid": web_rid, "live": False}
+            return self._room_status_from_page(web_rid) or {"web_rid": web_rid, "live": False}
 
         data = payload.get("data") or {}
         rooms = data.get("data") or []
@@ -208,6 +220,45 @@ class DouyinResolver:
             "anchor_name": str(owner.get("nickname") or ""),
             "room_title": str(room.get("title") or ""),
             "live": status == 2,
+        }
+
+    def _room_status_from_page(self, web_rid: str) -> dict[str, Any] | None:
+        try:
+            response = self._get(f"https://live.douyin.com/{web_rid}")
+            text = response.text
+        except requests.RequestException:
+            return None
+        room_match = None
+        room_window = ""
+        for store_match in re.finditer(r"roomStore", text):
+            candidate_window = text[store_match.start() : store_match.start() + 8000]
+            expected_web_rid = f'web_rid\\":\\"{web_rid}\\"'
+            if expected_web_rid not in candidate_window:
+                continue
+            candidate = re.search(r'roomId\\":\\"(\d+)\\"', candidate_window)
+            if candidate is None:
+                candidate = re.search(r'room_id\\":\\"(\d+)\\"', candidate_window)
+            if candidate is not None:
+                room_match = candidate
+                room_window = candidate_window
+                break
+        if room_match is None:
+            room_match = re.search(r'roomId\\":\\"(\d+)\\"', text)
+            room_window = text
+        if not room_match:
+            return None
+        room_id = room_match.group(1)
+        room_text = room_window[room_match.start() : room_match.start() + 4000]
+        window = room_text or text[room_match.start() : room_match.start() + 4000]
+        status_match = re.search(r'status\\":(\d+)', window)
+        title_match = re.search(r'title\\":\\"([^"\\]*)', window)
+        resolved_web_rid = self._first_match(text, r'web_rid\\":\\"([^"\\]+)') or web_rid
+        return {
+            "web_rid": resolved_web_rid,
+            "room_id": room_id,
+            "anchor_name": "",
+            "room_title": title_match.group(1) if title_match else "",
+            "live": bool(status_match and int(status_match.group(1)) == 2),
         }
 
     @staticmethod

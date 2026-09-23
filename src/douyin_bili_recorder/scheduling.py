@@ -81,7 +81,7 @@ def should_poll_now(
             candidate_date = moment.date() + timedelta(days=day_offset)
             if candidate_date.isoweekday() not in slot.days:
                 continue
-            candidate = datetime.combine(candidate_date, start_time)
+            candidate = datetime.combine(candidate_date, start_time, tzinfo=moment.tzinfo)
             if timedelta(0) <= candidate - moment <= timedelta(minutes=precheck_minutes):
                 return True
     return False

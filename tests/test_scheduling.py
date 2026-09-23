@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from douyin_bili_recorder.models import ScheduleSlot
 from douyin_bili_recorder.scheduling import active_slot, is_late_detection, should_poll_now, slot_contains
@@ -29,3 +30,11 @@ def test_five_minute_late_threshold() -> None:
     assert minutes == 5
     assert late is True
     assert late_minutes == 6
+
+
+def test_should_poll_now_accepts_timezone_aware_datetime() -> None:
+    timezone = ZoneInfo("Asia/Shanghai")
+    moment = datetime(2026, 9, 24, 0, 25, tzinfo=timezone)
+    slot = ScheduleSlot(days=[moment.isoweekday()], start="00:00", end="23:59")
+
+    assert should_poll_now([slot], moment) is True
