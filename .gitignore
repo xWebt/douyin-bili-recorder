@@ -6,6 +6,8 @@
 
 # Credentials and runtime data
 cookies.json
+config.toml
+config.local.toml
 qrcode.png
 *.cookie
 *.token

@@ -1,0 +1,36 @@
+[app]
+name = "douyin-bili-recorder"
+timezone = "Asia/Shanghai"
+data_dir = "data"
+poll_interval_seconds = 30
+max_reconnect_attempts = 5
+reconnect_backoff_seconds = 15
+
+[recording]
+segment_time = "1h"
+min_file_size_mb = 10
+keep_original_files = true
+
+[upload]
+biliup_bin = "biliup"
+ffmpeg_bin = "ffmpeg"
+ffprobe_bin = "ffprobe"
+cookie_file = "cookies.json"
+line = "bda2"
+public = false
+delete_after_upload = false
+retry_count = 5
+retry_backoff_seconds = 30
+
+[launchd]
+label = "com.webt.douyin-bili-recorder"
+
+[[targets]]
+name = "example-anchor"
+url = "https://www.douyin.com/user/REPLACE_ME"
+enabled = false
+title_template = "{name}｜{start_date} {start_time} 开播"
+tags = ["直播录像", "抖音"]
+tid = 171
+copyright = 2
+source = ""
