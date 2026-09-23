@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import subprocess
 from pathlib import Path
 
 from .config import AppConfig
+from .encoding import needs_transcode, video_bitrate_kbps
 from .models import MediaFile
 from .process import ProcessRunner
 from .recorder import discover_media
@@ -26,13 +26,19 @@ class MediaProcessor:
                 results.append(result)
         return results
 
-    def process_file(self, source: Path, session_dir: Path, *, part_index: int | None = None) -> MediaFile | None:
+    def process_file(
+        self,
+        source: Path,
+        session_dir: Path,
+        *,
+        part_index: int | None = None,
+    ) -> MediaFile | None:
         uploaded_path = source
-        if source.suffix.lower() != ".mp4":
+        if needs_transcode(self.config.quality, self.config.frame_rate):
             stem = f"part-{part_index:03d}" if part_index is not None else source.stem
             target = session_dir / f"{stem}.mp4"
             if not target.exists() or target.stat().st_mtime < source.stat().st_mtime:
-                self._remux(source, target)
+                self._transcode(source, target)
             uploaded_path = target
             if not self.config.keep_original_files:
                 source.unlink(missing_ok=True)
@@ -45,11 +51,10 @@ class MediaProcessor:
             path=str(uploaded_path.relative_to(session_dir)),
             size=uploaded_path.stat().st_size,
             duration_seconds=self._probe_duration(uploaded_path),
-            sha256=self._sha256(uploaded_path),
             source=str(source.relative_to(session_dir)) if source != uploaded_path else None,
         )
 
-    def _remux(self, source: Path, target: Path) -> None:
+    def _transcode(self, source: Path, target: Path) -> None:
         command = [
             self.config.ffmpeg_bin,
             "-hide_banner",
@@ -60,19 +65,42 @@ class MediaProcessor:
             "+genpts+igndts",
             "-i",
             str(source),
-            "-c",
-            "copy",
-            "-bsf:a",
-            "aac_adtstoasc",
-            "-movflags",
-            "+faststart",
-            "-avoid_negative_ts",
-            "make_zero",
-            str(target),
         ]
+        quality_changed = self.config.quality != "origin"
+        fps_changed = self.config.frame_rate != "source"
+        if quality_changed or fps_changed:
+            if quality_changed:
+                height = {"1080p": 1080, "720p": 720, "480p": 480}[self.config.quality]
+                command.extend(["-vf", f"scale=-2:{height}"])
+            if fps_changed:
+                command.extend(["-r", self.config.frame_rate])
+            bitrate = video_bitrate_kbps(self.config.quality, self.config.frame_rate)
+            if bitrate:
+                command.extend(
+                    [
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "veryfast",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-b:v",
+                        f"{bitrate}k",
+                        "-maxrate",
+                        f"{int(bitrate * 1.2)}k",
+                        "-bufsize",
+                        f"{bitrate * 2}k",
+                    ]
+                )
+            else:
+                command.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"])
+            command.extend(["-c:a", "aac", "-b:a", "128k"])
+        else:
+            command.extend(["-c", "copy", "-bsf:a", "aac_adtstoasc"])
+        command.extend(["-movflags", "+faststart", "-avoid_negative_ts", "make_zero", str(target)])
         result = self.runner.run(command)
         if result.returncode != 0 or not target.exists():
-            raise RuntimeError(f"failed to remux {source} to {target}")
+            raise RuntimeError(f"failed to convert {source} to {target}")
 
     def _probe_duration(self, path: Path) -> float | None:
         command = [
@@ -94,10 +122,3 @@ class MediaProcessor:
             return float(payload["format"]["duration"])
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             return None
-
-    def _sha256(self, path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return digest.hexdigest()

@@ -134,3 +134,15 @@ Per-anchor settings:
 - A running recorder must not pretend a newly saved cache value is already active.
 - If the active worker still uses an older value, the UI must show both the saved allocation and the active value.
 - The new allocation should apply at the next hourly segment boundary without interrupting recording.
+
+## Recording quality, peak space, and upload progress
+
+- Global recording settings include quality (`原画`, `1080P`, `720P`, `480P`) and frame rate (`原始`, `60 FPS`, `30 FPS`).
+- The UI recalculates the estimated one-hour storage after either setting changes.
+- The default `原画 + 原始帧率` path uploads the original FLV segment directly and does not create a second MP4 copy.
+- Selecting a lower quality or fixed frame rate explicitly enables FFmpeg transcoding and shows the estimated transient peak.
+- Before starting each segment, the recorder checks both the configured allocation and physical free space against the selected transcode peak.
+- When space is insufficient, the recorder pauses before the next segment and resumes after uploads release storage.
+- Completed segments are uploaded through a serialized background queue so recording the next segment does not wait for the previous upload.
+- The main control deck shows current part, uploaded bytes, total bytes, percent, speed, ETA, stage, and BVID.
+- Upload failure is shown without stopping the active recording.

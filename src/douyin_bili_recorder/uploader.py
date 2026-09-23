@@ -10,6 +10,7 @@ from .config import AppConfig, TargetConfig
 from .models import SessionRecord
 from .process import ProcessRunner
 from .timeutil import build_title
+from .upload_progress import UploadProgressSampler, UploadProgressStore
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 BVID_RE = re.compile(r"\bBV[0-9A-Za-z]{10}\b")
@@ -27,6 +28,8 @@ class BiliupUploader:
         self.config = config
         self.runner = runner
         self.logger = logger
+        self.progress_store = UploadProgressStore(config.data_dir)
+        self.progress = UploadProgressSampler(self.progress_store, logger)
 
     def upload_session(
         self,
@@ -56,31 +59,21 @@ class BiliupUploader:
             return UploadResult(existing, True, ["submission already exists"])
 
         first = files[0]
-        command = [
-            self.config.biliup_bin,
-            "-u",
-            str(self.config.cookie_file),
-            "upload",
-            str(first),
-            "--line",
-            self.config.upload_line,
-            "--title",
+        command = self._upload_command(
+            target,
+            session,
+            first,
             resolved_title,
-            "--desc",
-            self._description(target, session),
-            "--copyright",
-            str(target.copyright),
-            "--source",
-            source,
-            "--tid",
-            str(target.tid),
-            "--tag",
-            ",".join(target.tags),
-        ]
-        if not target.public:
-            command.extend(["--is-only-self", "1"])
-
-        result = self.runner.run(command)
+            description=self._description(target, session),
+            source=source,
+        )
+        result = self._run_upload_command(
+            command,
+            media_path=first,
+            target=target,
+            part_index=1,
+            title=resolved_title,
+        )
         messages = list(result.lines)
         if result.returncode != 0:
             raise RuntimeError(f"Bilibili submission command failed with code {result.returncode}")
@@ -88,35 +81,27 @@ class BiliupUploader:
         bvid = self._wait_for_bvid(resolved_title)
         if not bvid:
             return UploadResult(None, False, messages + ["submission was sent but BVID lookup timed out"])
+        self._mark_progress_complete(bvid)
 
         for index, media_path in enumerate(files[1:], start=2):
             part_title = f"{target.name}｜{session.detected_start_iso or session.session_id}｜P{index:02d}"
-            append_command = [
-                self.config.biliup_bin,
-                "-u",
-                str(self.config.cookie_file),
-                "append",
-                "--vid",
+            append_command = self._append_command(
+                target,
+                session,
+                media_path,
                 bvid,
-                "--line",
-                self.config.upload_line,
-                str(media_path),
-                "--title",
                 part_title,
-                "--desc",
-                self._description(target, session),
-                "--copyright",
-                str(target.copyright),
-                "--source",
-                source,
-                "--tid",
-                str(target.tid),
-                "--tag",
-                ",".join(target.tags),
-            ]
-            if not target.public:
-                append_command.extend(["--is-only-self", "1"])
-            append_result = self.runner.run(append_command)
+                description=self._description(target, session),
+                source=source,
+            )
+            append_result = self._run_upload_command(
+                append_command,
+                media_path=media_path,
+                target=target,
+                part_index=index,
+                title=part_title,
+                existing_bvid=bvid,
+            )
             messages.extend(append_result.lines)
             if append_result.returncode != 0:
                 raise RuntimeError(f"failed to append {media_path.name} to {bvid}")
@@ -138,39 +123,63 @@ class BiliupUploader:
         source = target.source or target.url
         description = self._description(target, session)
         if bvid:
-            command = [
-                self.config.biliup_bin,
-                "-u",
-                str(self.config.cookie_file),
-                "append",
-                "--vid",
+            command = self._append_command(
+                target,
+                session,
+                media_path,
                 bvid,
-                "--line",
-                self.config.upload_line,
-                str(media_path),
-                "--title",
                 title,
-                "--desc",
-                description,
-                "--copyright",
-                str(target.copyright),
-                "--source",
-                source,
-                "--tid",
-                str(target.tid),
-                "--tag",
-                ",".join(target.tags),
-            ]
-            if not target.public:
-                command.extend(["--is-only-self", "1"])
-            result = self.runner.run(command)
+                description=description,
+                source=source,
+            )
+            result = self._run_upload_command(
+                command,
+                media_path=media_path,
+                target=target,
+                part_index=part_index,
+                title=title,
+                existing_bvid=bvid,
+            )
             if result.returncode != 0:
                 raise RuntimeError(f"Bilibili append command failed with code {result.returncode}")
+            self._mark_progress_complete(bvid)
             return UploadResult(bvid, True, list(result.lines))
 
         existing = self.find_bvid_by_title(title)
         if existing:
             return UploadResult(existing, True, ["submission already exists"])
+        command = self._upload_command(
+            target,
+            session,
+            media_path,
+            title,
+            description=description,
+            source=source,
+        )
+        result = self._run_upload_command(
+            command,
+            media_path=media_path,
+            target=target,
+            part_index=part_index,
+            title=title,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Bilibili submission command failed with code {result.returncode}")
+        found = self._wait_for_bvid(title)
+        if found:
+            self._mark_progress_complete(found)
+        return UploadResult(found, bool(found), list(result.lines))
+
+    def _upload_command(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        media_path: Path,
+        title: str,
+        *,
+        description: str,
+        source: str,
+    ) -> list[str]:
         command = [
             self.config.biliup_bin,
             "-u",
@@ -194,11 +203,86 @@ class BiliupUploader:
         ]
         if not target.public:
             command.extend(["--is-only-self", "1"])
-        result = self.runner.run(command)
-        if result.returncode != 0:
-            raise RuntimeError(f"Bilibili submission command failed with code {result.returncode}")
-        found = self._wait_for_bvid(title)
-        return UploadResult(found, bool(found), list(result.lines))
+        return command
+
+    def _append_command(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        media_path: Path,
+        bvid: str,
+        title: str,
+        *,
+        description: str,
+        source: str,
+    ) -> list[str]:
+        command = [
+            self.config.biliup_bin,
+            "-u",
+            str(self.config.cookie_file),
+            "append",
+            "--vid",
+            bvid,
+            "--line",
+            self.config.upload_line,
+            str(media_path),
+            "--title",
+            title,
+            "--desc",
+            description,
+            "--copyright",
+            str(target.copyright),
+            "--source",
+            source,
+            "--tid",
+            str(target.tid),
+            "--tag",
+            ",".join(target.tags),
+        ]
+        if not target.public:
+            command.extend(["--is-only-self", "1"])
+        return command
+
+    def _run_upload_command(
+        self,
+        command: list[str],
+        *,
+        media_path: Path,
+        target: TargetConfig,
+        part_index: int,
+        title: str,
+        existing_bvid: str | None = None,
+    ):
+        self.progress.start(
+            media_path,
+            target_name=target.name,
+            title=title,
+            part_index=part_index,
+            total_bytes=media_path.stat().st_size,
+        )
+        result = None
+        try:
+            result = self.runner.run(command)
+        finally:
+            if result is None or result.returncode != 0:
+                message = "上传失败"
+            else:
+                message = "上传完成" if existing_bvid else "等待 BVID"
+            self.progress.stop(message=message, bvid=existing_bvid)
+        return result
+
+    def _mark_progress_complete(self, bvid: str) -> None:
+        payload = self.progress_store.load()
+        if not payload:
+            return
+        payload["available"] = True
+        payload["message"] = "上传完成"
+        payload["percent"] = 100
+        payload["uploaded_bytes"] = payload.get("total_bytes", payload.get("uploaded_bytes", 0))
+        payload["eta_seconds"] = 0
+        payload["bvid"] = bvid
+        payload["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        self.progress_store.save(payload)
 
     def find_bvid_by_title(self, title: str) -> str | None:
         filters = (["--is-pubing"], ["--not-pubed"], ["--pubed"])
@@ -227,7 +311,7 @@ class BiliupUploader:
         source = target.source or target.url
         start = session.detected_start_iso or "unknown"
         return (
-            f"抖音直播录像\n"
+            f"抖音直播录制\n"
             f"主播：{target.name}\n"
             f"开播检测时间：{start}\n"
             f"来源：{source}"

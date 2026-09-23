@@ -2,7 +2,7 @@
 
 The production recorder is implemented under `src/douyin_bili_recorder`.
 
-It watches configured Douyin profile or live-room URLs through biliup, records each session, remuxes media without re-encoding, uploads the first segment to Bilibili, appends later segments as additional parts, and persists state for recovery after failures or restarts.
+It watches configured Douyin profile or live-room URLs through biliup, records each session, uploads the original FLV directly by default, and can transcode to a selected quality or frame rate. The first segment creates a Bilibili submission, later segments append as additional parts through a serialized background queue, and the main control deck shows live upload progress.
 
 The standard title starts with the anchor name:
 

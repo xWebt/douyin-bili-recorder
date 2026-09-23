@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import signal
 import subprocess
@@ -13,8 +12,8 @@ from typing import Any
 from .config import AppConfig
 from .models import SessionRecord
 from .state import SessionStore
-from .storage_guard import StorageGuard
 from .ui_state import UIStateStore
+from .upload_progress import UploadProgressStore
 
 
 class ServiceController:
@@ -120,8 +119,7 @@ class ServiceController:
         alive = bool(pid and self._pid_alive(pid))
         started_at = int(runtime.get("started_at", 0) or 0)
         sessions = self._sessions()
-        storage = StorageGuard(self.config.sessions_dir, logging.getLogger(self.config.name))
-        cache_used_gb = storage.usage_gb()
+        cache_used_gb = self._managed_usage_gb()
         if cache_limit_gb is None:
             try:
                 cache_limit_gb = int(self.store.load().get("max_cache_gb", self.config.max_cache_gb))
@@ -140,6 +138,7 @@ class ServiceController:
             "mode": runtime.get("mode") if alive else None,
             "desired_running": bool(self.store.load().get("worker_running", False)),
             "disk_free_gb": round(self._disk_free() / (1024**3), 2),
+            "upload_progress": UploadProgressStore(self.config.data_dir).load(),
             "sessions": [self._session_dict(item) for item in sessions[:20]],
         }
 
@@ -214,6 +213,21 @@ class ServiceController:
                 pass
             except ProcessLookupError:
                 pass
+
+    def _managed_usage_gb(self) -> float:
+        roots = {self.config.sessions_dir, self.config.video_dir.expanduser()}
+        total = 0
+        for root in roots:
+            if not root.exists():
+                continue
+            for path in root.rglob("*"):
+                if not path.is_file():
+                    continue
+                try:
+                    total += path.stat().st_size
+                except OSError:
+                    continue
+        return round(total / (1024**3), 2)
 
     def _disk_free(self) -> int:
         path = self.config.data_dir

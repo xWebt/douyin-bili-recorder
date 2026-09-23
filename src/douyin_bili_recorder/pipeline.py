@@ -7,6 +7,7 @@ import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, wait
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -15,6 +16,7 @@ from .analytics import AnalyticsStore
 from .collection import BilibiliCollectionManager
 from .config import AppConfig, TargetConfig, load_config
 from .douyin import DouyinResolver
+from .encoding import peak_gb_per_segment
 from .media import MediaProcessor
 from .models import MediaFile, SessionPart, SessionRecord, SessionStatus
 from .paths import safe_path_name, session_output_dir, target_key
@@ -50,6 +52,8 @@ class RecorderService:
         self.resolver = DouyinResolver()
         self._pause_mode = ""
         self._state_lock = threading.Lock()
+        self.upload_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="upload")
+        self._pending_uploads: dict[str, list[Future[bool]]] = {}
 
     def run_forever(self) -> None:
         self._start_external_stop_watcher()
@@ -130,12 +134,7 @@ class RecorderService:
         self._reload_runtime_settings(target)
         if target.record_mode == "monitor":
             return self._monitor_target(target)
-        self.storage.enforce_limit(self.config.max_cache_gb)
-        if not self.storage.can_start_session(self.config.max_cache_gb):
-            self.logger.warning(
-                "local cache is at the configured limit (%s GB), waiting for uploads to finish",
-                self.config.max_cache_gb,
-            )
+        if not self._wait_for_capacity(target):
             return False
 
         session = self._new_session(target)
@@ -147,9 +146,14 @@ class RecorderService:
         seen_sources: set[str] = set()
         part_index = 1
         final_status = SessionStatus.RECORDED
+        upload_futures: list[Future[bool]] = []
 
         while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
             self._reload_runtime_settings(target)
+            if not self._wait_for_capacity(target):
+                final_status = SessionStatus.UPLOAD_FAILED
+                session.error = "space budget is insufficient for the next segment"
+                break
             attempt_started = int(time.time())
             attempt = self.recorder.record(
                 target,
@@ -157,7 +161,7 @@ class RecorderService:
                 timeout_seconds=segment_seconds,
                 allow_partials=True,
             )
-            media_paths = [path for path in attempt.media_paths if str(path) not in seen_sources]
+            media_paths = self._completed_media_paths(attempt, seen_sources)
             media_found = False
 
             if media_paths:
@@ -176,16 +180,26 @@ class RecorderService:
                 for source in media_paths:
                     seen_sources.add(str(source))
                     upload_allowed = self.pause_mode() != "keep"
-                    if not self._process_part(
+                    part = self._prepare_part(
                         target,
                         session,
                         session_dir,
                         source,
                         part_index,
                         upload_allowed=upload_allowed,
-                    ):
+                    )
+                    if part is None:
                         final_status = SessionStatus.UPLOAD_FAILED
                         break
+                    if part.status == "PENDING":
+                        future = self.upload_executor.submit(
+                            self._upload_part_job,
+                            target,
+                            session,
+                            part,
+                        )
+                        upload_futures.append(future)
+                        self._pending_uploads.setdefault(session.session_id, []).append(future)
                     part_index += 1
 
             if self.interrupt_event.is_set():
@@ -204,6 +218,7 @@ class RecorderService:
                     continue
                 break
 
+        self._wait_for_uploads(session.session_id, upload_futures)
         if session.parts and all(part.status == "UPLOADED" for part in session.parts):
             final_status = SessionStatus.UPLOADED
         session.status = final_status
@@ -261,7 +276,82 @@ class RecorderService:
             self.shutdown_event.set()
         return True
 
-    def _process_part(
+    def _completed_media_paths(self, attempt, seen_sources: set[str]) -> list[Path]:
+        paths = [path for path in attempt.media_paths if str(path) not in seen_sources]
+        if not attempt.timed_out:
+            return paths
+        completed = [path for path in paths if not path.name.lower().endswith(".part")]
+        if not completed:
+            return paths
+        result: list[Path] = []
+        for path in paths:
+            if path.name.lower().endswith(".part"):
+                self.logger.info("discarding boundary tail segment %s", path)
+                path.unlink(missing_ok=True)
+                continue
+            result.append(path)
+        return result
+
+    def _wait_for_capacity(self, target: TargetConfig) -> bool:
+        segment_seconds = parse_duration_seconds(self.config.segment_time)
+        peak = peak_gb_per_segment(
+            self.config.quality,
+            self.config.frame_rate,
+            segment_seconds=segment_seconds,
+        )
+        while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
+            self.storage.enforce_limit(self.config.max_cache_gb)
+            usage = self._managed_usage_bytes() / (1024**3)
+            self.config.video_dir.mkdir(parents=True, exist_ok=True)
+            free_gb = shutil.disk_usage(self.config.video_dir).free / (1024**3)
+            if usage + peak <= self.config.max_cache_gb:
+                if free_gb >= peak + 1:
+                    return True
+                self.logger.warning(
+                    "physical disk free space is too low for %s: free %.2f GB, need %.2f GB",
+                    target.name,
+                    free_gb,
+                    peak + 1,
+                )
+            active = any(
+                not future.done()
+                for futures in self._pending_uploads.values()
+                for future in futures
+            )
+            if not active:
+                self.logger.warning(
+                    "space budget blocks %s: used %.2f GB, peak reserve %.2f GB, limit %s GB",
+                    target.name,
+                    usage,
+                    peak,
+                    self.config.max_cache_gb,
+                )
+                return False
+            self.logger.info(
+                "waiting for uploads to free space for %s: used %.2f GB, need %.2f GB",
+                target.name,
+                usage,
+                peak,
+            )
+            self.shutdown_event.wait(5)
+        return False
+
+    def _managed_usage_bytes(self) -> int:
+        roots = {self.config.sessions_dir, self.config.video_dir.expanduser()}
+        total = 0
+        for root in roots:
+            if not root.exists():
+                continue
+            for path in root.rglob("*"):
+                if not path.is_file():
+                    continue
+                try:
+                    total += path.stat().st_size
+                except OSError:
+                    continue
+        return total
+
+    def _prepare_part(
         self,
         target: TargetConfig,
         session: SessionRecord,
@@ -270,14 +360,14 @@ class RecorderService:
         part_index: int,
         *,
         upload_allowed: bool = True,
-    ) -> bool:
+    ) -> SessionPart | None:
         try:
             media = self.media.process_file(source, session_dir, part_index=part_index)
         except Exception as exc:  # noqa: BLE001
             self.logger.exception("failed to process segment %s: %s", source, exc)
-            return False
+            return None
         if media is None:
-            return False
+            return None
         source_path = session_dir / media.path
         start_epoch = session.detected_start_epoch or session.created_epoch
         output_dir = session_output_dir(
@@ -291,7 +381,8 @@ class RecorderService:
         output_dir.mkdir(parents=True, exist_ok=True)
         started = datetime.fromtimestamp(start_epoch, ZoneInfo(self.config.timezone))
         base_name = f"{started.strftime('%H%M')}_{safe_path_name(session.room_title or '直播录像')}_P{part_index:02d}"
-        final_media = output_dir / f"{base_name}{source_path.suffix.lower()}"
+        suffix = ".flv" if source_path.name.lower().endswith(".flv.part") else source_path.suffix.lower()
+        final_media = output_dir / f"{base_name}{suffix}"
         if source_path != final_media:
             shutil.move(str(source_path), str(final_media))
         original_final: Path | None = None
@@ -316,12 +407,21 @@ class RecorderService:
         part.title = f"{session.title}｜P{part_index:02d}"
         self.store.save(session)
 
+
         if not upload_allowed:
             part.status = "LOCAL_ONLY"
             self.store.save(session)
             self.analytics.upsert(session)
-            return True
+        return part
 
+    def _upload_part_job(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        part: SessionPart,
+    ) -> bool:
+        final_media = Path(part.path)
+        original_final = Path(part.source_path) if part.source_path else None
         result = self._upload_part_with_retries(target, session, final_media, part)
         if result.verified and result.bvid:
             session.bvid = result.bvid
@@ -341,6 +441,11 @@ class RecorderService:
         self.store.save(session)
         self.analytics.upsert(session)
         return False
+
+    def _wait_for_uploads(self, session_id: str, futures: list[Future[bool]]) -> None:
+        if futures:
+            wait(futures)
+        self._pending_uploads.pop(session_id, None)
 
     def _bind_collection(self, target: TargetConfig, session: SessionRecord) -> None:
         if (
@@ -473,6 +578,8 @@ class RecorderService:
             "max_reconnect_attempts",
             "reconnect_backoff_seconds",
             "segment_time",
+            "quality",
+            "frame_rate",
             "min_file_size_mb",
             "max_cache_gb",
             "keep_original_files",

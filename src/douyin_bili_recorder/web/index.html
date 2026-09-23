@@ -55,6 +55,15 @@
           </div>
         </section>
 
+        <section class="upload-strip" id="uploadPanel">
+          <div class="upload-heading">
+            <div><p class="eyebrow">UPLOAD</p><strong id="uploadTitle">当前没有上传</strong><small id="uploadMeta">等待分段完成</small></div>
+            <span class="upload-percent" id="uploadPercent">--</span>
+          </div>
+          <div class="meter upload-meter"><span id="uploadBar"></span></div>
+          <div class="upload-stats"><span id="uploadBytes">-- / --</span><span id="uploadSpeed">--</span><span id="uploadEta">--</span></div>
+        </section>
+
         <section class="control-grid">
           <aside class="control-rail">
             <div class="section-heading">
@@ -75,6 +84,21 @@
               </div>
             </div>
 
+            <div class="control-group">
+              <span class="control-label">录制质量（全局）</span>
+              <label class="select-row"><span>清晰度</span><select id="quality">
+                <option value="origin">原画（不转码）</option>
+                <option value="1080p">1080P</option>
+                <option value="720p">720P</option>
+                <option value="480p">480P</option>
+              </select></label>
+              <label class="select-row"><span>帧率</span><select id="frameRate">
+                <option value="source">原始帧率</option>
+                <option value="60">60 FPS</option>
+                <option value="30">30 FPS</option>
+              </select></label>
+              <div class="encoding-estimate"><strong id="encodingEstimate">--</strong><small id="encodingHint">--</small></div>
+            </div>
             <label class="switch-row">
               <span><strong>异常自动拉起</strong><small>全局设置，进程退出后自动恢复</small></span>
               <input type="checkbox" id="autoRestart" /><span class="switch-track"></span>

@@ -34,6 +34,18 @@ const els = {
   lateThreshold: document.querySelector("#lateThreshold"),
   reconnectGrace: document.querySelector("#reconnectGrace"),
   pollInterval: document.querySelector("#pollInterval"),
+  quality: document.querySelector("#quality"),
+  frameRate: document.querySelector("#frameRate"),
+  encodingEstimate: document.querySelector("#encodingEstimate"),
+  encodingHint: document.querySelector("#encodingHint"),
+  uploadPanel: document.querySelector("#uploadPanel"),
+  uploadTitle: document.querySelector("#uploadTitle"),
+  uploadMeta: document.querySelector("#uploadMeta"),
+  uploadPercent: document.querySelector("#uploadPercent"),
+  uploadBar: document.querySelector("#uploadBar"),
+  uploadBytes: document.querySelector("#uploadBytes"),
+  uploadSpeed: document.querySelector("#uploadSpeed"),
+  uploadEta: document.querySelector("#uploadEta"),
   targetList: document.querySelector("#targetList"),
   targetEmpty: document.querySelector("#targetEmpty"),
   targetForm: document.querySelector("#targetForm"),
@@ -157,10 +169,47 @@ function renderService() {
   els.cacheUsage.textContent = `${used.toFixed(2)} / ${limit} GB`;
   els.activeCache.textContent = `当前运行实例 ${active} GB`;
   els.cacheBar.style.width = `${Math.min(100, limit ? (used / limit) * 100 : 0)}%`;
+  renderUploadProgress(service.upload_progress || {});
   els.servicePulse.classList.toggle("online", running);
   els.startButton.disabled = running;
   els.stopButton.disabled = !running;
   els.restartButton.disabled = !running;
+}
+
+function renderEncodingEstimate() {
+  const quality = els.quality.value || "origin";
+  const frameRate = els.frameRate.value || "source";
+  const base = { origin: 8.4, "1080p": 2.59, "720p": 1.75, "480p": 0.77 }[quality] || 8.4;
+  const factor = quality === "origin"
+    ? frameRate === "60" ? 1.2 : frameRate === "30" ? 0.9 : 1
+    : frameRate === "60" ? 1.45 : frameRate === "30" && quality === "1080p" ? 0.9 : 1;
+  const estimate = quality === "origin" && frameRate === "source" ? 8.4 : base * factor;
+  const transcode = quality !== "origin" || frameRate !== "source";
+  els.encodingEstimate.textContent = `预计 ${estimate.toFixed(2)} GB / 小时`;
+  els.encodingHint.textContent = transcode
+    ? `原文件加转码文件峰值约 ${((8.4 + estimate) * 1.08).toFixed(1)} GB；空间不足会暂停下一段`
+    : `原画直传，峰值约 ${(estimate * 1.1).toFixed(1)} GB，不额外生成第二份 MP4`;
+}
+
+function renderUploadProgress(progress) {
+  const available = Boolean(progress.available);
+  const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+  els.uploadPanel.classList.toggle("active", available);
+  els.uploadTitle.textContent = available ? progress.title || "正在上传" : "当前没有上传";
+  els.uploadMeta.textContent = available
+    ? `${progress.target || "主播"} · P${String(progress.part || 1).padStart(2, "0")} · ${progress.message || "上传中"}`
+    : "等待分段完成";
+  els.uploadPercent.textContent = available ? `${percent.toFixed(2)}%` : "--";
+  els.uploadBar.style.width = available ? `${percent}%` : "0%";
+  els.uploadBytes.textContent = available
+    ? `${formatBytes(progress.uploaded_bytes)} / ${formatBytes(progress.total_bytes)}`
+    : "-- / --";
+  els.uploadSpeed.textContent = available && progress.speed_bytes
+    ? `${(Number(progress.speed_bytes) / 1048576).toFixed(2)} MB/s`
+    : "--";
+  els.uploadEta.textContent = available && progress.eta_seconds != null
+    ? `剩余 ${formatDuration(progress.eta_seconds)}`
+    : available && progress.bvid ? `BVID ${progress.bvid}` : "--";
 }
 
 function renderSettings() {
@@ -176,6 +225,9 @@ function renderSettings() {
   els.lateThreshold.value = state.config.late_threshold_minutes ?? 5;
   els.reconnectGrace.value = state.config.reconnect_grace_minutes ?? 15;
   els.pollInterval.value = state.config.poll_interval_seconds ?? 30;
+  els.quality.value = state.config.quality || "origin";
+  els.frameRate.value = state.config.frame_rate || "source";
+  renderEncodingEstimate();
   for (const button of els.defaultVisibility.querySelectorAll("button")) {
     button.classList.toggle("active", button.dataset.value === (state.config.public ? "public" : "private"));
   }
@@ -398,6 +450,14 @@ function checkbox(checked) {
   return input;
 }
 
+function formatBytes(value) {
+  let number = Math.max(0, Number(value) || 0);
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let index = 0;
+  while (number >= 1024 && index < units.length - 1) { number /= 1024; index += 1; }
+  return `${number.toFixed(index > 2 ? 2 : 1)} ${units[index]}`;
+}
+
 function formatDuration(seconds) {
   const value = Math.max(0, Number(seconds) || 0);
   const hours = Math.floor(value / 3600);
@@ -459,6 +519,8 @@ function syncStateFromDom() {
       });
     }
   }
+  state.config.quality = els.quality.value || "origin";
+  state.config.frame_rate = els.frameRate.value || "source";
 }
 
 async function serviceAction(action, mode = "upload") {
@@ -655,7 +717,9 @@ els.maxCacheGb.addEventListener("input", () => { state.config.max_cache_gb = Mat
 els.videoDir.addEventListener("input", () => { state.config.video_dir = els.videoDir.value; });
 els.lateThreshold.addEventListener("input", () => { state.config.late_threshold_minutes = Math.max(0, Number(els.lateThreshold.value) || 0); });
   els.reconnectGrace.addEventListener("input", () => { state.config.reconnect_grace_minutes = Math.max(0, Number(els.reconnectGrace.value) || 0); });
-  els.pollInterval.addEventListener("input", () => { state.config.poll_interval_seconds = Math.max(5, Number(els.pollInterval.value) || 30); });
+els.pollInterval.addEventListener("input", () => { state.config.poll_interval_seconds = Math.max(5, Number(els.pollInterval.value) || 30); });
+els.quality.addEventListener("change", () => { state.config.quality = els.quality.value; renderEncodingEstimate(); });
+els.frameRate.addEventListener("change", () => { state.config.frame_rate = els.frameRate.value; renderEncodingEstimate(); });
 els.defaultVisibility.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-value]"); if (!button) return;
   state.config.public = button.dataset.value === "public"; renderSettings();

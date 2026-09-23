@@ -51,6 +51,8 @@ end = "23:00"
     assert config.targets[0].watch_mode == "manual"
     assert config.targets[0].collection_name == "anchor collection"
     assert config.targets[0].schedule[0].days == [1, 3, 5]
+    assert config.quality == "origin"
+    assert config.frame_rate == "source"
 
 
 def test_load_config_rejects_duplicate_names(tmp_path: Path) -> None:
@@ -67,6 +69,25 @@ url = "https://live.douyin.com/1"
 [[targets]]
 name = "anchor"
 url = "https://live.douyin.com/2"
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_config(config_path)
+
+
+
+def test_load_config_rejects_invalid_recording_profile(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[recording]
+quality = "4k"
+frame_rate = "120"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
 """.strip(),
         encoding="utf-8",
     )

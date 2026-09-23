@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.2.0
+
+- Added global recording quality and frame-rate selection with one-hour storage estimates.
+- Added direct original-FLV upload for the default origin/source profile, avoiding the previous FLV plus MP4 double-space peak.
+- Added configured-allocation and physical free-space guards before each segment; recording pauses rather than overrunning the budget.
+- Added a serialized background upload queue so the next hour records while the previous part uploads.
+- Added live upload progress to the main control deck with part, bytes, percent, speed, ETA, stage, and BVID.
+- Fixed one-hour boundary tails being uploaded as 10-second P2/P4 fragments; the newly-created boundary `.part` is now discarded before the next full segment is recorded.
+- Validated direct FLV submission with a private Bilibili test upload (`BV1nPhZ6yEwT`).
+
 ## v2.1.5
 
 - Fixed unsaved anchor settings being replaced by the three-second service status refresh.

@@ -25,6 +25,8 @@ def _default_state(config: AppConfig) -> dict[str, Any]:
         "auto_restart": True,
         "worker_running": False,
         "poll_interval_seconds": config.poll_interval_seconds,
+        "quality": config.quality,
+        "frame_rate": config.frame_rate,
         "video_dir": str(config.video_dir),
         "late_threshold_minutes": config.late_threshold_minutes,
         "reconnect_grace_minutes": config.reconnect_grace_minutes,
@@ -97,6 +99,8 @@ class UIStateStore:
         )
         ffmpeg_bin = resolve_executable(self.config.ffmpeg_bin, config_dir)
         ffprobe_bin = resolve_executable(self.config.ffprobe_bin, config_dir)
+        quality = str(state.get("quality", self.config.quality))
+        frame_rate = str(state.get("frame_rate", self.config.frame_rate))
         lines = [
             "[app]",
             f'name = {json.dumps(self.config.name, ensure_ascii=False)}',
@@ -108,6 +112,8 @@ class UIStateStore:
             "",
             "[recording]",
             f'segment_time = {json.dumps(self.config.segment_time)}',
+            f'quality = {json.dumps(quality)}',
+            f'frame_rate = {json.dumps(frame_rate)}',
             f"min_file_size_mb = {self.config.min_file_size_mb}",
             f"keep_original_files = {str(self.config.keep_original_files).lower()}",
             "",
@@ -257,6 +263,16 @@ class UIStateStore:
             "poll_interval_seconds": max(
                 5,
                 int(state.get("poll_interval_seconds", self.config.poll_interval_seconds)),
+            ),
+            "quality": (
+                str(state.get("quality", self.config.quality))
+                if str(state.get("quality", self.config.quality)) in {"origin", "1080p", "720p", "480p"}
+                else self.config.quality
+            ),
+            "frame_rate": (
+                str(state.get("frame_rate", self.config.frame_rate))
+                if str(state.get("frame_rate", self.config.frame_rate)) in {"source", "60", "30"}
+                else self.config.frame_rate
             ),
             "video_dir": str(state.get("video_dir", self.config.video_dir)),
             "late_threshold_minutes": max(
