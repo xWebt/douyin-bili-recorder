@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.1.4
+
+- Added a native macOS app icon combining an eye outline with a red recording dot.
+- Added the icon source, reproducible icon build script, PNG preview, and ICNS bundle asset.
+
 ## v2.1.3
 
 - Added explicit per-anchor watch modes: fixed schedule, all-day polling, and manual start.
