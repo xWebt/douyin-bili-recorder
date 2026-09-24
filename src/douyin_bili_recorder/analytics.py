@@ -23,8 +23,13 @@ class AnalyticsStore:
         month = session.detected_start_iso[:7]
         path = analytics_dir(self.video_dir, session.target_name) / f"{month}.json"
         document = self._load(path, month=month, target_name=session.target_name)
-        records = [item for item in document.get("sessions", []) if item.get("session_id") != session.session_id]
-        records.append(self._record(session))
+        records = [
+            item
+            for item in document.get("sessions", [])
+            if item.get("session_id") != session.session_id and self._record_is_countable(item)
+        ]
+        if self._session_is_countable(session):
+            records.append(self._record(session))
         document["sessions"] = sorted(records, key=lambda item: (item.get("date", ""), item.get("session_id", "")))
         self._write(path, document)
         self._write_summary(session.target_name)
@@ -36,6 +41,7 @@ class AnalyticsStore:
     def summary(self, target_name: str, month: str) -> dict[str, Any]:
         document = self.month(target_name, month)
         sessions = [item for item in document.get("sessions", []) if isinstance(item, dict)]
+        sessions = [item for item in sessions if self._record_is_countable(item)]
         live_dates = {str(item.get("date")) for item in sessions if item.get("date")}
         late_items = [item for item in sessions if item.get("late")]
         late_dates = {str(item.get("date")) for item in late_items if item.get("date")}
@@ -51,6 +57,22 @@ class AnalyticsStore:
             "on_time_rate": round((len(sessions) - len(late_items)) / len(sessions) * 100, 1) if sessions else 100.0,
             "sessions_detail": sessions,
         }
+
+    @staticmethod
+    def _session_is_countable(session: SessionRecord) -> bool:
+        if session.record_mode == "monitor":
+            return True
+        return bool(session.parts or session.files or session.bvid)
+
+    @staticmethod
+    def _record_is_countable(item: dict[str, Any]) -> bool:
+        if item.get("mode") == "monitor":
+            return True
+        try:
+            parts = int(item.get("parts", 0) or 0)
+        except (TypeError, ValueError):
+            parts = 0
+        return bool(parts or item.get("bvid"))
 
     def _record(self, session: SessionRecord) -> dict[str, Any]:
         return {

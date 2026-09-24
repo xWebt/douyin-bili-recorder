@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.2
+
+- Prevented offline poll attempts with no media and no BVID from being counted as live sessions.
+- Cleaned existing ghost analytics entries when analytics are refreshed.
+- Added regression coverage for offline-poll filtering.
+
 ## v2.2.1
 
 - Fixed hourly boundaries being split into 10-second P2/P4 fragments by keeping the upstream pull process alive across splits.

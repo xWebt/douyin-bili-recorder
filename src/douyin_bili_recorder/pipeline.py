@@ -157,10 +157,6 @@ class RecorderService:
 
             process = self.recorder.start(target, session_dir)
             connection_started = int(time.time())
-            if session.detected_start_epoch is None:
-                session.detected_start_epoch = connection_started
-                session.detected_start_iso = epoch_iso(connection_started, self.config.timezone)
-                self._apply_schedule(target, session, connection_started)
             media_found = False
 
             while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
@@ -171,7 +167,7 @@ class RecorderService:
                 )
                 if new_media:
                     media_found = True
-                    self._mark_recording_started(target, session)
+                    self._mark_recording_started(target, session, connection_started)
                     part_index = self._process_media_batch(
                         target,
                         session,
@@ -191,7 +187,7 @@ class RecorderService:
             )
             if tail_media:
                 media_found = True
-                self._mark_recording_started(target, session)
+                self._mark_recording_started(target, session, connection_started)
                 part_index = self._process_media_batch(
                     target,
                     session,
@@ -290,7 +286,11 @@ class RecorderService:
             if str(path) not in seen_sources
         ]
 
-    def _mark_recording_started(self, target: TargetConfig, session: SessionRecord) -> None:
+    def _mark_recording_started(self, target: TargetConfig, session: SessionRecord, started_epoch: int) -> None:
+        if session.detected_start_epoch is None:
+            session.detected_start_epoch = started_epoch
+            session.detected_start_iso = epoch_iso(started_epoch, self.config.timezone)
+            self._apply_schedule(target, session, started_epoch)
         if not session.room_title:
             status = self._resolve_status(target)
             if status is not None:

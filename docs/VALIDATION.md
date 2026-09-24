@@ -129,3 +129,8 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - A private 3-second FLV was uploaded directly to Bilibili without MP4 remuxing and verified as `BV1nPhZ6yEwT`.
 - The control deck was exercised in a browser with a synthetic active upload and displayed 42% progress, speed, ETA, and part metadata.
 - Changing quality to `720P` and frame rate to `30 FPS` updated the estimate to `1.75 GB / 小时` and showed a roughly `11 GB` transient peak warning including the original segment.
+
+## v2.2.2 analytics cleanup validation
+
+- Regression coverage verifies offline polling attempts with zero parts and no BVID are excluded from monthly analytics.
+- Existing `00:21` and `00:37` offline-poll ghost sessions for 凡晨 were removed from local monthly and summary JSON files.

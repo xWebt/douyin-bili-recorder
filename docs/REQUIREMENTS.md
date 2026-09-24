@@ -102,6 +102,7 @@ Per-anchor settings:
 ## Analytics and charts
 
 - Track per-month live days, live sessions, late days, and late sessions.
+- Offline polling attempts without media must never be counted as live sessions.
 - A late day is counted once per date even if multiple sessions were late.
 - Every late session is shown separately in the session detail table.
 - Track expected start, actual start, end, duration, delay minutes, reconnect count, and reconnect duration.
