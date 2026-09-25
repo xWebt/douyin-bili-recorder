@@ -69,6 +69,31 @@ class ContinuousRecorder:
         return FakeRunningProcess(["stream is offline"], 1)
 
 
+class LingeringOfflineProcess:
+    def __init__(self) -> None:
+        self.returncode: int | None = None
+        self.terminated = False
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def output(self) -> list[str]:
+        return ["stream is offline"]
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = 1
+
+
+class OfflineRecorder:
+    def __init__(self) -> None:
+        self.last_process: LingeringOfflineProcess | None = None
+
+    def start(self, _target, _session_dir: Path):
+        self.last_process = LingeringOfflineProcess()
+        return self.last_process
+
+
 class MultiSegmentRecorder:
     def __init__(self) -> None:
         self.calls = 0
@@ -392,3 +417,88 @@ enabled = true
     assert [part.index for part in record.parts] == [1, 2]
     assert all(part.status == "UPLOADED" for part in record.parts)
     assert uploader.parts == [(1, None), (2, "BV0000000002")]
+
+
+def test_offline_probe_without_media_skips_reconnect_grace(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[recording]
+min_file_size_mb = 0
+
+[storage]
+video_dir = "videos"
+reconnect_grace_minutes = 15
+
+[upload]
+cookie_file = "cookies.json"
+retry_count = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+enabled = true
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "cookies.json").write_text("{}", encoding="utf-8")
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    recorder = OfflineRecorder()
+    service.recorder = recorder  # type: ignore[assignment]
+    service.resolver = FakeResolver()  # type: ignore[assignment]
+
+    def fail_if_reconnect_wait(*_args, **_kwargs):
+        raise AssertionError("offline probes without media must not enter reconnect grace")
+
+    monkeypatch.setattr(service, "_wait_for_reconnect", fail_if_reconnect_wait)
+    assert service.record_and_upload(config.targets[0]) is False
+    assert recorder.last_process is not None
+    assert recorder.last_process.terminated is True
+
+
+def test_reconnect_grace_is_preserved_after_real_recording(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[recording]
+min_file_size_mb = 0
+
+[storage]
+video_dir = "videos"
+reconnect_grace_minutes = 15
+
+[upload]
+cookie_file = "cookies.json"
+retry_count = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+enabled = true
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "cookies.json").write_text("{}", encoding="utf-8")
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    service.recorder = FakeRecorder()  # type: ignore[assignment]
+    service.media = FakeMedia()  # type: ignore[assignment]
+    service.resolver = FakeResolver()  # type: ignore[assignment]
+    service.uploader = FakeUploader()  # type: ignore[assignment]
+    reconnect_waits: list[tuple[object, object]] = []
+
+    def record_reconnect_wait(target, session):
+        reconnect_waits.append((target, session))
+        return False
+
+    monkeypatch.setattr(service, "_wait_for_reconnect", record_reconnect_wait)
+    assert service.record_and_upload(config.targets[0]) is True
+    assert reconnect_waits
+    assert reconnect_waits[0][1].detected_start_epoch is not None

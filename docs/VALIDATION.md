@@ -134,3 +134,11 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 
 - Regression coverage verifies offline polling attempts with zero parts and no BVID are excluded from monthly analytics.
 - Existing `00:21` and `00:37` offline-poll ghost sessions for 凡晨 were removed from local monthly and summary JSON files.
+
+## v2.2.3 scheduling, status, parallel upload, and report validation
+
+- Regression coverage verifies a fixed `00:30` schedule begins prechecking at `00:20`.
+- Regression coverage verifies an offline probe without media exits immediately, while a real recorded session still enters reconnect grace after a drop.
+- Upload progress storage now supports multiple concurrent entries keyed by session and part.
+- Bilibili status parsing is covered for `审核中` and `已发布`; no numeric transcode percentage is fabricated because the current API does not provide one.
+- PDF generation is covered for monthly reports and week ranges that cross a month boundary.

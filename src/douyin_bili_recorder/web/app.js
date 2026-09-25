@@ -6,6 +6,7 @@ const state = {
   authTimer: null,
   library: null,
   analyticsTarget: "",
+  submissions: null,
 };
 
 const els = {
@@ -46,6 +47,7 @@ const els = {
   uploadBytes: document.querySelector("#uploadBytes"),
   uploadSpeed: document.querySelector("#uploadSpeed"),
   uploadEta: document.querySelector("#uploadEta"),
+  uploadList: document.querySelector("#uploadList"),
   targetList: document.querySelector("#targetList"),
   targetEmpty: document.querySelector("#targetEmpty"),
   targetForm: document.querySelector("#targetForm"),
@@ -78,6 +80,13 @@ const els = {
   analyticsRows: document.querySelector("#analyticsRows"),
   delayChart: document.querySelector("#delayChart"),
   durationChart: document.querySelector("#durationChart"),
+  weeklyReportButton: document.querySelector("#weeklyReportButton"),
+  monthlyReportButton: document.querySelector("#monthlyReportButton"),
+  submissionsButton: document.querySelector("#submissionsButton"),
+  submissionsModal: document.querySelector("#submissionsModal"),
+  closeSubmissions: document.querySelector("#closeSubmissions"),
+  submissionNote: document.querySelector("#submissionNote"),
+  submissionList: document.querySelector("#submissionList"),
   toastRegion: document.querySelector("#toastRegion"),
 };
 
@@ -169,7 +178,7 @@ function renderService() {
   els.cacheUsage.textContent = `${used.toFixed(2)} / ${limit} GB`;
   els.activeCache.textContent = `当前运行实例 ${active} GB`;
   els.cacheBar.style.width = `${Math.min(100, limit ? (used / limit) * 100 : 0)}%`;
-  renderUploadProgress(service.upload_progress || {});
+  renderUploadProgress(service.upload_progresses || [], service.upload_progress || {});
   els.servicePulse.classList.toggle("online", running);
   els.startButton.disabled = running;
   els.stopButton.disabled = !running;
@@ -191,10 +200,12 @@ function renderEncodingEstimate() {
     : `原画直传，峰值约 ${(estimate * 1.1).toFixed(1)} GB，不额外生成第二份 MP4`;
 }
 
-function renderUploadProgress(progress) {
+function renderUploadProgress(progressesArg, fallback = {}) {
+  const progresses = Array.isArray(progressesArg) ? progressesArg : [];
+  const progress = progresses[0] || fallback || {};
   const available = Boolean(progress.available);
   const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
-  els.uploadPanel.classList.toggle("active", available);
+  els.uploadPanel.classList.toggle("active", available || progresses.length > 0);
   els.uploadTitle.textContent = available ? progress.title || "正在上传" : "当前没有上传";
   els.uploadMeta.textContent = available
     ? `${progress.target || "主播"} · P${String(progress.part || 1).padStart(2, "0")} · ${progress.message || "上传中"}`
@@ -210,6 +221,21 @@ function renderUploadProgress(progress) {
   els.uploadEta.textContent = available && progress.eta_seconds != null
     ? `剩余 ${formatDuration(progress.eta_seconds)}`
     : available && progress.bvid ? `BVID ${progress.bvid}` : "--";
+  const visible = progresses.filter((item) => item.available).slice(0, 8);
+  els.uploadList.replaceChildren(...visible.map((item) => {
+    const row = document.createElement("div");
+    row.className = "upload-row";
+    const info = document.createElement("div");
+    const title = document.createElement("span");
+    title.textContent = `${item.target || "主播"} · P${String(item.part || 1).padStart(2, "0")}`;
+    const meta = document.createElement("small");
+    meta.textContent = `${item.message || "上传中"} · ${formatBytes(item.uploaded_bytes)} / ${formatBytes(item.total_bytes)}${item.bvid ? ` · ${item.bvid}` : ""}`;
+    info.append(title, meta);
+    const itemPercent = document.createElement("strong");
+    itemPercent.textContent = `${Math.max(0, Math.min(100, Number(item.percent || 0))).toFixed(1)}%`;
+    row.append(info, itemPercent);
+    return row;
+  }));
 }
 
 function renderSettings() {
@@ -358,6 +384,10 @@ async function manualStartTarget(name) {
 function buildScheduleList(target) {
   const wrapper = document.createElement("div");
   wrapper.className = "schedule-list";
+  const precheck = document.createElement("p");
+  precheck.className = "schedule-precheck";
+  precheck.textContent = "固定排班会在预计开播前 10 分钟开始预检，离线探测会立即返回并继续轮询。";
+  wrapper.append(precheck);
   const slots = target.schedule || (target.schedule = []);
   if (!slots.length) {
     const empty = document.createElement("p");
@@ -642,6 +672,75 @@ function formatHours(seconds) {
 
 function shortTime(iso) { return iso ? String(iso).slice(11, 16) : "-"; }
 
+async function openSubmissions() {
+  els.submissionsModal.hidden = false;
+  els.submissionNote.textContent = "正在读取 B站稿件状态。";
+  els.submissionList.replaceChildren();
+  try {
+    state.submissions = await api("/api/bilibili/submissions");
+    renderSubmissions(state.submissions);
+  } catch (error) {
+    els.submissionNote.textContent = `稿件状态读取失败：${error.message}`;
+  }
+}
+
+function renderSubmissions(payload) {
+  const submissions = payload?.submissions || [];
+  els.submissionNote.textContent = payload?.available
+    ? (payload.message || `共 ${submissions.length} 个已投稿稿件；状态由 B站接口实时返回。`)
+    : `暂不可用：${payload?.message || "未登录或网络不可用"}`;
+  if (!submissions.length) {
+    const empty = document.createElement("div");
+    empty.className = "submission-empty";
+    empty.textContent = payload?.available ? "暂无匹配到本机投稿记录的稿件。" : "登录B站后刷新。";
+    els.submissionList.append(empty);
+    return;
+  }
+  els.submissionList.replaceChildren(...submissions.map((item) => {
+    const row = document.createElement("div");
+    row.className = "submission-row";
+    const info = document.createElement("div");
+    info.className = "submission-info";
+    const name = document.createElement("strong");
+    name.textContent = (item.targets || []).join("、") || "未知主播";
+    const title = document.createElement("small");
+    title.textContent = item.session_title || item.title || item.bvid;
+    info.append(name, title);
+    const meta = document.createElement("div");
+    meta.className = "submission-meta";
+    const badge = document.createElement("span");
+    badge.className = `submission-badge ${submissionStateClass(`${item.state || ""} ${item.state_desc || ""}`)}`;
+    badge.textContent = item.state_desc || "状态未知";
+    const bvid = document.createElement("code");
+    bvid.textContent = item.bvid || "-";
+    const duration = document.createElement("span");
+    duration.textContent = formatDuration(item.duration_seconds || 0);
+    meta.append(badge, bvid, duration);
+    row.append(info, meta);
+    return row;
+  }));
+}
+
+function submissionStateClass(value) {
+  const state = String(value || "").toLowerCase();
+  if (state.includes("pubed") || state.includes("开放")) return "published";
+  if (state.includes("pubing") || state.includes("审核")) return "review";
+  if (state.includes("not") || state.includes("失败")) return "failed";
+  return "neutral";
+}
+
+function downloadReport(period) {
+  if (!state.analyticsTarget) return;
+  const url = `/api/targets/${encodeURIComponent(state.analyticsTarget)}/reports/${period}`;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  toast(period === "week" ? "正在生成周报 PDF" : "正在生成月报 PDF");
+}
+
 async function openVideoLibrary() {
   els.videoLibraryModal.hidden = false;
   try {
@@ -751,11 +850,19 @@ els.videoLibraryButton.addEventListener("click", openVideoLibrary);
 els.closeVideoLibrary.addEventListener("click", () => { els.videoLibraryModal.hidden = true; });
 els.openRootButton.addEventListener("click", () => openFolder("root"));
 els.closeAnalytics.addEventListener("click", () => { els.analyticsModal.hidden = true; });
+els.weeklyReportButton.addEventListener("click", () => downloadReport("week"));
+els.monthlyReportButton.addEventListener("click", () => downloadReport("month"));
+els.submissionsButton.addEventListener("click", openSubmissions);
+els.closeSubmissions.addEventListener("click", () => { els.submissionsModal.hidden = true; });
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  for (const modal of [els.loginModal, els.stopModal, els.videoLibraryModal, els.analyticsModal]) modal.hidden = true;
+  for (const modal of [els.loginModal, els.stopModal, els.videoLibraryModal, els.analyticsModal, els.submissionsModal]) modal.hidden = true;
 });
+
+window.setInterval(() => {
+  if (!els.submissionsModal.hidden) openSubmissions();
+}, 20000);
 
 loadState(true);
 refreshLogs();

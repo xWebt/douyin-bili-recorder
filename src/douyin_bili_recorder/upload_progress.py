@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -22,16 +23,80 @@ class UploadProgressStore:
     def __init__(self, data_dir: Path) -> None:
         self.path = data_dir / "ui" / "upload-progress.json"
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
 
     def load(self) -> dict[str, Any]:
+        payload = self.load_all()
+        return payload[0] if payload else {}
+
+    def load_all(self) -> list[dict[str, Any]]:
+        with self._lock:
+            payload = self._read_raw()
+        if not payload:
+            return []
+        if int(payload.get("version", 1)) >= 2:
+            uploads = payload.get("uploads")
+            if not isinstance(uploads, dict):
+                return []
+            result = [item for item in uploads.values() if isinstance(item, dict)]
+            return sorted(
+                result,
+                key=lambda item: str(item.get("updated_at") or ""),
+                reverse=True,
+            )
+        if payload.get("available"):
+            return [payload]
+        return []
+
+    def upsert(self, key: str, payload: dict[str, Any]) -> None:
+        with self._lock:
+            document = self._read_raw()
+            if int(document.get("version", 1)) < 2 or not isinstance(document.get("uploads"), dict):
+                document = {"version": 2, "uploads": {}}
+            uploads = document["uploads"]
+            item = deepcopy(payload)
+            item["key"] = key
+            uploads[key] = item
+            newest = sorted(
+                uploads.items(),
+                key=lambda entry: str(entry[1].get("updated_at") or ""),
+                reverse=True,
+            )
+            document["uploads"] = dict(newest[:40])
+            self._write_raw(document)
+
+    def remove(self, key: str) -> None:
+        with self._lock:
+            document = self._read_raw()
+            if int(document.get("version", 1)) < 2 or not isinstance(document.get("uploads"), dict):
+                return
+            document["uploads"].pop(key, None)
+            self._write_raw(document)
+
+    def save(self, payload: dict[str, Any]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix=".upload-", suffix=".json", dir=self.path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(name, self.path)
+        finally:
+            if os.path.exists(name):
+                os.unlink(name)
+
+    def _read_raw(self) -> dict[str, Any]:
         if not self.path.exists():
             return {}
         try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return {}
+        return payload if isinstance(payload, dict) else {}
 
-    def save(self, payload: dict[str, Any]) -> None:
+    def _write_raw(self, payload: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=".upload-", suffix=".json", dir=self.path.parent)
         try:
@@ -50,11 +115,13 @@ class UploadProgressStore:
 
 
 class UploadProgressSampler:
-    def __init__(self, store: UploadProgressStore, logger) -> None:
+    def __init__(self, store: UploadProgressStore, logger, key: str) -> None:
         self.store = store
         self.logger = logger
+        self.key = key
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_payload: dict[str, Any] = {}
 
     def start(
         self,
@@ -66,10 +133,26 @@ class UploadProgressSampler:
         total_bytes: int,
     ) -> None:
         self.stop()
+        self._last_payload = {
+            "available": True,
+            "message": "准备上传",
+            "target": target_name,
+            "part": part_index,
+            "title": title,
+            "path": str(media_path),
+            "total_bytes": total_bytes,
+            "uploaded_bytes": 0,
+            "percent": 0,
+            "speed_bytes": 0,
+            "eta_seconds": None,
+            "bvid": None,
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        self.store.upsert(self.key, self._last_payload)
         self._stop = threading.Event()
         self._thread = threading.Thread(
             target=self._run,
-            name=f"upload-progress-{part_index}",
+            name=f"upload-progress-{self.key}",
             args=(media_path, target_name, title, part_index, total_bytes),
             daemon=True,
         )
@@ -79,8 +162,8 @@ class UploadProgressSampler:
         self._stop.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2)
-        if self._thread:
-            previous = self.store.load()
+        if self._last_payload:
+            previous = dict(self._last_payload)
             previous.update(
                 {
                     "available": True,
@@ -90,7 +173,8 @@ class UploadProgressSampler:
                     "updated_at": datetime.now().isoformat(timespec="seconds"),
                 }
             )
-            self.store.save(previous)
+            self._last_payload = previous
+            self.store.upsert(self.key, previous)
         self._thread = None
 
     def _run(
@@ -120,8 +204,7 @@ class UploadProgressSampler:
             uploaded = min(sample.bytes_out, total_bytes)
             percent = min(99.9, uploaded / total_bytes * 100) if total_bytes else 0.0
             eta = int((total_bytes - uploaded) / speed) if speed > 0 and uploaded < total_bytes else None
-            self.store.save(
-                {
+            self._last_payload = {
                     "available": True,
                     "message": "上传中",
                     "target": target_name,
@@ -135,8 +218,8 @@ class UploadProgressSampler:
                     "eta_seconds": eta,
                     "bvid": None,
                     "updated_at": datetime.now().isoformat(timespec="seconds"),
-                }
-            )
+            }
+            self.store.upsert(self.key, self._last_payload)
             time.sleep(0.5)
 
     def _pid_for_path(self, path: Path) -> int:

@@ -29,3 +29,4 @@ url = "https://live.douyin.com/2"
     second = service._new_session(config.targets[1])
     assert first.session_id != second.session_id
     assert service._manual_request_path(config.targets[0]) != service._manual_request_path(config.targets[1])
+    assert service.upload_executor._max_workers == 2

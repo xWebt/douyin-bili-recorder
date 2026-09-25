@@ -29,7 +29,6 @@ class BiliupUploader:
         self.runner = runner
         self.logger = logger
         self.progress_store = UploadProgressStore(config.data_dir)
-        self.progress = UploadProgressSampler(self.progress_store, logger)
 
     def upload_session(
         self,
@@ -71,6 +70,7 @@ class BiliupUploader:
             command,
             media_path=first,
             target=target,
+            session_id=session.session_id,
             part_index=1,
             title=resolved_title,
         )
@@ -81,7 +81,7 @@ class BiliupUploader:
         bvid = self._wait_for_bvid(resolved_title)
         if not bvid:
             return UploadResult(None, False, messages + ["submission was sent but BVID lookup timed out"])
-        self._mark_progress_complete(bvid)
+        self._mark_progress_complete(bvid, f"{session.session_id}:1")
 
         for index, media_path in enumerate(files[1:], start=2):
             part_title = f"{target.name}｜{session.detected_start_iso or session.session_id}｜P{index:02d}"
@@ -98,6 +98,7 @@ class BiliupUploader:
                 append_command,
                 media_path=media_path,
                 target=target,
+                session_id=session.session_id,
                 part_index=index,
                 title=part_title,
                 existing_bvid=bvid,
@@ -136,13 +137,14 @@ class BiliupUploader:
                 command,
                 media_path=media_path,
                 target=target,
+                session_id=session.session_id,
                 part_index=part_index,
                 title=title,
                 existing_bvid=bvid,
             )
             if result.returncode != 0:
                 raise RuntimeError(f"Bilibili append command failed with code {result.returncode}")
-            self._mark_progress_complete(bvid)
+            self._mark_progress_complete(bvid, f"{session.session_id}:{part_index}")
             return UploadResult(bvid, True, list(result.lines))
 
         existing = self.find_bvid_by_title(title)
@@ -160,6 +162,7 @@ class BiliupUploader:
             command,
             media_path=media_path,
             target=target,
+            session_id=session.session_id,
             part_index=part_index,
             title=title,
         )
@@ -167,7 +170,7 @@ class BiliupUploader:
             raise RuntimeError(f"Bilibili submission command failed with code {result.returncode}")
         found = self._wait_for_bvid(title)
         if found:
-            self._mark_progress_complete(found)
+            self._mark_progress_complete(found, f"{session.session_id}:{part_index}")
         return UploadResult(found, bool(found), list(result.lines))
 
     def _upload_command(
@@ -249,11 +252,14 @@ class BiliupUploader:
         *,
         media_path: Path,
         target: TargetConfig,
+        session_id: str,
         part_index: int,
         title: str,
         existing_bvid: str | None = None,
     ):
-        self.progress.start(
+        progress_key = f"{session_id}:{part_index}"
+        progress = UploadProgressSampler(self.progress_store, self.logger, progress_key)
+        progress.start(
             media_path,
             target_name=target.name,
             title=title,
@@ -268,11 +274,14 @@ class BiliupUploader:
                 message = "上传失败"
             else:
                 message = "上传完成" if existing_bvid else "等待 BVID"
-            self.progress.stop(message=message, bvid=existing_bvid)
+            progress.stop(message=message, bvid=existing_bvid)
         return result
 
-    def _mark_progress_complete(self, bvid: str) -> None:
-        payload = self.progress_store.load()
+    def _mark_progress_complete(self, bvid: str, progress_key: str) -> None:
+        payload = next(
+            (item for item in self.progress_store.load_all() if item.get("key") == progress_key),
+            {},
+        )
         if not payload:
             return
         payload["available"] = True
@@ -282,7 +291,7 @@ class BiliupUploader:
         payload["eta_seconds"] = 0
         payload["bvid"] = bvid
         payload["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        self.progress_store.save(payload)
+        self.progress_store.upsert(progress_key, payload)
 
     def find_bvid_by_title(self, title: str) -> str | None:
         filters = (["--is-pubing"], ["--not-pubed"], ["--pubed"])

@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.3
+
+- Fixed scheduled prechecks being delayed by offline probes. A probe with no media now terminates immediately instead of entering the full reconnect grace period; real recordings still keep reconnect behavior.
+- Added per-upload progress records keyed by anchor session and part, with parallel upload workers for multiple enabled anchors.
+- Added a Bilibili submission status list for locally submitted BVIDs, showing the actual API stage such as `审核中` or `已发布` without inventing a transcode percentage.
+- Added weekly and monthly PDF reports with live days, sessions, total and average duration, on-time rate, late counts, reconnect counts, delay chart, duration chart, and session details.
+
 ## v2.2.2
 
 - Prevented offline poll attempts with no media and no BVID from being counted as live sessions.

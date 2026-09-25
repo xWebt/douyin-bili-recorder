@@ -38,3 +38,12 @@ def test_should_poll_now_accepts_timezone_aware_datetime() -> None:
     slot = ScheduleSlot(days=[moment.isoweekday()], start="00:00", end="23:59")
 
     assert should_poll_now([slot], moment) is True
+
+
+def test_should_poll_now_prechecks_ten_minutes_before_start() -> None:
+    timezone = ZoneInfo("Asia/Shanghai")
+    moment = datetime(2026, 9, 24, 0, 21, tzinfo=timezone)
+    slot = ScheduleSlot(days=[moment.isoweekday()], start="00:30", end="04:00")
+
+    assert should_poll_now([slot], moment) is True
+    assert should_poll_now([slot], datetime(2026, 9, 24, 0, 19, tzinfo=timezone)) is False

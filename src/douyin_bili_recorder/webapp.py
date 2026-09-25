@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 import subprocess
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -16,8 +18,9 @@ from .douyin import DouyinResolver
 from .paths import anchor_dir, session_output_dir, target_key
 from .service_control import ServiceController
 from .ui_state import UIStateStore
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from .bilibili_status import BilibiliSubmissionClient
+from .reports import ReportGenerator
+from .state import SessionStore
 
 WEB_ROOT = Path(__file__).with_name("web")
 
@@ -100,6 +103,59 @@ def create_app(config: AppConfig) -> FastAPI:
     async def target_analytics(target_name: str, month: str | None = None) -> dict[str, Any]:
         selected_month = month or datetime.now(ZoneInfo(config.timezone)).strftime("%Y-%m")
         return analytics.summary(target_name, selected_month)
+
+    @app.get("/api/targets/{target_name}/reports/{period}")
+    async def target_report(target_name: str, period: str, anchor_date: str | None = None) -> FileResponse:
+        if period not in {"week", "month"}:
+            raise HTTPException(status_code=400, detail="period must be week or month")
+        selected_date = None
+        if anchor_date:
+            try:
+                selected_date = date.fromisoformat(anchor_date)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="anchor_date must be YYYY-MM-DD") from exc
+        try:
+            path = ReportGenerator(config.video_dir.expanduser(), config.timezone).generate(
+                target_name,
+                period,
+                anchor_date=selected_date,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail=f"report generation failed: {exc}") from exc
+        return FileResponse(path, media_type="application/pdf", filename=path.name)
+
+    @app.get("/api/bilibili/submissions")
+    async def bilibili_submissions() -> dict[str, Any]:
+        sessions = SessionStore(config.sessions_dir).all()
+        metadata: dict[str, list[dict[str, Any]]] = {}
+        for session in sessions:
+            bvids = {session.bvid} if session.bvid else set()
+            bvids.update(part.bvid for part in session.parts if part.bvid)
+            for bvid in bvids:
+                metadata.setdefault(str(bvid), []).append(
+                    {
+                        "target": session.target_name,
+                        "session_id": session.session_id,
+                        "title": session.title,
+                        "parts": len(session.parts),
+                    }
+                )
+        if not metadata:
+            return {"available": True, "submissions": [], "message": "暂无已投稿稿件"}
+        try:
+            statuses = BilibiliSubmissionClient(config.cookie_file).list_for_bvids(set(metadata))
+        except Exception as exc:  # noqa: BLE001
+            return {"available": False, "submissions": [], "message": str(exc)}
+
+        submissions = []
+        for status in statuses:
+            item = status.to_dict()
+            matches = metadata.get(status.bvid, [])
+            item["targets"] = sorted({str(match.get("target") or "") for match in matches})
+            item["session_title"] = matches[-1].get("title") if matches else item.get("title")
+            submissions.append(item)
+        submissions.sort(key=lambda item: (item.get("created_epoch", 0), item.get("bvid", "")), reverse=True)
+        return {"available": True, "submissions": submissions, "message": ""}
 
     @app.post("/api/targets/{target_name}/manual-start")
     async def manual_start_target(target_name: str) -> dict[str, Any]:

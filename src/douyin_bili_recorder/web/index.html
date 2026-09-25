@@ -21,6 +21,9 @@
           <button class="ghost-button" id="videoLibraryButton" type="button">
             <i data-lucide="folder-open"></i><span>视频库</span>
           </button>
+          <button class="ghost-button" id="submissionsButton" type="button">
+            <i data-lucide="clipboard-list"></i><span>稿件状态</span>
+          </button>
           <button class="ghost-button" id="loginButton" type="button">
             <i data-lucide="scan-qr-code"></i><span id="loginLabel">B站登录</span>
           </button>
@@ -62,6 +65,7 @@
           </div>
           <div class="meter upload-meter"><span id="uploadBar"></span></div>
           <div class="upload-stats"><span id="uploadBytes">-- / --</span><span id="uploadSpeed">--</span><span id="uploadEta">--</span></div>
+          <div class="upload-list" id="uploadList"></div>
         </section>
 
         <section class="control-grid">
@@ -186,12 +190,25 @@
       <section class="dialog analytics-dialog" role="dialog" aria-modal="true">
         <button class="icon-button modal-close" id="closeAnalytics" type="button" title="关闭"><i data-lucide="x"></i></button>
         <p class="eyebrow">ANCHOR ANALYTICS</p><h2 id="analyticsTitle">主播详情</h2>
+        <div class="report-actions">
+          <button class="secondary-button compact-action" id="weeklyReportButton" type="button"><i data-lucide="file-text"></i><span>导出周报</span></button>
+          <button class="secondary-button compact-action" id="monthlyReportButton" type="button"><i data-lucide="file-chart-column"></i><span>导出月报</span></button>
+        </div>
         <div class="metric-grid" id="analyticsMetrics"></div>
         <div class="chart-grid">
           <div class="chart-panel"><h3>开播延迟</h3><svg id="delayChart" viewBox="0 0 520 180" role="img"></svg></div>
           <div class="chart-panel"><h3>直播时长</h3><svg id="durationChart" viewBox="0 0 520 180" role="img"></svg></div>
         </div>
         <div class="table-wrap"><table><thead><tr><th>日期</th><th>开播</th><th>时长</th><th>迟到</th><th>重连</th><th>BVID</th></tr></thead><tbody id="analyticsRows"></tbody></table></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="submissionsModal" hidden>
+      <section class="dialog wide" role="dialog" aria-modal="true">
+        <button class="icon-button modal-close" id="closeSubmissions" type="button" title="关闭"><i data-lucide="x"></i></button>
+        <p class="eyebrow">BILIBILI SUBMISSIONS</p><h2>稿件状态</h2>
+        <p class="submission-note" id="submissionNote">正在读取 B站稿件状态。</p>
+        <div class="submission-list" id="submissionList"></div>
       </section>
     </div>
 

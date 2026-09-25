@@ -52,7 +52,8 @@ class RecorderService:
         self.resolver = DouyinResolver()
         self._pause_mode = ""
         self._state_lock = threading.Lock()
-        self.upload_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="upload")
+        upload_workers = max(1, min(8, len([target for target in config.targets if target.enabled])))
+        self.upload_executor = ThreadPoolExecutor(max_workers=upload_workers, thread_name_prefix="upload")
         self._pending_uploads: dict[str, list[Future[bool]]] = {}
 
     def run_forever(self) -> None:
@@ -179,6 +180,9 @@ class RecorderService:
                     )
                 if process.poll() is not None:
                     break
+                if self._process_reports_offline(process):
+                    process.terminate()
+                    break
                 self.shutdown_event.wait(2)
 
             tail_media = self._final_media_paths(
@@ -200,10 +204,13 @@ class RecorderService:
 
             if self.interrupt_event.is_set():
                 break
-            offline = any("stream is offline" in line.lower() for line in process.output())
+            offline = self._process_reports_offline(process)
             if offline or process.poll() != 0 or not media_found:
-                if session.last_seen_live_epoch is None:
-                    session.last_seen_live_epoch = connection_started
+                ever_recorded = session.detected_start_epoch is not None
+                if not media_found and not ever_recorded:
+                    self.logger.info("offline probe completed quickly for %s", target.name)
+                    break
+                session.last_seen_live_epoch = connection_started
                 self.store.save(session)
                 if self._wait_for_reconnect(target, session):
                     continue
@@ -352,6 +359,10 @@ class RecorderService:
             else:
                 path.unlink(missing_ok=True)
         return result
+
+    @staticmethod
+    def _process_reports_offline(process) -> bool:
+        return any("stream is offline" in line.lower() for line in process.output())
 
     def _wait_for_capacity(self, target: TargetConfig) -> bool:
         segment_seconds = parse_duration_seconds(self.config.segment_time)

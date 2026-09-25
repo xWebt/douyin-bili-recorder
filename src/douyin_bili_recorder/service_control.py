@@ -126,6 +126,8 @@ class ServiceController:
             except (TypeError, ValueError):
                 cache_limit_gb = self.config.max_cache_gb
         saved_cache_limit = int(cache_limit_gb or self.config.max_cache_gb)
+        upload_progress_store = UploadProgressStore(self.config.data_dir)
+        upload_progresses = upload_progress_store.load_all()
         return {
             "cache_used_gb": cache_used_gb,
             "cache_limit_gb": saved_cache_limit,
@@ -138,7 +140,8 @@ class ServiceController:
             "mode": runtime.get("mode") if alive else None,
             "desired_running": bool(self.store.load().get("worker_running", False)),
             "disk_free_gb": round(self._disk_free() / (1024**3), 2),
-            "upload_progress": UploadProgressStore(self.config.data_dir).load(),
+            "upload_progress": upload_progress_store.load(),
+            "upload_progresses": upload_progresses,
             "sessions": [self._session_dict(item) for item in sessions[:20]],
         }
 
