@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.4
+
+- Fixed the PDF summary layout so metric cards, chart titles, charts, and the statistics note no longer overlap.
+- Added a per-anchor report button with explicit choices for the current week through today, the previous complete week, and the previous complete month.
+- Monthly reports are no longer generated for an incomplete current month; the report API rejects incomplete months and incomplete weeks unless current-week partial generation is explicitly requested.
+- Corrected凡晨's local September analytics to two real sessions: `2026-09-24 00:48` and `2026-09-25 00:52`, removing the `00:52` offline ghost record.
+
 ## v2.2.3
 
 - Fixed scheduled prechecks being delayed by offline probes. A probe with no media now terminates immediately instead of entering the full reconnect grace period; real recordings still keep reconnect behavior.

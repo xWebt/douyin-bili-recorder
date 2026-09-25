@@ -105,7 +105,12 @@ def create_app(config: AppConfig) -> FastAPI:
         return analytics.summary(target_name, selected_month)
 
     @app.get("/api/targets/{target_name}/reports/{period}")
-    async def target_report(target_name: str, period: str, anchor_date: str | None = None) -> FileResponse:
+    async def target_report(
+        target_name: str,
+        period: str,
+        anchor_date: str | None = None,
+        allow_partial: bool = False,
+    ) -> FileResponse:
         if period not in {"week", "month"}:
             raise HTTPException(status_code=400, detail="period must be week or month")
         selected_date = None
@@ -115,11 +120,22 @@ def create_app(config: AppConfig) -> FastAPI:
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail="anchor_date must be YYYY-MM-DD") from exc
         try:
-            path = ReportGenerator(config.video_dir.expanduser(), config.timezone).generate(
+            report = ReportGenerator(config.video_dir.expanduser(), config.timezone)
+            _start, end, _label, _filename = report.period_bounds(period, selected_date, target_name)
+            today = datetime.now(ZoneInfo(config.timezone)).date()
+            effective_end = None
+            if end >= today:
+                if not allow_partial or period != "week":
+                    raise HTTPException(status_code=409, detail="当前周期尚未结束，请生成上一个完整周期")
+                effective_end = today
+            path = report.generate(
                 target_name,
                 period,
                 anchor_date=selected_date,
+                end_date=effective_end,
             )
+        except HTTPException:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=422, detail=f"report generation failed: {exc}") from exc
         return FileResponse(path, media_type="application/pdf", filename=path.name)

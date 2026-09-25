@@ -78,3 +78,18 @@ def test_generate_weekly_pdf_report_spans_month_boundaries(tmp_path: Path) -> No
 
     assert report.exists()
     assert report.name == "跨月主播_周报_20260831_20260906.pdf"
+
+
+def test_report_period_bounds_and_partial_end(tmp_path: Path) -> None:
+    generator = ReportGenerator(tmp_path)
+    start, end, _label, _filename = generator.period_bounds("week", date(2026, 9, 25), "主播")
+    assert start.isoformat() == "2026-09-21"
+    assert end.isoformat() == "2026-09-27"
+
+    report = generator.generate(
+        "主播",
+        "week",
+        anchor_date=date(2026, 9, 25),
+        end_date=date(2026, 9, 25),
+    )
+    assert report.exists()

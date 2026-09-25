@@ -1361,6 +1361,19 @@ th {
   margin-top: 14px;
 }
 
+.report-dialog {
+  width: min(620px, 100%);
+}
+
+.report-period-note {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-dim);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .compact-action {
   min-height: 36px;
   padding: 0 12px;
@@ -1472,5 +1485,10 @@ th {
 
   .submission-meta {
     flex-wrap: wrap;
+  }
+
+  .report-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

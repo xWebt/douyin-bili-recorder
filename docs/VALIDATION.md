@@ -142,3 +142,10 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Upload progress storage now supports multiple concurrent entries keyed by session and part.
 - Bilibili status parsing is covered for `审核中` and `已发布`; no numeric transcode percentage is fabricated because the current API does not provide one.
 - PDF generation is covered for monthly reports and week ranges that cross a month boundary.
+
+## v2.2.4 report layout, period controls, and corrected analytics validation
+
+- The PDF summary page uses a dynamic chart start position; rendered output confirms metric cards, chart titles, charts, and the statistics note do not overlap.
+- The report API returns `409` for an incomplete current month and for an incomplete week unless current-week partial generation is explicitly requested.
+- A current-week report with `allow_partial=true` returns a valid `%PDF-` document through the live API.
+- 凡晨 local analytics now contain two real sessions: `2026-09-24 00:48` (late 48 minutes) and `2026-09-25 00:52` (late 22 minutes). The `00:52` offline ghost record was removed.

@@ -39,22 +39,12 @@ class ReportGenerator:
         period: str,
         *,
         anchor_date: date | None = None,
+        end_date: date | None = None,
     ) -> Path:
-        if period not in {"week", "month"}:
-            raise ValueError("period must be week or month")
-        base = anchor_date or datetime.now(ZoneInfo(self.timezone)).date()
-        if period == "week":
-            start = base - timedelta(days=base.isoweekday() - 1)
-            end = start + timedelta(days=6)
-            label = f"周报 · {start.isoformat()} 至 {end.isoformat()}"
-            filename = f"{safe_path_name(target_name)}_周报_{start:%Y%m%d}_{end:%Y%m%d}.pdf"
-        else:
-            first = base.replace(day=1)
-            next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
-            end = next_month - timedelta(days=1)
-            start = first
-            label = f"月报 · {start:%Y年%m月}"
-            filename = f"{safe_path_name(target_name)}_月报_{start:%Y%m}.pdf"
+        start, end, label, filename = self.period_bounds(period, anchor_date, target_name)
+        if end_date is not None and end_date < end:
+            end = end_date
+            label = f"{label} · 截至 {end.isoformat()}"
 
         sessions = self._load_sessions(target_name, start, end)
         output_dir = anchor_dir(self.video_dir, target_name) / "数据报告"
@@ -69,6 +59,28 @@ class ReportGenerator:
             resolution=150.0,
         )
         return output_path
+
+    def period_bounds(
+        self,
+        period: str,
+        anchor_date: date | None,
+        target_name: str,
+    ) -> tuple[date, date, str, str]:
+        if period not in {"week", "month"}:
+            raise ValueError("period must be week or month")
+        base = anchor_date or datetime.now(ZoneInfo(self.timezone)).date()
+        if period == "week":
+            start = base - timedelta(days=base.isoweekday() - 1)
+            end = start + timedelta(days=6)
+            label = f"周报 · {start.isoformat()} 至 {end.isoformat()}"
+            filename = f"{safe_path_name(target_name)}_周报_{start:%Y%m%d}_{end:%Y%m%d}.pdf"
+        else:
+            start = base.replace(day=1)
+            next_month = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            end = next_month - timedelta(days=1)
+            label = f"月报 · {start:%Y年%m月}"
+            filename = f"{safe_path_name(target_name)}_月报_{start:%Y%m}.pdf"
+        return start, end, label, filename
 
     def _load_sessions(self, target_name: str, start: date, end: date) -> list[dict[str, Any]]:
         records: dict[str, dict[str, Any]] = {}
@@ -140,7 +152,8 @@ class ReportGenerator:
             draw.text((x + 22, y + 25), label_text, fill=MUTED, font=metric_label_font)
             draw.text((x + 22, y + 59), value, fill=INK, font=metric_font)
 
-        section_y = 565
+        metric_rows = (len(metrics) + 2) // 3
+        section_y = 255 + metric_rows * (card_height + 14) + 30
         draw.text((MARGIN, section_y), "开播延迟", fill=INK, font=body_font)
         draw.text((PAGE_SIZE[0] // 2 + 20, section_y), "直播时长", fill=INK, font=body_font)
         delay_values = [int(item.get("late_minutes") or 0) for item in sessions]
@@ -150,7 +163,7 @@ class ReportGenerator:
         self._draw_bar_chart(draw, left_box, delay_values, AMBER, "分钟")
         self._draw_bar_chart(draw, right_box, duration_hours, SIGNAL, "小时")
 
-        note_y = 1060
+        note_y = section_y + 475
         draw.rounded_rectangle((MARGIN, note_y, PAGE_SIZE[0] - MARGIN, note_y + 180), radius=12, fill=SIGNAL_SOFT)
         draw.text((MARGIN + 26, note_y + 26), "统计口径", fill=INK, font=self._font(22, bold=True))
         notes = [

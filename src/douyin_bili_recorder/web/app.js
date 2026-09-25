@@ -7,6 +7,7 @@ const state = {
   library: null,
   analyticsTarget: "",
   submissions: null,
+  reportTarget: "",
 };
 
 const els = {
@@ -80,7 +81,13 @@ const els = {
   analyticsRows: document.querySelector("#analyticsRows"),
   delayChart: document.querySelector("#delayChart"),
   durationChart: document.querySelector("#durationChart"),
-  weeklyReportButton: document.querySelector("#weeklyReportButton"),
+  reportModal: document.querySelector("#reportModal"),
+  closeReport: document.querySelector("#closeReport"),
+  reportTitle: document.querySelector("#reportTitle"),
+  reportNote: document.querySelector("#reportNote"),
+  reportPeriodNote: document.querySelector("#reportPeriodNote"),
+  currentWeekReportButton: document.querySelector("#currentWeekReportButton"),
+  previousWeekReportButton: document.querySelector("#previousWeekReportButton"),
   monthlyReportButton: document.querySelector("#monthlyReportButton"),
   submissionsButton: document.querySelector("#submissionsButton"),
   submissionsModal: document.querySelector("#submissionsModal"),
@@ -299,6 +306,7 @@ function buildTargetRow(target, latest) {
     ...(target.watch_mode === "manual"
       ? [actionButton("play-circle", "手动开始", () => manualStartTarget(target.name))]
       : []),
+    actionButton("file-text", "生成报告", () => openReportDialog(target.name)),
     actionButton("bar-chart-3", "数据详情", () => openAnalytics(target.name)),
     actionButton("folder-open", "打开目录", () => openFolder("anchor", target.name)),
     actionButton("trash-2", "删除主播", () => {
@@ -672,6 +680,31 @@ function formatHours(seconds) {
 
 function shortTime(iso) { return iso ? String(iso).slice(11, 16) : "-"; }
 
+function localDateISO(value) {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function previousWeekAnchor() {
+  const today = new Date();
+  const anchor = new Date(today);
+  anchor.setDate(today.getDate() - 7);
+  return localDateISO(anchor);
+}
+
+function previousMonthAnchor() {
+  const today = new Date();
+  return localDateISO(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+}
+
+function openReportDialog(name) {
+  state.reportTarget = name;
+  els.reportTitle.textContent = `${name} · 生成完整周期报告`;
+  els.reportNote.textContent = "本周周报可生成截至今天；上周和月报只使用已经结束的完整周期，不会自动生成。";
+  els.reportPeriodNote.textContent = `上周报表锚点：${previousWeekAnchor()}；上月报表锚点：${previousMonthAnchor()}`;
+  els.reportModal.hidden = false;
+}
+
 async function openSubmissions() {
   els.submissionsModal.hidden = false;
   els.submissionNote.textContent = "正在读取 B站稿件状态。";
@@ -729,16 +762,29 @@ function submissionStateClass(value) {
   return "neutral";
 }
 
-function downloadReport(period) {
-  if (!state.analyticsTarget) return;
-  const url = `/api/targets/${encodeURIComponent(state.analyticsTarget)}/reports/${period}`;
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "";
-  document.body.append(link);
-  link.click();
-  link.remove();
-  toast(period === "week" ? "正在生成周报 PDF" : "正在生成月报 PDF");
+async function downloadReport(period, allowPartial = false) {
+  const target = state.reportTarget || state.analyticsTarget;
+  if (!target) return;
+  const anchor = period === "week" && allowPartial
+    ? localDateISO(new Date())
+    : period === "week" ? previousWeekAnchor() : previousMonthAnchor();
+  const url = `/api/targets/${encodeURIComponent(target)}/reports/${period}?anchor_date=${anchor}&allow_partial=${allowPartial}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(await response.text());
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = response.headers.get("content-disposition")?.match(/filename="?([^";]+)"?/)?.[1] || `${target}-${period}.pdf`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+    toast(period === "week" ? (allowPartial ? "本周周报已生成" : "上周周报已生成") : "上月月报已生成");
+  } catch (error) {
+    toast(`报告生成失败：${error.message}`, "error");
+  }
 }
 
 async function openVideoLibrary() {
@@ -850,14 +896,16 @@ els.videoLibraryButton.addEventListener("click", openVideoLibrary);
 els.closeVideoLibrary.addEventListener("click", () => { els.videoLibraryModal.hidden = true; });
 els.openRootButton.addEventListener("click", () => openFolder("root"));
 els.closeAnalytics.addEventListener("click", () => { els.analyticsModal.hidden = true; });
-els.weeklyReportButton.addEventListener("click", () => downloadReport("week"));
+els.closeReport.addEventListener("click", () => { els.reportModal.hidden = true; });
+els.currentWeekReportButton.addEventListener("click", () => downloadReport("week", true));
+els.previousWeekReportButton.addEventListener("click", () => downloadReport("week", false));
 els.monthlyReportButton.addEventListener("click", () => downloadReport("month"));
 els.submissionsButton.addEventListener("click", openSubmissions);
 els.closeSubmissions.addEventListener("click", () => { els.submissionsModal.hidden = true; });
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  for (const modal of [els.loginModal, els.stopModal, els.videoLibraryModal, els.analyticsModal, els.submissionsModal]) modal.hidden = true;
+  for (const modal of [els.loginModal, els.stopModal, els.videoLibraryModal, els.analyticsModal, els.submissionsModal, els.reportModal]) modal.hidden = true;
 });
 
 window.setInterval(() => {
