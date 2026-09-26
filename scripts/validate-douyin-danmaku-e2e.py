@@ -31,6 +31,13 @@ def escape_ass(text: str) -> str:
     return text.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}").replace("\n", r"\N")
 
 
+def estimate_text_width(text: str, font_size: int) -> int:
+    width = 0.0
+    for char in text:
+        width += font_size if ord(char) > 255 else font_size * 0.58
+    return max(font_size, int(width))
+
+
 def probe_size(ffprobe: Path, media: Path) -> tuple[int, int]:
     result = subprocess.run(
         [
@@ -76,6 +83,7 @@ def build_ass(xml_path: Path, ass_path: Path, width: int, height: int) -> int:
     tracks = 10
     line_height = max(38, int(height * 0.052))
     font_size = max(24, int(height * 0.036))
+    top_margin = max(44, int(height * 0.055))
     lines = [
         "[Script Info]",
         "ScriptType: v4.00+",
@@ -90,11 +98,19 @@ def build_ass(xml_path: Path, ass_path: Path, width: int, height: int) -> int:
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
-    for index, (start, text) in enumerate(events):
-        end = start + 4.2
-        track = index % tracks
-        y = 45 + track * line_height
-        effect = rf"{{\an8\pos({width // 2},{y})}}"
+    lane_available = [0.0 for _ in range(tracks)]
+    for start, text in events:
+        text_width = estimate_text_width(text, font_size)
+        duration = min(11.0, max(7.0, 6.5 + text_width / max(1, width) * 2.5))
+        end = start + duration
+        lane = min(range(tracks), key=lambda index: lane_available[index])
+        lane_available[lane] = end
+        y = top_margin + lane * line_height
+        start_x = width + 24
+        end_x = -text_width - 24
+        effect = (
+            rf"{{\an7\move({start_x},{y},{end_x},{y})}}"
+        )
         lines.append(
             f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{effect}{escape_ass(text)}"
         )
