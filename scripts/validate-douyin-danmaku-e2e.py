@@ -99,12 +99,17 @@ def build_ass(xml_path: Path, ass_path: Path, width: int, height: int) -> int:
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
     lane_available = [0.0 for _ in range(tracks)]
+    last_start = -1.0
     for start, text in events:
         text_width = estimate_text_width(text, font_size)
-        duration = min(11.0, max(7.0, 6.5 + text_width / max(1, width) * 2.5))
-        end = start + duration
         lane = min(range(tracks), key=lambda index: lane_available[index])
-        lane_available[lane] = end
+        actual_start = max(start, lane_available[lane] + 0.25, last_start + 0.65)
+        travel = width + text_width + 48
+        speed = max(105.0, width / 17.5)
+        duration = min(22.0, max(13.0, travel / speed))
+        end = actual_start + duration
+        lane_available[lane] = end + 0.3
+        last_start = actual_start
         y = top_margin + lane * line_height
         start_x = width + 24
         end_x = -text_width - 24
@@ -112,7 +117,7 @@ def build_ass(xml_path: Path, ass_path: Path, width: int, height: int) -> int:
             rf"{{\an7\move({start_x},{y},{end_x},{y})}}"
         )
         lines.append(
-            f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{effect}{escape_ass(text)}"
+            f"Dialogue: 0,{ass_time(actual_start)},{ass_time(end)},Default,,0,0,0,,{effect}{escape_ass(text)}"
         )
     ass_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return len(events)
