@@ -96,6 +96,7 @@ url = "https://www.douyin.com/user/REPLACE_ME"
 enabled = false
 public = false
 record_mode = "record"
+record_danmaku = false
 watch_mode = "all_day"
 collection_name = "example-anchor"
 collection_id = ""

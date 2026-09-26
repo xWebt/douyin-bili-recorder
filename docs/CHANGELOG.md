@@ -1,5 +1,14 @@
 # Changelog
 
+
+## v2.2.5
+
+- Added a per-anchor `录制弹幕` option; enabled anchors now use biliup's documented `server --config` mode with `douyin_danmaku = true` and keep the generated XML beside each video part.
+- The app uses `uploader = Noop` plus a no-op postprocessor in danmaku mode so biliup only captures media/XML and the existing recorder uploader still owns Bilibili submission.
+- Added XML cleanup to the existing `投稿成功后删除本地` behavior.
+- Made the Bilibili submission list a bounded scrollable window so the control page no longer grows indefinitely.
+- Confirmed from biliup docs that the simple `download` command exposes only URL/output/split options; danmaku recording is a server config feature.
+
 ## v2.2.4
 
 - Fixed the PDF summary layout so metric cards, chart titles, charts, and the statistics note no longer overlap.

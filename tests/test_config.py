@@ -31,6 +31,7 @@ public = true
 name = "anchor"
 url = "https://live.douyin.com/123"
 record_mode = "monitor"
+record_danmaku = true
 watch_mode = "manual"
 collection_name = "anchor collection"
 
@@ -48,6 +49,7 @@ end = "23:00"
     assert config.video_dir == tmp_path / "videos"
     assert config.targets[0].public is True
     assert config.targets[0].record_mode == "monitor"
+    assert config.targets[0].record_danmaku is True
     assert config.targets[0].watch_mode == "manual"
     assert config.targets[0].collection_name == "anchor collection"
     assert config.targets[0].schedule[0].days == [1, 3, 5]

@@ -135,6 +135,8 @@ class RecorderService:
         self._reload_runtime_settings(target)
         if target.record_mode == "monitor":
             return self._monitor_target(target)
+        if target.record_danmaku and not self._is_live(target):
+            return False
         if not self._wait_for_capacity(target):
             return False
 
@@ -226,7 +228,11 @@ class RecorderService:
         self.store.save(session)
         self.analytics.upsert(session)
         self.storage.enforce_limit(self.config.max_cache_gb)
-        remaining_files = [path for path in session_dir.iterdir() if path.name != "session.json"]
+        remaining_files = [
+            path
+            for path in session_dir.iterdir()
+            if path.name not in {"session.json", ".danmaku-runtime"}
+        ]
         if not session.parts and not remaining_files:
             self.store.delete(session.session_id)
             if self.interrupt_event.is_set():
@@ -362,7 +368,8 @@ class RecorderService:
 
     @staticmethod
     def _process_reports_offline(process) -> bool:
-        return any("stream is offline" in line.lower() for line in process.output())
+        text = "\n".join(process.output()).lower()
+        return "stream is offline" in text or "stream went offline" in text
 
     def _wait_for_capacity(self, target: TargetConfig) -> bool:
         segment_seconds = parse_duration_seconds(self.config.segment_time)
@@ -465,11 +472,20 @@ class RecorderService:
                 original_final = output_dir / f"{base_name}{original_suffix}"
                 shutil.move(str(original), str(original_final))
 
+        danmaku_source = self._find_danmaku_source(source)
+        if danmaku_source is None and media.source:
+            danmaku_source = self._find_danmaku_source(session_dir / media.source)
+        danmaku_final: Path | None = None
+        if danmaku_source is not None and danmaku_source.exists():
+            danmaku_final = output_dir / f"{base_name}.xml"
+            shutil.move(str(danmaku_source), str(danmaku_final))
+
         part = SessionPart(
             index=part_index,
             status="PENDING",
             path=str(final_media),
             source_path=str(original_final or ""),
+            danmaku_path=str(danmaku_final or ""),
             size=final_media.stat().st_size,
             duration_seconds=media.duration_seconds,
         )
@@ -485,6 +501,13 @@ class RecorderService:
             self.store.save(session)
             self.analytics.upsert(session)
         return part
+
+    @staticmethod
+    def _find_danmaku_source(media_path: Path) -> Path | None:
+        candidates = [media_path.with_suffix(".xml"), media_path.parent / f"{media_path.name.removesuffix('.part')}.xml"]
+        if media_path.name.endswith(".part"):
+            candidates.append(media_path.with_suffix("").with_suffix(".xml"))
+        return next((candidate for candidate in candidates if candidate.exists()), None)
 
     def _upload_part_job(
         self,
@@ -504,7 +527,8 @@ class RecorderService:
             self.analytics.upsert(session)
             self._bind_collection(target, session)
             if self.config.delete_after_upload:
-                for path in (final_media, original_final):
+                danmaku_final = Path(part.danmaku_path) if part.danmaku_path else None
+                for path in (final_media, original_final, danmaku_final):
                     if path is not None and path.exists():
                         path.unlink(missing_ok=True)
             return True
@@ -677,6 +701,7 @@ class RecorderService:
                 "enabled",
                 "public",
                 "record_mode",
+                "record_danmaku",
                 "watch_mode",
                 "collection_name",
                 "collection_id",

@@ -53,6 +53,7 @@ class TargetConfig:
     enabled: bool = True
     public: bool = False
     record_mode: str = "record"
+    record_danmaku: bool = False
     watch_mode: str = "scheduled"
     collection_name: str = ""
     collection_id: str = ""
@@ -184,6 +185,7 @@ def _target(raw: dict[str, Any], *, default_public: bool = False) -> TargetConfi
         enabled=bool(raw.get("enabled", True)),
         public=bool(raw.get("public", default_public)),
         record_mode=str(raw.get("record_mode", "record")),
+        record_danmaku=bool(raw.get("record_danmaku", False)),
         watch_mode=str(raw.get("watch_mode", "scheduled" if raw.get("schedule") else "all_day")),
         collection_name=str(raw.get("collection_name", "")),
         collection_id=str(raw.get("collection_id", "")),

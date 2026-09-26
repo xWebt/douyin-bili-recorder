@@ -340,6 +340,9 @@ function buildTargetRow(target, latest) {
     segmentedControl("监控方式", target.watch_mode || "all_day", [
       ["scheduled", "固定排班"], ["all_day", "全天轮询"], ["manual", "手动开启"],
     ], (value) => { target.watch_mode = value; }, "watch_mode"),
+    segmentedControl("弹幕录制", target.record_danmaku ? "on" : "off", [
+      ["off", "不录制"], ["on", "录制 XML"],
+    ], (value) => { target.record_danmaku = value === "on"; }, "record_danmaku"),
   );
   const collection = document.createElement("div");
   collection.className = "collection-state";
@@ -535,7 +538,9 @@ function syncStateFromDom() {
       const active = group.querySelector("button.active");
       if (!active) continue;
       const field = group.dataset.segmentedField;
-      target[field] = field === "public" ? active.dataset.value === "public" : active.dataset.value;
+      if (field === "public") target[field] = active.dataset.value === "public";
+      else if (field === "record_danmaku") target[field] = active.dataset.value === "on";
+      else target[field] = active.dataset.value;
     }
     const scheduleRows = [...row.querySelectorAll(".schedule-row[data-slot-index]")];
     if (scheduleRows.length) {
@@ -593,6 +598,7 @@ async function resolveTargetUrl() {
         enabled: true,
         public: Boolean(state.config.public),
         record_mode: "record",
+        record_danmaku: false,
         watch_mode: "manual",
         collection_name: resolvedName,
         collection_id: "",
@@ -877,6 +883,7 @@ els.targetForm.addEventListener("submit", (event) => {
   state.config.targets.push({
     id: Math.random().toString(16).slice(2, 12), name, url, enabled: true,
     public: Boolean(state.config.public), record_mode: "record", collection_name: name, collection_id: "",
+    record_danmaku: false,
     watch_mode: "manual",
     title_template: "{name}｜{start_date} {start_time} 开播｜{room_title}",
     tags: ["直播录像", "抖音"], tid: 171, copyright: 2, source: "",

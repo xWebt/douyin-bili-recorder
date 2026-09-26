@@ -38,6 +38,7 @@ def _default_state(config: AppConfig) -> dict[str, Any]:
                 "enabled": target.enabled,
                 "public": target.public,
                 "record_mode": target.record_mode,
+                "record_danmaku": target.record_danmaku,
                 "watch_mode": target.watch_mode,
                 "collection_name": target.collection_name,
                 "collection_id": target.collection_id,
@@ -147,6 +148,7 @@ class UIStateStore:
                     f"enabled = {str(bool(target.get('enabled', True))).lower()}",
                     f"public = {str(bool(target.get('public', public))).lower()}",
                     f"record_mode = {json.dumps(str(target.get('record_mode', 'record')))}",
+                    f"record_danmaku = {str(bool(target.get('record_danmaku', False))).lower()}",
                     f"watch_mode = {json.dumps(str(target.get('watch_mode', 'scheduled')))}",
                     f"collection_name = {json.dumps(str(target.get('collection_name', '')), ensure_ascii=False)}",
                     f"collection_id = {json.dumps(str(target.get('collection_id', '')))}",
@@ -235,6 +237,7 @@ class UIStateStore:
                         if str(item.get("record_mode", "record")) in {"record", "monitor"}
                         else "record"
                     ),
+                    "record_danmaku": bool(item.get("record_danmaku", False)),
                     "watch_mode": (
                         str(item.get("watch_mode", "all_day"))
                         if str(item.get("watch_mode", "all_day")) in {"scheduled", "all_day", "manual"}

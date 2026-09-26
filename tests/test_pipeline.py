@@ -5,7 +5,7 @@ import threading
 from pathlib import Path
 
 from douyin_bili_recorder.config import load_config
-from douyin_bili_recorder.models import MediaFile, SessionStatus
+from douyin_bili_recorder.models import MediaFile, SessionRecord, SessionStatus
 from douyin_bili_recorder.pipeline import RecorderService
 from douyin_bili_recorder.recorder import RecordAttempt
 from douyin_bili_recorder.uploader import UploadResult
@@ -502,3 +502,52 @@ enabled = true
     assert service.record_and_upload(config.targets[0]) is True
     assert reconnect_waits
     assert reconnect_waits[0][1].detected_start_epoch is not None
+
+
+def test_prepare_part_moves_matching_danmaku_xml(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[recording]
+min_file_size_mb = 0
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+retry_count = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+record_danmaku = true
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    service.media = FakeMedia()  # type: ignore[assignment]
+    session_dir = config.sessions_dir / "session"
+    session_dir.mkdir(parents=True)
+    source = session_dir / "capture.flv"
+    source.write_bytes(b"video")
+    danmaku = session_dir / "capture.xml"
+    danmaku.write_text("<i><d p=\"1,1,25,16777215\">hello</d></i>", encoding="utf-8")
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/123",
+        detected_start_epoch=1,
+        detected_start_iso="2026-09-26T00:00:00+08:00",
+    )
+
+    part = service._prepare_part(config.targets[0], session, session_dir, source, 1)
+
+    assert part is not None
+    assert part.danmaku_path.endswith(".xml")
+    assert Path(part.danmaku_path).exists()
+    assert not danmaku.exists()

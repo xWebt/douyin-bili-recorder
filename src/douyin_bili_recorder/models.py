@@ -71,6 +71,7 @@ class SessionPart:
     title: str = ""
     path: str = ""
     source_path: str = ""
+    danmaku_path: str = ""
     size: int = 0
     duration_seconds: float | None = None
     bvid: str | None = None
@@ -85,6 +86,7 @@ class SessionPart:
             title=str(data.get("title", "")),
             path=str(data.get("path", "")),
             source_path=str(data.get("source_path", "")),
+            danmaku_path=str(data.get("danmaku_path", "")),
             size=int(data.get("size", 0)),
             duration_seconds=data.get("duration_seconds"),
             bvid=data.get("bvid"),

@@ -149,3 +149,10 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - The report API returns `409` for an incomplete current month and for an incomplete week unless current-week partial generation is explicitly requested.
 - A current-week report with `allow_partial=true` returns a valid `%PDF-` document through the live API.
 - 凡晨 local analytics now contain two real sessions: `2026-09-24 00:48` (late 48 minutes) and `2026-09-25 00:52` (late 22 minutes). The `00:52` offline ghost record was removed.
+
+## v2.2.5 danmaku and submission-window validation
+
+- biliup docs were checked directly: `download` exposes URL/output/split options, while `douyin_danmaku = true` is a `server --config` setting.
+- The generated danmaku server config is covered by tests and starts successfully with `uploader = Noop`, a no-op postprocessor, relative output naming, and a per-session runtime directory.
+- A live supported-platform server run produced video plus XML output files with the expected `<i>` structure; the pipeline tests cover moving a matching XML file beside each video part and deleting it with the local video when configured.
+- The submission dialog list now has a bounded `52vh` scroll area.

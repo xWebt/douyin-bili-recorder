@@ -1389,6 +1389,10 @@ th {
   display: grid;
   gap: 8px;
   margin-top: 15px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 .submission-row {
