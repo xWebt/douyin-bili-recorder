@@ -9,6 +9,10 @@ from .config import AppConfig
 from .encoding import video_bitrate_kbps
 from .process import ProcessRunner
 
+CHINESE_FONT = "Hiragino Sans GB"
+EMOJI_FONT = "Noto Emoji"
+BUNDLED_FONT_DIR = Path(__file__).with_name("fonts")
+
 
 def ass_time(seconds: float) -> str:
     seconds = max(0.0, seconds)
@@ -20,6 +24,30 @@ def ass_time(seconds: float) -> str:
 
 def escape_ass(text: str) -> str:
     return text.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}").replace("\n", r"\N")
+
+
+def is_emoji_char(char: str) -> bool:
+    codepoint = ord(char)
+    return (
+        0x1F000 <= codepoint <= 0x1FAFF
+        or 0x2600 <= codepoint <= 0x27BF
+        or 0x2B00 <= codepoint <= 0x2BFF
+        or codepoint in {0x200D, 0x20E3, 0xFE0F}
+    )
+
+
+def format_ass_text(text: str) -> str:
+    result: list[str] = []
+    in_emoji = False
+    for char in text:
+        emoji = is_emoji_char(char)
+        if emoji != in_emoji:
+            result.append(rf"{{\fn{EMOJI_FONT}}}" if emoji else rf"{{\fn{CHINESE_FONT}}}")
+            in_emoji = emoji
+        result.append(escape_ass(char))
+    if in_emoji:
+        result.append(rf"{{\fn{CHINESE_FONT}}}")
+    return "".join(result)
 
 
 def estimate_text_width(text: str, font_size: int) -> int:
@@ -59,7 +87,7 @@ def build_ass(xml_path: Path, ass_path: Path, width: int, height: int) -> int:
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        f"Style: Default,Hiragino Sans GB,{font_size},&H00FFFFFF,&H00FFFFFF,&H80000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,8,20,20,20,1",
+        f"Style: Default,{CHINESE_FONT},{font_size},&H00FFFFFF,&H00FFFFFF,&H80000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,8,20,20,20,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -81,7 +109,7 @@ def build_ass(xml_path: Path, ass_path: Path, width: int, height: int) -> int:
         end_x = -text_width - 24
         effect = rf"{{\an7\move({start_x},{y},{end_x},{y})}}"
         lines.append(
-            f"Dialogue: 0,{ass_time(actual_start)},{ass_time(end)},Default,,0,0,0,,{effect}{escape_ass(text)}"
+            f"Dialogue: 0,{ass_time(actual_start)},{ass_time(end)},Default,,0,0,0,,{effect}{format_ass_text(text)}"
         )
     ass_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return len(events)
@@ -109,7 +137,7 @@ class DanmakuRenderer:
             ass_path.unlink(missing_ok=True)
             return 0
 
-        fontsdir = "/System/Library/Fonts" if Path("/System/Library/Fonts").is_dir() else ""
+        fontsdir = str(BUNDLED_FONT_DIR) if (BUNDLED_FONT_DIR / "NotoEmoji.ttf").is_file() else ""
         ass_filter = f"ass={ass_path}"
         if fontsdir:
             ass_filter += f":fontsdir={fontsdir}"

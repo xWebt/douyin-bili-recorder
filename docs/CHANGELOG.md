@@ -1,6 +1,12 @@
 # Changelog
 
 
+## v2.2.8
+
+- Bundled Noto Emoji and added per-glyph emoji font overrides so characters such as `🥚` render instead of appearing as tofu boxes.
+- The application no longer depends on a user manually installing an emoji font; the bundled font is copied into the macOS application runtime alongside the web assets.
+
+
 ## v2.2.7
 
 - Fixed sparse burned-in danmaku caused by holding a lane for the full 13-22 second scroll duration and enforcing a 0.65 second global launch gap.

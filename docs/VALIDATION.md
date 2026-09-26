@@ -172,3 +172,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - The previous scheduler placed only 10 of those comments before the end of the segment and pushed the last scheduled launch to 127.33 seconds.
 - The revised scheduler keeps the last launch at 14.63 seconds and places all 64 comments inside the segment while retaining slow scrolling and 0.20 second staggering.
 - The fixed-density render was submitted privately as `BV1sVho6UEd9`; the 8-second frame shows the full burst spread across multiple lanes instead of only a handful of comments.
+
+## v2.2.8 font fallback validation
+
+- The validation XML contains four `🥚` characters, which the Chinese font does not cover and previously rendered as tofu boxes.
+- The revised ASS wraps emoji runs in `\fnNoto Emoji` and resets to `Hiragino Sans GB` for Chinese text.
+- A local render using the bundled `NotoEmoji.ttf` now displays `🥚` as a monochrome glyph inside the burned-in danmaku.

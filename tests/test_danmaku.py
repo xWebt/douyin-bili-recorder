@@ -100,3 +100,15 @@ record_danmaku = true
     assert output.read_bytes() == b"burned"
     assert not output.with_suffix(".ass").exists()
     assert any("ass=" in item for item in runner.commands[0])
+    assert any("fontsdir=" in item and "douyin_bili_recorder/fonts" in item for item in runner.commands[0])
+
+
+def test_build_ass_uses_emoji_font_for_missing_glyphs(tmp_path: Path) -> None:
+    xml = tmp_path / "emoji.xml"
+    xml.write_text('<i><d p="0.1,1,25,16777215,1,0,0,0">测试🥚[赞]</d></i>', encoding="utf-8")
+    ass = tmp_path / "emoji.ass"
+
+    build_ass(xml, ass, 1920, 1080)
+    content = ass.read_text(encoding="utf-8")
+
+    assert r"{\fnNoto Emoji}🥚{\fnHiragino Sans GB}[赞]" in content

@@ -11,7 +11,7 @@ APP_NAME="DouyinBiliRecorder"
 DIST_APP="$ROOT_DIR/dist/$APP_NAME.app"
 RUNTIME_DIR="$ROOT_DIR/dist/$APP_NAME"
 ZIP="$ROOT_DIR/dist/${APP_NAME}-macos-arm64.zip"
-VERSION="${APP_VERSION:-2.2.7}"
+VERSION="${APP_VERSION:-2.2.8}"
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/DouyinBiliRecorder-build.XXXXXX")"
 APP="$BUILD_ROOT/$APP_NAME.app"
 
@@ -41,6 +41,8 @@ rm -rf "$ROOT_DIR/build" "$RUNTIME_DIR" "$DIST_APP" "$ZIP"
   --name "$APP_NAME" \
   --paths "$ROOT_DIR/src" \
   --add-data "$ROOT_DIR/src/douyin_bili_recorder/web:douyin_bili_recorder/web" \
+  --add-data "$ROOT_DIR/src/douyin_bili_recorder/fonts:douyin_bili_recorder/fonts" \
+  --add-data "$ROOT_DIR/src/douyin_bili_recorder/NotoEmoji-OFL.txt:douyin_bili_recorder" \
   --add-binary "$ROOT_DIR/.tools/ffmpeg/ffmpeg:bin" \
   --add-binary "$ROOT_DIR/.tools/ffmpeg/ffprobe:bin" \
   --collect-all "biliup" \
