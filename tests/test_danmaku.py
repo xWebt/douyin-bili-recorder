@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from douyin_bili_recorder.config import load_config
@@ -39,8 +40,27 @@ def test_build_ass_uses_slow_staggered_right_to_left_motion(tmp_path: Path) -> N
     assert content.count(r"\move(") == 2
     assert r"\an7" in content
     assert "Hiragino Sans GB" in content
-    assert "0:00:00.25" in content
-    assert "0:00:00.90" in content
+    assert "0:00:00.10" in content
+    assert "0:00:00.30" in content
+
+
+def test_build_ass_keeps_a_burst_close_to_its_original_time(tmp_path: Path) -> None:
+    xml = tmp_path / "burst.xml"
+    xml.write_text(
+        '<i>' + ''.join('<d p="1,1,25,16777215,1,0,0,0">burst</d>' for _ in range(40)) + '</i>',
+        encoding="utf-8",
+    )
+    ass = tmp_path / "burst.ass"
+
+    assert build_ass(xml, ass, 1920, 1080) == 40
+    starts = [
+        int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+        for hours, minutes, seconds in re.findall(
+            r"^Dialogue: 0,(\d+):(\d+):([0-9.]+)", ass.read_text(encoding="utf-8"), re.MULTILINE
+        )
+    ]
+    assert len(starts) == 40
+    assert max(starts) <= 10.0
 
 
 def test_renderer_burns_ass_then_removes_temporary_file(tmp_path: Path) -> None:

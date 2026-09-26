@@ -1,6 +1,12 @@
 # Changelog
 
 
+## v2.2.7
+
+- Fixed sparse burned-in danmaku caused by holding a lane for the full 13-22 second scroll duration and enforcing a 0.65 second global launch gap.
+- Lanes are now reusable after 0.35 seconds and launches remain globally staggered by 0.20 seconds, so a 16.68 second validation segment now schedules all 64 recorded comments inside the segment instead of only 10.
+
+
 ## v2.2.6
 
 - Moved danmaku rendering into the application pipeline: when an anchor has `record_danmaku` enabled, the XML is converted to ASS and burned into an MP4 before the normal Bilibili upload queue.

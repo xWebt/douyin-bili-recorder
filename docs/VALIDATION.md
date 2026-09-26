@@ -165,3 +165,10 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Origin/source burn-in peak accounting now reserves space for the original segment plus the rendered MP4.
 - A live application-path run on 2026-09-26 recorded Douyin room `576072146567`, captured XML, burned the scrolling danmaku into a 1920x1080 MP4, and submitted it privately as `BV1dGhd68ERa`.
 - An 8-second frame extracted from the submitted upload shows multiple staggered white comments crossing the right side of the video while the live content remains visible underneath.
+
+## v2.2.7 danmaku density validation
+
+- The recorded 16.68 second validation XML contains 64 comments.
+- The previous scheduler placed only 10 of those comments before the end of the segment and pushed the last scheduled launch to 127.33 seconds.
+- The revised scheduler keeps the last launch at 14.63 seconds and places all 64 comments inside the segment while retaining slow scrolling and 0.20 second staggering.
+- The fixed-density render was submitted privately as `BV1sVho6UEd9`; the 8-second frame shows the full burst spread across multiple lanes instead of only a handful of comments.
