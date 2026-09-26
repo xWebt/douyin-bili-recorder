@@ -1,10 +1,21 @@
 # Changelog
 
 
+## v2.2.6
+
+- Moved danmaku rendering into the application pipeline: when an anchor has `record_danmaku` enabled, the XML is converted to ASS and burned into an MP4 before the normal Bilibili upload queue.
+- Danmaku now scrolls from right to left with ten lanes, slower travel time, and at least 0.65 seconds of launch staggering.
+- Live checks now fall back to a short stream-gears probe when Douyin's room API reports a resolved room as offline, avoiding skipped broadcasts without starting a long-lived server for truly offline rooms.
+- Added burn-in peak-space accounting so origin/source recordings reserve room for both the original segment and the rendered MP4.
+- Added regression coverage for ASS motion, staggered timing, temporary ASS cleanup, and pipeline handoff to the rendered MP4.
+
+
+
 ## v2.2.5
 
-- Added a per-anchor `录制弹幕` option; enabled anchors now use biliup's documented `server --config` mode with `douyin_danmaku = true` and keep the generated XML beside each video part.
+
 - The app uses `uploader = Noop` plus a no-op postprocessor in danmaku mode so biliup only captures media/XML and the existing recorder uploader still owns Bilibili submission.
+- Added a per-anchor `录制弹幕` option; enabled anchors now use biliup's documented `server --config` mode with `douyin_danmaku = true` and keep the generated XML beside each video part.
 - Added XML cleanup to the existing `投稿成功后删除本地` behavior.
 - Made the Bilibili submission list a bounded scrollable window so the control page no longer grows indefinitely.
 - Confirmed from biliup docs that the simple `download` command exposes only URL/output/split options; danmaku recording is a server config feature.

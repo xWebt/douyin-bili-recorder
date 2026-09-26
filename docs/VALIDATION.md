@@ -156,3 +156,12 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - The generated danmaku server config is covered by tests and starts successfully with `uploader = Noop`, a no-op postprocessor, relative output naming, and a per-session runtime directory.
 - A live supported-platform server run produced video plus XML output files with the expected `<i>` structure; the pipeline tests cover moving a matching XML file beside each video part and deleting it with the local video when configured.
 - The submission dialog list now has a bounded `52vh` scroll area.
+
+## v2.2.6 in-app scrolling danmaku validation
+
+- The application now renders recorded XML into a burned-in MP4 before upload when an anchor has `record_danmaku` enabled.
+- Regression coverage verifies the ASS output contains `\move`, uses ten lanes, and staggers messages by at least 0.65 seconds.
+- Pipeline coverage verifies the rendered MP4 replaces the raw segment for upload while XML remains associated with the session part.
+- Origin/source burn-in peak accounting now reserves space for the original segment plus the rendered MP4.
+- A live application-path run on 2026-09-26 recorded Douyin room `576072146567`, captured XML, burned the scrolling danmaku into a 1920x1080 MP4, and submitted it privately as `BV1dGhd68ERa`.
+- An 8-second frame extracted from the submitted upload shows multiple staggered white comments crossing the right side of the video while the live content remains visible underneath.

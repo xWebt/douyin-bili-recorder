@@ -11,7 +11,7 @@ APP_NAME="DouyinBiliRecorder"
 DIST_APP="$ROOT_DIR/dist/$APP_NAME.app"
 RUNTIME_DIR="$ROOT_DIR/dist/$APP_NAME"
 ZIP="$ROOT_DIR/dist/${APP_NAME}-macos-arm64.zip"
-VERSION="${APP_VERSION:-2.2.5}"
+VERSION="${APP_VERSION:-2.2.6}"
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/DouyinBiliRecorder-build.XXXXXX")"
 APP="$BUILD_ROOT/$APP_NAME.app"
 

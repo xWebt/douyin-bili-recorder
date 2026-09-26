@@ -44,6 +44,7 @@ def peak_gb_per_segment(
     *,
     segment_seconds: int = 3600,
     origin_rate_gb_per_hour: float = DEFAULT_ORIGIN_GB_PER_HOUR,
+    burn_danmaku: bool = False,
 ) -> float:
     output = estimate_gb_per_hour(
         quality,
@@ -51,7 +52,7 @@ def peak_gb_per_segment(
         segment_seconds=segment_seconds,
         origin_rate_gb_per_hour=origin_rate_gb_per_hour,
     )
-    if needs_transcode(quality, frame_rate):
+    if needs_transcode(quality, frame_rate) or burn_danmaku:
         source = origin_rate_gb_per_hour * segment_seconds / 3600
         return round((source + output) * 1.08, 2)
     return round(output * 1.1, 2)

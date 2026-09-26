@@ -16,6 +16,7 @@ from .analytics import AnalyticsStore
 from .collection import BilibiliCollectionManager
 from .config import AppConfig, TargetConfig, load_config
 from .douyin import DouyinResolver
+from .danmaku import DanmakuRenderer
 from .encoding import peak_gb_per_segment
 from .media import MediaProcessor
 from .models import MediaFile, SessionPart, SessionRecord, SessionStatus
@@ -46,6 +47,7 @@ class RecorderService:
         self.io_runner = ProcessRunner(logger, self.shutdown_event)
         self.recorder = BiliupRecorder(config, self.record_runner, logger)
         self.media = MediaProcessor(config, self.io_runner, logger)
+        self.danmaku = DanmakuRenderer(config, self.io_runner, logger)
         self.uploader = BiliupUploader(config, self.io_runner, logger)
         self.storage = StorageGuard(config.sessions_dir, logger)
         self.analytics = AnalyticsStore(config.video_dir, config.timezone)
@@ -377,6 +379,7 @@ class RecorderService:
             self.config.quality,
             self.config.frame_rate,
             segment_seconds=segment_seconds,
+            burn_danmaku=target.record_danmaku,
         )
         while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
             self.storage.enforce_limit(self.config.max_cache_gb)
@@ -440,6 +443,20 @@ class RecorderService:
         *,
         upload_allowed: bool = True,
     ) -> SessionPart | None:
+        if target.record_danmaku:
+            danmaku_source = self._find_danmaku_source(source)
+            if danmaku_source is not None:
+                rendered = self._prepare_danmaku_part(
+                    target,
+                    session,
+                    session_dir,
+                    source,
+                    danmaku_source,
+                    part_index,
+                    upload_allowed=upload_allowed,
+                )
+                if rendered is not None:
+                    return rendered
         try:
             media = self.media.process_file(source, session_dir, part_index=part_index)
         except Exception as exc:  # noqa: BLE001
@@ -496,6 +513,76 @@ class RecorderService:
         self.store.save(session)
 
 
+        if not upload_allowed:
+            part.status = "LOCAL_ONLY"
+            self.store.save(session)
+            self.analytics.upsert(session)
+        return part
+
+    def _prepare_danmaku_part(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        session_dir: Path,
+        source: Path,
+        danmaku_source: Path,
+        part_index: int,
+        *,
+        upload_allowed: bool,
+    ) -> SessionPart | None:
+        start_epoch = session.detected_start_epoch or session.created_epoch
+        output_dir = session_output_dir(
+            self.config.video_dir,
+            target.name,
+            start_epoch,
+            self.config.timezone,
+            session.room_title,
+            session.session_id,
+        )
+        output_dir.mkdir(parents=True, exist_ok=True)
+        started = datetime.fromtimestamp(start_epoch, ZoneInfo(self.config.timezone))
+        base_name = f"{started.strftime('%H%M')}_{safe_path_name(session.room_title or '直播录像')}_P{part_index:02d}"
+        burned = output_dir / f"{base_name}.mp4"
+        try:
+            count = self.danmaku.render(
+                source,
+                danmaku_source,
+                burned,
+                quality=self.config.quality,
+                frame_rate=self.config.frame_rate,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.logger.exception("failed to render danmaku for %s: %s", source, exc)
+            burned.unlink(missing_ok=True)
+            return None
+        if count <= 0:
+            return None
+
+        raw_suffix = Path(source.name[:-5]).suffix.lower() if source.name.lower().endswith(".part") else source.suffix.lower()
+        raw_final: Path | None = None
+        if self.config.keep_original_files:
+            raw_final = output_dir / f"{base_name}{raw_suffix}"
+            if source != raw_final:
+                shutil.move(str(source), str(raw_final))
+        else:
+            source.unlink(missing_ok=True)
+
+        danmaku_final = output_dir / f"{base_name}.xml"
+        shutil.move(str(danmaku_source), str(danmaku_final))
+        part = SessionPart(
+            index=part_index,
+            status="PENDING",
+            path=str(burned),
+            source_path=str(raw_final or ""),
+            danmaku_path=str(danmaku_final),
+            size=burned.stat().st_size,
+            duration_seconds=self.media.probe_duration(burned),
+        )
+        session.parts.append(part)
+        if not session.title:
+            session.title = build_title(target.title_template, target.name, target.url, session, self.config.timezone)
+        part.title = f"{session.title}｜P{part_index:02d}"
+        self.store.save(session)
         if not upload_allowed:
             part.status = "LOCAL_ONLY"
             self.store.save(session)
@@ -716,11 +803,13 @@ class RecorderService:
 
     def _is_live(self, target: TargetConfig) -> bool:
         status = self._resolve_status(target)
-        if status is not None:
-            if status.web_rid:
-                return bool(status.live)
-            if status.live:
-                return True
+        if status is not None and status.live:
+            return True
+        # Douyin's room API intermittently reports live rooms as offline. When a
+        # room was resolved, let stream-gears make the final call instead of
+        # skipping a running broadcast.
+        if status is not None and status.web_rid:
+            self.logger.info("resolver reported offline for %s; probing stream", target.name)
         return self._probe_live_with_recorder(target)
 
     def _probe_live_with_recorder(self, target: TargetConfig) -> bool:

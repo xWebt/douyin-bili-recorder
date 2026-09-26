@@ -21,3 +21,9 @@ def test_transcode_peak_includes_original_plus_output() -> None:
     output = estimate_gb_per_hour("720p", "30")
     peak = peak_gb_per_segment("720p", "30")
     assert peak > 8.4 + output
+
+
+def test_danmaku_burn_peak_includes_original_plus_rendered_output() -> None:
+    output = estimate_gb_per_hour("origin", "source")
+    peak = peak_gb_per_segment("origin", "source", burn_danmaku=True)
+    assert peak > 8.4 + output

@@ -50,7 +50,7 @@ class MediaProcessor:
         return MediaFile(
             path=str(uploaded_path.relative_to(session_dir)),
             size=uploaded_path.stat().st_size,
-            duration_seconds=self._probe_duration(uploaded_path),
+            duration_seconds=self.probe_duration(uploaded_path),
             source=str(source.relative_to(session_dir)) if source != uploaded_path else None,
         )
 
@@ -102,7 +102,7 @@ class MediaProcessor:
         if result.returncode != 0 or not target.exists():
             raise RuntimeError(f"failed to convert {source} to {target}")
 
-    def _probe_duration(self, path: Path) -> float | None:
+    def probe_duration(self, path: Path) -> float | None:
         command = [
             self.config.ffprobe_bin,
             "-v",

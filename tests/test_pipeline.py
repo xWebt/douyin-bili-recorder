@@ -165,6 +165,15 @@ class FakeMedia:
             duration_seconds=10.0,
         )
 
+    def probe_duration(self, _path: Path) -> float:
+        return 10.0
+
+
+class FakeDanmakuRenderer:
+    def render(self, _source: Path, _xml: Path, output: Path, **_kwargs) -> int:
+        output.write_bytes(b"burned-danmaku")
+        return 2
+
 
 class OverlapUploader:
     def __init__(self) -> None:
@@ -215,6 +224,43 @@ class FakeResolver:
         return FakeStatus() if self.calls <= 2 else type(
             "Offline", (), {"live": False, "web_rid": "123", "room_title": ""}
         )()
+
+
+class OfflineResolvedStatus:
+    live = False
+    web_rid = "123"
+    room_title = ""
+
+
+def test_live_check_probes_when_resolver_reports_offline_room(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[recording]
+min_file_size_mb = 0
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+record_danmaku = true
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    service.resolver = type("Resolver", (), {"resolve": lambda _self, _url: OfflineResolvedStatus()})()  # type: ignore[assignment]
+    monkeypatch.setattr(service, "_probe_live_with_recorder", lambda _target: True)
+
+    assert service._is_live(config.targets[0]) is True
 
 
 def test_recording_continues_while_previous_part_uploads(tmp_path: Path) -> None:
@@ -551,3 +597,55 @@ record_danmaku = true
     assert part.danmaku_path.endswith(".xml")
     assert Path(part.danmaku_path).exists()
     assert not danmaku.exists()
+
+
+def test_prepare_part_burns_danmaku_into_uploaded_mp4(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[recording]
+min_file_size_mb = 0
+keep_original_files = true
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+retry_count = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+record_danmaku = true
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    service.media = FakeMedia()  # type: ignore[assignment]
+    service.danmaku = FakeDanmakuRenderer()  # type: ignore[assignment]
+    session_dir = config.sessions_dir / "session"
+    session_dir.mkdir(parents=True)
+    source = session_dir / "capture.flv"
+    source.write_bytes(b"video")
+    xml = session_dir / "capture.xml"
+    xml.write_text("<i><d p=\"0.1,1,25,16777215,1,0,0,0\">hello</d></i>", encoding="utf-8")
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/123",
+        detected_start_epoch=1,
+        detected_start_iso="2026-09-26T00:00:00+08:00",
+    )
+
+    part = service._prepare_part(config.targets[0], session, session_dir, source, 1)
+
+    assert part is not None
+    assert part.path.endswith(".mp4")
+    assert Path(part.path).read_bytes() == b"burned-danmaku"
+    assert Path(part.source_path).exists()
+    assert Path(part.danmaku_path).exists()

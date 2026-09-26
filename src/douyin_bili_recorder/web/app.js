@@ -341,7 +341,7 @@ function buildTargetRow(target, latest) {
       ["scheduled", "固定排班"], ["all_day", "全天轮询"], ["manual", "手动开启"],
     ], (value) => { target.watch_mode = value; }, "watch_mode"),
     segmentedControl("弹幕录制", target.record_danmaku ? "on" : "off", [
-      ["off", "不录制"], ["on", "录制 XML"],
+      ["off", "不录制"], ["on", "录制并烧录"],
     ], (value) => { target.record_danmaku = value === "on"; }, "record_danmaku"),
   );
   const collection = document.createElement("div");
@@ -375,8 +375,8 @@ function buildTargetRow(target, latest) {
   }
   const saveHint = document.createElement("small");
   saveHint.textContent = target.watch_mode === "scheduled"
-    ? "排班、权限、合集和监控模式会一起保存"
-    : "监控方式、权限和合集会一起保存";
+    ? "排班、权限、合集、监控模式和弹幕会一起保存"
+    : "监控方式、权限、合集和弹幕会一起保存";
   saveBar.append(saveTarget, saveHint);
   row.append(header, main, controls, modePanel, saveBar);
   return row;
