@@ -76,6 +76,7 @@ class DouyinResolver:
         anchor_name = ""
         room_title = ""
         room_id = ""
+        profile_live: bool | None = None
 
         if sec_uid and not web_rid:
             profile = self._resolve_profile(final_url)
@@ -83,8 +84,10 @@ class DouyinResolver:
             room_id = str(profile.get("room_id") or "")
             anchor_name = str(profile.get("anchor_name") or "")
             room_title = str(profile.get("room_title") or "")
+            if "live" in profile:
+                profile_live = bool(profile["live"])
 
-        if web_rid and (not anchor_name or not room_id or check_live):
+        if web_rid and (not anchor_name or not room_id or (check_live and profile_live is None)):
             status = self._room_status(web_rid)
             web_rid = str(status.get("web_rid") or web_rid)
             room_id = str(status.get("room_id") or room_id)
@@ -92,7 +95,7 @@ class DouyinResolver:
             room_title = str(status.get("room_title") or room_title)
             live = bool(status.get("live"))
         else:
-            live = False
+            live = bool(profile_live)
 
         canonical_url = f"https://live.douyin.com/{web_rid}" if web_rid else final_url
         return ResolvedTarget(
@@ -112,34 +115,53 @@ class DouyinResolver:
         response = self._get(url, allow_redirects=True)
         return str(response.url)
 
-    def _resolve_profile(self, url: str) -> dict[str, str]:
-        result: dict[str, str] = {}
+    def _resolve_profile(self, url: str) -> dict[str, Any]:
+        result: dict[str, Any] = {}
         sec_uid = self._extract_sec_uid(url)
-        if sec_uid:
-            try:
-                response = self._get(
-                    "https://www.iesdouyin.com/web/api/v2/user/info/",
-                    params={"sec_uid": sec_uid},
-                )
-                payload = response.json()
-                user = payload.get("user_info") or {}
-                result["anchor_name"] = str(user.get("nickname") or "")
-                unique_id = str(user.get("unique_id") or "").strip()
-                if unique_id:
-                    result["web_rid"] = unique_id
-                for entry in user.get("card_entries") or []:
-                    if int(entry.get("type") or 0) != 6:
-                        continue
-                    goto = str(entry.get("goto_url") or "")
-                    room_id = self._first_match(goto, r"anchor_id%3D(\d+)")
-                    if room_id:
-                        result["room_id"] = room_id
-                    break
-            except (requests.RequestException, ValueError, AttributeError):
-                pass
+        if not sec_uid:
+            return result
+
         try:
-            response = self._get(url)
-            text = response.text
+            response = self._get(
+                "https://www.iesdouyin.com/web/api/v2/user/info/",
+                params={"sec_uid": sec_uid},
+            )
+            user = (response.json().get("user_info") or {})
+            if user.get("nickname"):
+                result["anchor_name"] = str(user.get("nickname"))
+        except (requests.RequestException, ValueError, AttributeError):
+            pass
+
+        try:
+            response = self._get("https://webcast.amemv.com/webcast/room/reflow/info/", params={
+                "room_id": "2",
+                "sec_user_id": sec_uid,
+                "type_id": "0",
+                "live_id": "1",
+                "version_code": "99.99.99",
+                "app_id": "1128",
+                "aid": "6383",
+            })
+            room = ((response.json().get("data") or {}).get("room") or {})
+            owner = room.get("owner") or {}
+            numeric_web_rid = owner.get("web_rid") or room.get("web_rid")
+            if numeric_web_rid:
+                result["web_rid"] = str(numeric_web_rid)
+            if room.get("id_str") or room.get("id"):
+                result["room_id"] = str(room.get("id_str") or room.get("id"))
+            if owner.get("nickname"):
+                result["anchor_name"] = str(owner.get("nickname"))
+            if room.get("title"):
+                result["room_title"] = str(room.get("title"))
+            result["live"] = int(room.get("status") or 0) == 2
+        except (requests.RequestException, ValueError, AttributeError, TypeError):
+            pass
+
+        if result.get("web_rid"):
+            return result
+
+        try:
+            text = self._get(url).text
             for key, pattern in (
                 ("web_rid", r'web_rid["\\:]+\s*["\']?(\d+)'),
                 ("room_id", r'room_id["\\:]+\s*["\']?(\d+)'),
@@ -151,35 +173,7 @@ class DouyinResolver:
                     result[key] = value
         except requests.RequestException:
             pass
-
-        if not result.get("web_rid"):
-            if sec_uid:
-                api = "https://webcast.amemv.com/webcast/room/reflow/info/"
-                params = {
-                    "room_id": "2",
-                    "sec_user_id": sec_uid,
-                    "type_id": "0",
-                    "live_id": "1",
-                    "version_code": "99.99.99",
-                    "app_id": "1128",
-                    "aid": "6383",
-                }
-                try:
-                    response = self._get(api, params=params)
-                    payload = response.json()
-                    room = ((payload.get("data") or {}).get("room") or {})
-                    owner = room.get("owner") or {}
-                    if owner.get("web_rid") or room.get("web_rid"):
-                        result["web_rid"] = str(owner.get("web_rid") or room.get("web_rid"))
-                    if room.get("id_str") or room.get("id"):
-                        result["room_id"] = str(room.get("id_str") or room.get("id"))
-                    if owner.get("nickname"):
-                        result["anchor_name"] = str(owner.get("nickname"))
-                    if room.get("title"):
-                        result["room_title"] = str(room.get("title"))
-                except (requests.RequestException, ValueError, AttributeError):
-                    pass
-        return {key: value for key, value in result.items() if value}
+        return {key: value for key, value in result.items() if value not in (None, "")}
 
     def _room_status(self, web_rid: str) -> dict[str, Any]:
         if not web_rid.isdigit():

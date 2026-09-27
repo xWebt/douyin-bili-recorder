@@ -178,3 +178,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - The validation XML contains four `🥚` characters, which the Chinese font does not cover and previously rendered as tofu boxes.
 - The revised ASS wraps emoji runs in `\fnNoto Emoji` and resets to `Hiragino Sans GB` for Chinese text.
 - A local render using the bundled `NotoEmoji.ttf` now displays `🥚` as a monochrome glyph inside the burned-in danmaku.
+
+## v2.2.9 profile URL resolution validation
+
+- The `imxiaoxin` short link previously resolved to the non-numeric user ID `XiaoXinFps`, causing biliup to report `stream is offline` while the room was actually live.
+- The reflow API reported the actual live room as `694562812381` with `room.status = 2` and title `【im】极致的阴犬  纯粹的享受`.
+- After correcting the target URL, biliup reported `成功开始录制 https://live.douyin.com/694562812381` and opened a new danmaku session.

@@ -1,6 +1,12 @@
 # Changelog
 
 
+## v2.2.9
+
+- Fixed Douyin profile and short-link resolution so it prefers the numeric `room.owner.web_rid` and live status returned by the reflow API instead of treating a user unique ID such as `XiaoXinFps` as a live room.
+- This prevents live anchors linked by profile URL from being polled as `stream is offline`.
+
+
 ## v2.2.8
 
 - Bundled Noto Emoji and added per-glyph emoji font overrides so characters such as `🥚` render instead of appearing as tofu boxes.
