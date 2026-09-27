@@ -649,3 +649,55 @@ record_danmaku = true
     assert Path(part.path).read_bytes() == b"burned-danmaku"
     assert Path(part.source_path).exists()
     assert Path(part.danmaku_path).exists()
+
+
+def test_running_service_starts_workers_for_new_targets(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "first"
+url = "https://live.douyin.com/1"
+watch_mode = "all_day"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    started: list[str] = []
+    lock = threading.Lock()
+
+    def fake_loop(target) -> None:
+        with lock:
+            started.append(target.name)
+        service.shutdown_event.wait(5)
+
+    monkeypatch.setattr(service, "_target_loop", fake_loop)
+
+    assert service._sync_target_workers() == {"first"}
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + """
+
+[[targets]]
+name = "second"
+url = "https://live.douyin.com/2"
+watch_mode = "all_day"
+""",
+        encoding="utf-8",
+    )
+
+    assert service._sync_target_workers() == {"first", "second"}
+    assert set(started) == {"first", "second"}
+    service.shutdown_event.set()
+    for worker in service._target_workers.values():
+        worker.join(timeout=1)

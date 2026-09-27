@@ -190,3 +190,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - The full sample text `长按复制此条消息，打开抖音搜索，查看TA的更多作品。 [https://v.douyin.com/wd0JKyDUQ1A/](https://v.douyin.com/wd0JKyDUQ1A/)` now extracts `https://v.douyin.com/wd0JKyDUQ1A/`.
 - Its profile resolves to anchor `阿尔萨鱼` and the stable live-room alias `https://live.douyin.com/223yuu` while the anchor is offline.
 - The same resolver still upgrades an online room to the numeric live room ID returned by the reflow API.
+
+## v2.2.11 dynamic target worker validation
+
+- Reproduction: the service was running from 20:22 through 20:45, but `卢某某` and `代号408` never appeared in the target polling log because they were added after the fixed worker list was created.
+- Regression coverage verifies that adding a second target to the runtime config while the service is running starts a second dedicated worker.
+- A direct biliup probe confirmed `https://live.douyin.com/898664273354` is valid and produced a `.flv.part` for `以小博大扶贫第一人，把撤千万教学`, so the remaining failure was target-worker creation, not the room URL.

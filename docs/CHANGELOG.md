@@ -1,6 +1,13 @@
 # Changelog
 
 
+## v2.2.11
+
+- Fixed newly added anchors not being monitored until the whole recording service was restarted.
+- The running service now watches the runtime target list and starts a dedicated target worker for every new enabled anchor, while existing recording workers keep running.
+- Removed anchors are signalled to stop cleanly, and upload workers now scale independently of the initial target count.
+
+
 ## v2.2.10
 
 - Accepts the full Douyin share copy text and Markdown link syntax, extracting the first URL instead of passing the surrounding Chinese text to HTTP.

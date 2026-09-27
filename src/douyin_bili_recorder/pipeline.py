@@ -54,8 +54,9 @@ class RecorderService:
         self.resolver = DouyinResolver()
         self._pause_mode = ""
         self._state_lock = threading.Lock()
-        upload_workers = max(1, min(8, len([target for target in config.targets if target.enabled])))
-        self.upload_executor = ThreadPoolExecutor(max_workers=upload_workers, thread_name_prefix="upload")
+        self._target_workers: dict[str, threading.Thread] = {}
+        self._removed_targets: set[str] = set()
+        self.upload_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="upload")
         self._pending_uploads: dict[str, list[Future[bool]]] = {}
 
     def run_forever(self) -> None:
@@ -64,14 +65,13 @@ class RecorderService:
         lock_path = self.config.data_dir / "recorder.lock"
         with SingleInstanceLock(lock_path):
             self.recover_pending()
-            targets = [target for target in self.config.targets if target.enabled]
-            if not targets:
-                self.logger.warning("no enabled targets configured")
-                return
-            with ThreadPoolExecutor(max_workers=len(targets), thread_name_prefix="target") as pool:
-                futures = [pool.submit(self._target_loop, target) for target in targets]
-                for future in futures:
-                    future.result()
+            while not self.shutdown_event.is_set():
+                enabled = self._sync_target_workers()
+                if not enabled:
+                    self.logger.warning("no enabled targets configured")
+                self.shutdown_event.wait(5)
+            for worker in list(self._target_workers.values()):
+                worker.join(timeout=5)
 
     def run_once(self, target_name: str | None = None) -> bool:
         target = self._select_target(target_name)
@@ -100,9 +100,47 @@ class RecorderService:
                         session.error = ""
                         self.store.save(session)
 
+    def _sync_target_workers(self) -> set[str]:
+        try:
+            fresh = load_config(self.config.config_path)
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning("failed to load runtime target list: %s", exc)
+            return {name for name, worker in self._target_workers.items() if worker.is_alive()}
+
+        self.config.targets = fresh.targets
+        current_names = {target.name for target in fresh.targets}
+        enabled = {target.name for target in fresh.targets if target.enabled}
+
+        for name, worker in list(self._target_workers.items()):
+            if not worker.is_alive():
+                self._target_workers.pop(name, None)
+                continue
+            if name not in current_names:
+                self._removed_targets.add(name)
+
+        for target in fresh.targets:
+            if not target.enabled:
+                continue
+            self._removed_targets.discard(target.name)
+            worker = self._target_workers.get(target.name)
+            if worker is not None and worker.is_alive():
+                continue
+            worker = threading.Thread(
+                target=self._target_loop,
+                args=(target,),
+                name=f"target-{slugify(target.name)}",
+                daemon=True,
+            )
+            self._target_workers[target.name] = worker
+            worker.start()
+        return enabled
+
     def _target_loop(self, target: TargetConfig) -> None:
+        self.logger.info("target worker started for %s", target.name)
         while not self.shutdown_event.is_set():
             try:
+                if target.name in self._removed_targets:
+                    break
                 self._reload_runtime_settings(target)
                 if not target.enabled:
                     if self._wait_for_stop(max(10, self.config.poll_interval_seconds)):
@@ -132,6 +170,7 @@ class RecorderService:
             )
             if self._wait_for_stop(delay):
                 break
+        self.logger.info("target worker stopped for %s", target.name)
 
     def record_and_upload(self, target: TargetConfig) -> bool:
         self._reload_runtime_settings(target)
