@@ -1,6 +1,13 @@
 # Changelog
 
 
+## v2.2.10
+
+- Accepts the full Douyin share copy text and Markdown link syntax, extracting the first URL instead of passing the surrounding Chinese text to HTTP.
+- Offline profile shares now resolve to a stable room alias such as `https://live.douyin.com/223yuu`; live rooms still upgrade to the numeric `room.owner.web_rid`.
+- Fixed alphanumeric room aliases being incorrectly truncated at the first non-digit character.
+
+
 ## v2.2.9
 
 - Fixed Douyin profile and short-link resolution so it prefers the numeric `room.owner.web_rid` and live status returned by the reflow API instead of treating a user unique ID such as `XiaoXinFps` as a live room.

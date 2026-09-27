@@ -184,3 +184,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - The `imxiaoxin` short link previously resolved to the non-numeric user ID `XiaoXinFps`, causing biliup to report `stream is offline` while the room was actually live.
 - The reflow API reported the actual live room as `694562812381` with `room.status = 2` and title `【im】极致的阴犬  纯粹的享受`.
 - After correcting the target URL, biliup reported `成功开始录制 https://live.douyin.com/694562812381` and opened a new danmaku session.
+
+## v2.2.10 shared profile text validation
+
+- The full sample text `长按复制此条消息，打开抖音搜索，查看TA的更多作品。 [https://v.douyin.com/wd0JKyDUQ1A/](https://v.douyin.com/wd0JKyDUQ1A/)` now extracts `https://v.douyin.com/wd0JKyDUQ1A/`.
+- Its profile resolves to anchor `阿尔萨鱼` and the stable live-room alias `https://live.douyin.com/223yuu` while the anchor is offline.
+- The same resolver still upgrades an online room to the numeric live room ID returned by the reflow API.

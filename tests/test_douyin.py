@@ -1,6 +1,31 @@
 from __future__ import annotations
 
-from douyin_bili_recorder.douyin import DouyinResolver
+from douyin_bili_recorder.douyin import DouyinResolver, extract_shared_url
+
+
+def test_extract_shared_url_accepts_copy_text_and_markdown() -> None:
+    text = "长按复制此条消息，打开抖音搜索，查看TA的更多作品。 [https://v.douyin.com/wd0JKyDUQ1A/](https://v.douyin.com/wd0JKyDUQ1A/)"
+
+    assert extract_shared_url(text) == "https://v.douyin.com/wd0JKyDUQ1A/"
+
+
+def test_resolve_uses_live_alias_when_anchor_is_offline(monkeypatch) -> None:
+    resolver = DouyinResolver()
+    monkeypatch.setattr(
+        resolver,
+        "_resolve_profile",
+        lambda _url: {
+            "room_alias": "223yuu",
+            "anchor_name": "阿尔萨鱼",
+            "live": False,
+        },
+    )
+
+    result = resolver.resolve("https://www.douyin.com/user/test")
+
+    assert result.canonical_url == "https://live.douyin.com/223yuu"
+    assert result.anchor_name == "阿尔萨鱼"
+    assert result.live is False
 
 
 class FakeResponse:

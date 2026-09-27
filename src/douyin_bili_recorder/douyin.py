@@ -13,6 +13,15 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 )
+URL_RE = re.compile(r"https?://[^\s<>\"'\[\]()]+")
+URL_TRAILING_CHARS = ".,;:!?，。；：！？、）)]}】》"
+
+
+def extract_shared_url(text: str) -> str:
+    match = URL_RE.search(text)
+    if match is None:
+        return text.strip()
+    return match.group(0).rstrip(URL_TRAILING_CHARS)
 
 
 @dataclass(slots=True)
@@ -70,9 +79,11 @@ class DouyinResolver:
             return self.proxy_session.get(url, timeout=self.timeout, **kwargs)
 
     def resolve(self, url: str, *, check_live: bool = True) -> ResolvedTarget:
-        final_url = self._follow_redirect(url.strip())
+        shared_url = extract_shared_url(url)
+        final_url = self._follow_redirect(shared_url)
         sec_uid = self._extract_sec_uid(final_url)
         web_rid = self._extract_web_rid(final_url)
+        room_alias = ""
         anchor_name = ""
         room_title = ""
         room_id = ""
@@ -81,6 +92,7 @@ class DouyinResolver:
         if sec_uid and not web_rid:
             profile = self._resolve_profile(final_url)
             web_rid = str(profile.get("web_rid") or "")
+            room_alias = str(profile.get("room_alias") or "")
             room_id = str(profile.get("room_id") or "")
             anchor_name = str(profile.get("anchor_name") or "")
             room_title = str(profile.get("room_title") or "")
@@ -97,7 +109,8 @@ class DouyinResolver:
         else:
             live = bool(profile_live)
 
-        canonical_url = f"https://live.douyin.com/{web_rid}" if web_rid else final_url
+        canonical_room = web_rid or room_alias
+        canonical_url = f"https://live.douyin.com/{canonical_room}" if canonical_room else final_url
         return ResolvedTarget(
             input_url=url,
             canonical_url=canonical_url,
@@ -129,6 +142,8 @@ class DouyinResolver:
             user = (response.json().get("user_info") or {})
             if user.get("nickname"):
                 result["anchor_name"] = str(user.get("nickname"))
+            if user.get("unique_id"):
+                result["room_alias"] = str(user.get("unique_id"))
         except (requests.RequestException, ValueError, AttributeError):
             pass
 
@@ -265,7 +280,7 @@ class DouyinResolver:
 
     @staticmethod
     def _extract_web_rid(url: str) -> str:
-        match = re.search(r"(?:live\.douyin\.com|douyin\.com/live)/(\d+)", url)
+        match = re.search(r"(?:live\.douyin\.com|douyin\.com/live)/([^/?#]+)", url)
         return match.group(1) if match else ""
 
     @staticmethod
