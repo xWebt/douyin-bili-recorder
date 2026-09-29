@@ -253,8 +253,8 @@ class RecorderService:
             media_found = False
             self._set_target_status(
                 target,
-                "connecting",
-                "正在接收直播流",
+                "recording",
+                "已连接直播流，正在录制",
                 session_id=session.session_id,
             )
 

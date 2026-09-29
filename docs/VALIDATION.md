@@ -241,3 +241,8 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Full test suite: `66 passed`.
 - Reopened the desktop app with a pending 7JIA P01 session; the worker recovered the session and completed the upload, producing BVID `BV1Pkap6RE4u`.
 - The final per-anchor usage calculation now receives target names from the saved UI state, matching the anchors visible in the control deck.
+
+## v2.2.19 immediate recording-state validation
+
+- The recorder worker now writes `recording` status immediately after the long-lived recorder process is started.
+- `node --check` and the Python test suite remain required before packaging.

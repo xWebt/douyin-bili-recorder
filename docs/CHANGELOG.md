@@ -1,6 +1,10 @@
 # Changelog
 
 
+## v2.2.19
+
+- The per-anchor status switches to `录制中` as soon as the recorder process connects to the live stream, instead of waiting for the first completed segment to appear on disk.
+
 ## v2.2.18
 
 - Per-anchor usage now uses the current saved UI target list rather than the base config target list, so orphaned completed files in active anchor folders are counted correctly.
