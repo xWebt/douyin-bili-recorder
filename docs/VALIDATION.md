@@ -258,3 +258,8 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Full test suite: `67 passed`; browser script passes `node --check`.
 - Active recording sessions are passed into the target renderer independently from upload progress.
 - Upload progress is rendered on a dedicated card line, preserving the recording badge while a part uploads.
+
+## v2.2.22 parallel recovery validation
+
+- Full test suite: `68 passed`.
+- Regression coverage starts two recovered uploads and verifies both reach the uploader before either is released, proving startup recovery is no longer serialized.

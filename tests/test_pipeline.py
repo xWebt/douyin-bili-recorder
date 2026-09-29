@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from concurrent.futures import Future
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -938,6 +939,52 @@ url = "https://live.douyin.com/1"
     assert len(results) == 2
     assert all(result.verified for result in results)
     assert service.store.load(session.session_id).parts[0].status == "UPLOADED"
+
+
+def test_recover_pending_uploads_sessions_in_parallel(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+retry_count = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    uploader = BlockingPartUploader()
+    service.uploader = uploader  # type: ignore[assignment]
+    for index in range(2):
+        media = tmp_path / f"part-{index}.mp4"
+        media.write_bytes(b"video")
+        service.store.save(
+            SessionRecord(
+                session_id=f"session-{index}",
+                target_name="anchor",
+                target_url="https://live.douyin.com/1",
+                status=SessionStatus.RECORDED,
+                parts=[SessionPart(index=1, status="PENDING", title=f"P{index}", path=str(media))],
+            )
+        )
+
+    service.recover_pending()
+    assert uploader.started.wait(1)
+    deadline = time.monotonic() + 1
+    while uploader.calls < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert uploader.calls == 2
+    uploader.release.set()
 
 
 def test_run_forever_exits_after_interrupt_without_active_recording(tmp_path: Path) -> None:

@@ -1,6 +1,12 @@
 # Changelog
 
 
+## v2.2.22
+
+- Startup recovery now dispatches each pending session upload to the upload thread pool in parallel instead of uploading sessions one by one.
+- A large or slow orphan part can no longer block recovery of other pending anchors.
+
+
 ## v2.2.21
 
 - Target cards now show recording and upload activity side by side. While a completed part uploads, the primary state remains `录制中 / 上传中` and a separate line shows upload P number, percentage, and ETA.
@@ -102,6 +108,11 @@
 - Added regression coverage for ASS motion, staggered timing, temporary ASS cleanup, and pipeline handoff to the rendered MP4.
 
 
+
+## v2.2.22
+
+- Startup recovery now dispatches each pending session upload to the upload thread pool in parallel instead of uploading sessions one by one.
+- A large or slow orphan part can no longer block recovery of other pending anchors.
 
 ## v2.2.5
 

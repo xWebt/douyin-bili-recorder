@@ -103,7 +103,9 @@ class RecorderService:
                 self.store.save(session)
                 self.analytics.upsert(session)
             if session.status in {SessionStatus.RECORDED, SessionStatus.UPLOADING, SessionStatus.UPLOAD_FAILED}:
-                self._upload_with_retries(session)
+                future = self.upload_executor.submit(self._upload_with_retries, session)
+                self._pending_uploads.setdefault(session.session_id, []).append(future)
+                future.add_done_callback(lambda _future, session_id=session.session_id: self._pending_uploads.pop(session_id, None))
             elif session.status == SessionStatus.UPLOAD_SUBMITTED_UNVERIFIED:
                 target = self._target_by_name(session.target_name)
                 if target is not None:
