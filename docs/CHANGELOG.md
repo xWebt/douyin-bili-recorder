@@ -1,6 +1,11 @@
 # Changelog
 
 
+## v2.2.21
+
+- Target cards now show recording and upload activity side by side. While a completed part uploads, the primary state remains `录制中 / 上传中` and a separate line shows upload P number, percentage, and ETA.
+- The recording state is derived from active `RECORDING` sessions even if the latest upload progress event arrives first.
+
 ## v2.2.20
 
 - Reopening the service now scans recent session output directories for completed `P02`/`P03` media that were never written into `session.json`, restores them as pending parts, and resumes upload automatically.

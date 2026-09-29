@@ -1095,7 +1095,7 @@ input::placeholder {
 }
 
 .target-identity .target-status {
-  grid-row: 1 / 5;
+  grid-row: 1 / 6;
 }
 
 .target-identity strong,
@@ -1111,6 +1111,15 @@ input::placeholder {
 
 .target-runtime-message {
   color: var(--ink-soft) !important;
+}
+
+.target-upload-progress {
+  color: var(--amber) !important;
+  font-family: var(--mono);
+}
+
+.target-upload-progress[hidden] {
+  display: none;
 }
 
 .target-usage {

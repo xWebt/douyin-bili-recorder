@@ -297,6 +297,11 @@ function renderTargets() {
     if (!latestByTarget.has(session.target_name)) latestByTarget.set(session.target_name, session);
   }
   const runtimeByTarget = state.service?.target_statuses || {};
+  const recordingTargets = new Set(
+    (state.service?.sessions || [])
+      .filter((session) => String(session.status || "").toUpperCase() === "RECORDING")
+      .map((session) => session.target_name),
+  );
   const usageByTarget = state.service?.target_usage_bytes || {};
   const uploadByTarget = new Map();
   for (const upload of state.service?.upload_progresses || []) {
@@ -310,13 +315,14 @@ function renderTargets() {
       latestByTarget.get(target.name),
       runtimeByTarget[target.name],
       uploadByTarget.get(target.name),
+      recordingTargets.has(target.name),
       usageByTarget[target.name] || 0,
     ));
   }
   renderIcons();
 }
 
-function resolveTargetRuntime(target, latest, runtimeStatus, activeUpload) {
+function resolveTargetRuntime(target, latest, runtimeStatus, activeUpload, isRecordingTarget) {
   if (!target.enabled) return { meta: TARGET_STATE_META.paused, detail: "已暂停监控" };
   if (!state.service?.running) return { meta: TARGET_STATE_META.service_stopped, detail: "录制服务未运行" };
 
@@ -324,11 +330,11 @@ function resolveTargetRuntime(target, latest, runtimeStatus, activeUpload) {
   const runtime = runtimeStatus || {};
   let stateName = String(runtime.state || "");
   let message = String(runtime.message || "");
+  const isRecording = Boolean(isRecordingTarget) || stateName === "recording" || stateName === "recording_uploading" || latestState === "RECORDING";
   if (activeUpload) {
     const percent = Math.max(0, Math.min(100, Number(activeUpload.percent || 0)));
     const eta = activeUpload.eta_seconds != null ? ` · 剩余 ${formatDuration(activeUpload.eta_seconds)}` : "";
-    const recording = stateName === "recording" || stateName === "recording_uploading" || latestState === "RECORDING";
-    stateName = recording ? "recording_uploading" : "uploading";
+    stateName = isRecording ? "recording_uploading" : "uploading";
     message = `P${String(activeUpload.part || 1).padStart(2, "0")} · ${percent.toFixed(1)}%${eta}`;
   }
   if (!stateName) {
@@ -350,7 +356,10 @@ function resolveTargetRuntime(target, latest, runtimeStatus, activeUpload) {
   } else if (updatedAt && stateName !== "uploading") {
     detail += ` · ${formatClock(updatedAt)}`;
   }
-  return { meta, detail };
+  const uploadDetail = activeUpload
+    ? `上传进度：P${String(activeUpload.part || 1).padStart(2, "0")} · ${Math.max(0, Math.min(100, Number(activeUpload.percent || 0))).toFixed(1)}%${activeUpload.eta_seconds != null ? ` · 剩余 ${formatDuration(activeUpload.eta_seconds)}` : ""}`
+    : "";
+  return { meta, detail, uploadDetail, isRecording };
 }
 
 function formatClock(epochSeconds) {
@@ -362,7 +371,7 @@ function formatClock(epochSeconds) {
   });
 }
 
-function buildTargetRow(target, latest, runtimeStatus, activeUpload, usageBytes) {
+function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecordingTarget, usageBytes) {
   const row = document.createElement("article");
   row.className = "target-row";
   row.dataset.targetId = target.id;
@@ -370,7 +379,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, usageBytes)
   header.className = "target-header";
   const identity = document.createElement("div");
   identity.className = "target-identity";
-  const runtime = resolveTargetRuntime(target, latest, runtimeStatus, activeUpload);
+  const runtime = resolveTargetRuntime(target, latest, runtimeStatus, activeUpload, isRecordingTarget);
   const status = document.createElement("span");
   status.className = `target-status ${runtime.meta.tone}`;
   status.append(makeDot(), document.createTextNode(runtime.meta.label));
@@ -385,7 +394,11 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, usageBytes)
   const usage = document.createElement("small");
   usage.className = "target-usage";
   usage.textContent = `空间占用 ${formatBytes(usageBytes)}`;
-  identity.append(status, name, url, runtimeMessage, usage);
+  const uploadMessage = document.createElement("small");
+  uploadMessage.className = "target-upload-progress";
+  uploadMessage.textContent = runtime.uploadDetail;
+  uploadMessage.hidden = !runtime.uploadDetail;
+  identity.append(status, name, url, runtimeMessage, uploadMessage, usage);
 
   const actions = document.createElement("div");
   actions.className = "target-actions";

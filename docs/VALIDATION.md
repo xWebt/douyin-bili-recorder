@@ -252,3 +252,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Full test suite: `67 passed`.
 - Regression coverage verifies a recent completed P02 in the session output directory is restored even when `session.json` only contains P01.
 - Regression coverage verifies MP4 is preferred over its matching FLV source and the XML danmaku sidecar is attached.
+
+## v2.2.21 recording-plus-upload display validation
+
+- Full test suite: `67 passed`; browser script passes `node --check`.
+- Active recording sessions are passed into the target renderer independently from upload progress.
+- Upload progress is rendered on a dedicated card line, preserving the recording badge while a part uploads.
