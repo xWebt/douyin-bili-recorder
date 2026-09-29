@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from douyin_bili_recorder.config import load_config
 from douyin_bili_recorder.models import MediaFile, SessionRecord, SessionStatus
@@ -701,3 +703,43 @@ watch_mode = "all_day"
     service.shutdown_event.set()
     for worker in service._target_workers.values():
         worker.join(timeout=1)
+
+
+def test_live_target_continues_after_schedule_end(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+timezone = "Asia/Shanghai"
+
+[storage]
+video_dir = "videos"
+reconnect_grace_minutes = 15
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+watch_mode = "scheduled"
+
+[[targets.schedule]]
+days = [1, 2, 3, 4, 5, 6, 7]
+start = "20:00"
+end = "21:00"
+enabled = true
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    target = config.targets[0]
+    moment = datetime(2026, 9, 29, 21, 10, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+    assert service._schedule_allows_polling(target, moment) is False
+    service._last_live_epoch[target.name] = int((moment - timedelta(minutes=5)).timestamp())
+    assert service._schedule_allows_polling(target, moment) is True
+    service._last_live_epoch[target.name] = int((moment - timedelta(minutes=20)).timestamp())
+    assert service._schedule_allows_polling(target, moment) is False

@@ -1,6 +1,13 @@
 # Changelog
 
 
+## v2.2.12
+
+- Schedule windows now control when monitoring starts, not when an active live stream must stop. A recently seen live target continues polling after the scheduled end during the reconnect grace period.
+- Danmaku burn-in in origin mode now probes the source video bitrate and preserves that bitrate instead of forcing `CRF 20 + veryfast`.
+- x264 now uses the `medium` preset for better detail retention; the CRF fallback moved from 20 to 16, and audio increased from 128k to 256k.
+
+
 ## v2.2.11
 
 - Fixed newly added anchors not being monitored until the whole recording service was restarted.

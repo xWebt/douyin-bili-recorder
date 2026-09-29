@@ -93,6 +93,7 @@ record_danmaku = true
     runner = FakeRunner()
     renderer = DanmakuRenderer(config, runner, logging.getLogger("test"))
     renderer.probe_size = lambda _path: (1280, 720)  # type: ignore[method-assign]
+    renderer.probe_video_bitrate = lambda _path: 20_480_000  # type: ignore[method-assign]
 
     count = renderer.render(source, xml, output, quality="origin", frame_rate="source")
 
@@ -100,6 +101,8 @@ record_danmaku = true
     assert output.read_bytes() == b"burned"
     assert not output.with_suffix(".ass").exists()
     assert any("ass=" in item for item in runner.commands[0])
+    assert "20480000k" in runner.commands[0]
+    assert "medium" in runner.commands[0]
     assert any("fontsdir=" in item and "douyin_bili_recorder/fonts" in item for item in runner.commands[0])
 
 

@@ -162,13 +162,15 @@ class DanmakuRenderer:
         filters.append(ass_filter)
         command.extend(["-vf", ",".join(filters)])
         bitrate = video_bitrate_kbps(quality, frame_rate)
+        if quality == "origin" and not bitrate:
+            bitrate = self.probe_video_bitrate(source)
         if bitrate:
             command.extend(
                 [
                     "-c:v",
                     "libx264",
                     "-preset",
-                    "veryfast",
+                    "medium",
                     "-pix_fmt",
                     "yuv420p",
                     "-b:v",
@@ -180,13 +182,13 @@ class DanmakuRenderer:
                 ]
             )
         else:
-            command.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"])
+            command.extend(["-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p"])
         command.extend(
             [
                 "-c:a",
                 "aac",
                 "-b:a",
-                "128k",
+                "256k",
                 "-movflags",
                 "+faststart",
                 "-avoid_negative_ts",
@@ -202,7 +204,31 @@ class DanmakuRenderer:
             ass_path.unlink(missing_ok=True)
         return count
 
+    def probe_video_bitrate(self, media: Path) -> int:
+        result = subprocess.run(
+            [
+                self.config.ffprobe_bin,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=bit_rate",
+                "-of",
+                "default=nw=1:nk=1",
+                str(media),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        try:
+            return max(0, int(result.stdout.strip()))
+        except (TypeError, ValueError):
+            return 0
+
     def probe_size(self, media: Path) -> tuple[int, int]:
+
         result = subprocess.run(
             [
                 self.config.ffprobe_bin,

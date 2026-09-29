@@ -196,3 +196,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Reproduction: the service was running from 20:22 through 20:45, but `卢某某` and `代号408` never appeared in the target polling log because they were added after the fixed worker list was created.
 - Regression coverage verifies that adding a second target to the runtime config while the service is running starts a second dedicated worker.
 - A direct biliup probe confirmed `https://live.douyin.com/898664273354` is valid and produced a `.flv.part` for `以小博大扶贫第一人，把撤千万教学`, so the remaining failure was target-worker creation, not the room URL.
+
+## v2.2.12 schedule overtime and origin quality validation
+
+- Regression coverage verifies a scheduled target remains pollable after the configured end when it was live within the reconnect grace period, and expires after the grace window.
+- A live imxiaoxin source segment was measured at 1920x1080, 60 fps, about 20.48 Mbps video and 18.83 Mbps total.
+- Danmaku origin rendering now uses that measured source bitrate with `libx264 -preset medium`; the no-bitrate fallback uses CRF 16 instead of CRF 20.

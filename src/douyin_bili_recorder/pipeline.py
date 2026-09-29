@@ -54,6 +54,7 @@ class RecorderService:
         self.resolver = DouyinResolver()
         self._pause_mode = ""
         self._state_lock = threading.Lock()
+        self._last_live_epoch: dict[str, int] = {}
         self._target_workers: dict[str, threading.Thread] = {}
         self._removed_targets: set[str] = set()
         self.upload_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="upload")
@@ -135,6 +136,18 @@ class RecorderService:
             worker.start()
         return enabled
 
+    def _schedule_allows_polling(self, target: TargetConfig, now: datetime) -> bool:
+        if target.watch_mode != "scheduled" or not target.schedule:
+            return True
+        if should_poll_now(target.schedule, now):
+            return True
+        last_live = self._last_live_epoch.get(target.name)
+        if last_live is None:
+            return False
+        grace_seconds = max(60, self.config.reconnect_grace_minutes * 60)
+        return now.timestamp() - last_live <= grace_seconds
+
+
     def _target_loop(self, target: TargetConfig) -> None:
         self.logger.info("target worker started for %s", target.name)
         while not self.shutdown_event.is_set():
@@ -152,13 +165,12 @@ class RecorderService:
                             break
                         continue
                 now = datetime.now(ZoneInfo(self.config.timezone))
-                if target.watch_mode == "scheduled" and (
-                    not target.schedule or not should_poll_now(target.schedule, now)
-                ):
+                if not self._schedule_allows_polling(target, now):
                     if self._wait_for_stop(next_poll_delay_seconds(target.schedule, now)):
                         break
                     continue
-                self.record_and_upload(target)
+                if self.record_and_upload(target):
+                    self._last_live_epoch[target.name] = int(time.time())
             except Exception as exc:  # noqa: BLE001
                 self.logger.exception("target loop failed for %s: %s", target.name, exc)
             now = datetime.now(ZoneInfo(self.config.timezone))
@@ -341,6 +353,7 @@ class RecorderService:
         ]
 
     def _mark_recording_started(self, target: TargetConfig, session: SessionRecord, started_epoch: int) -> None:
+        self._last_live_epoch[target.name] = int(time.time())
         if session.detected_start_epoch is None:
             session.detected_start_epoch = started_epoch
             session.detected_start_iso = epoch_iso(started_epoch, self.config.timezone)
@@ -757,6 +770,7 @@ class RecorderService:
         while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
             status = self._resolve_status(target)
             if status is not None and status.live:
+                self._last_live_epoch[target.name] = int(time.time())
                 session.reconnect_count += 1
                 session.reconnect_seconds += max(0, int(time.time()) - started)
                 session.last_seen_live_epoch = int(time.time())
