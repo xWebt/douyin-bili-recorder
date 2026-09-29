@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 import threading
+from concurrent.futures import Future
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from douyin_bili_recorder.config import load_config
-from douyin_bili_recorder.models import MediaFile, SessionRecord, SessionStatus
+from douyin_bili_recorder.models import MediaFile, SessionPart, SessionRecord, SessionStatus
 from douyin_bili_recorder.pipeline import RecorderService
 from douyin_bili_recorder.recorder import RecordAttempt
 from douyin_bili_recorder.uploader import UploadResult
@@ -210,6 +211,18 @@ class FakeUploader:
         self.parts.append((part_index, bvid))
         return UploadResult(bvid or "BV0000000002", True, [])
 
+
+class BlockingPartUploader:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def upload_part(self, _target, _session, _media_path, *, part_index, title, bvid=None) -> UploadResult:
+        self.calls += 1
+        self.started.set()
+        self.release.wait(timeout=2)
+        return UploadResult(bvid or "BV0000000009", True, [])
 
 class FakeStatus:
     live = True
@@ -812,3 +825,116 @@ url = "https://live.douyin.com/1"
     assert acquired.wait(1)
     thread.join(timeout=1)
     assert release.is_set()
+
+
+def test_removed_target_interrupts_capacity_wait(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    config.max_cache_gb = 1
+    service = RecorderService(config, logging.getLogger("test"))
+    target = config.targets[0]
+    entered_wait = threading.Event()
+    release_wait = threading.Event()
+
+    class WaitingEvent:
+        @staticmethod
+        def is_set() -> bool:
+            return False
+
+        @staticmethod
+        def wait(_seconds: float) -> bool:
+            entered_wait.set()
+            release_wait.wait(timeout=1)
+            return False
+
+    monkeypatch.setattr(service, "shutdown_event", WaitingEvent())
+    monkeypatch.setattr(service.storage, "enforce_limit", lambda _limit: None)
+    monkeypatch.setattr(service, "_managed_usage_bytes", lambda: 2 * 1024**3)
+    service._pending_uploads["session"] = [Future()]
+    results: list[bool] = []
+    worker = threading.Thread(target=lambda: results.append(service._wait_for_capacity(target)))
+    worker.start()
+    assert entered_wait.wait(1)
+    service._removed_targets.add(target.name)
+    release_wait.set()
+    worker.join(timeout=1)
+    assert not worker.is_alive()
+    assert results == [False]
+
+
+def test_second_upload_worker_skips_completed_part(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+retry_count = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    uploader = BlockingPartUploader()
+    service.uploader = uploader  # type: ignore[assignment]
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        parts=[SessionPart(index=1, status="PENDING", title="anchor P01", path="/tmp/part.mp4")],
+    )
+    service.store.save(session)
+    results: list[UploadResult] = []
+
+    def upload(candidate: SessionRecord) -> None:
+        part = candidate.parts[0]
+        results.append(
+            service._upload_part_with_retries(
+                config.targets[0],
+                candidate,
+                Path(part.path),
+                part,
+            )
+        )
+
+    first = threading.Thread(target=upload, args=(session,))
+    first.start()
+    assert uploader.started.wait(1)
+    second_session = service.store.load(session.session_id)
+    second = threading.Thread(target=upload, args=(second_session,))
+    second.start()
+    uploader.release.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert uploader.calls == 1
+    assert len(results) == 2
+    assert all(result.verified for result in results)
+    assert service.store.load(session.session_id).parts[0].status == "UPLOADED"

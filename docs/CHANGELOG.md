@@ -1,6 +1,14 @@
 # Changelog
 
 
+## v2.2.14
+
+- Removed targets now interrupt a worker that is already waiting for cache space, so deleted anchors cannot keep logging or surviving as old threads.
+- Upload success and BVID persistence now happen while holding the per-part filesystem lock. A second worker reloads the latest session state and skips the part if it has already completed.
+- Bilibili append uploads now check for an existing exact part title before sending an append request, covering crashes or restarts after the remote submission succeeded but before local state was saved.
+- Added regressions for removal during a capacity wait and two workers racing to upload the same P.
+
+
 ## v2.2.13
 
 - Offline targets are now rejected before the cache-budget wait, preventing non-live anchors such as `7JIA九芊岁` from spamming `need space` while offline.

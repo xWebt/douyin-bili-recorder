@@ -206,7 +206,11 @@ class RecorderService:
         final_status = SessionStatus.RECORDED
         upload_futures: list[Future[bool]] = []
 
-        while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
+        while (
+            not self.shutdown_event.is_set()
+            and not self.interrupt_event.is_set()
+            and target.name not in self._removed_targets
+        ):
             self._reload_runtime_settings(target)
             if not self._wait_for_capacity(target):
                 final_status = SessionStatus.UPLOAD_FAILED
@@ -217,7 +221,11 @@ class RecorderService:
             connection_started = int(time.time())
             media_found = False
 
-            while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
+            while (
+                not self.shutdown_event.is_set()
+                and not self.interrupt_event.is_set()
+                and target.name not in self._removed_targets
+            ):
                 new_media = self._new_media_paths(
                     session_dir,
                     seen_sources,
@@ -314,7 +322,11 @@ class RecorderService:
 
         last_seen = session.detected_start_epoch
         reconnect_started_at: int | None = None
-        while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
+        while (
+            not self.shutdown_event.is_set()
+            and not self.interrupt_event.is_set()
+            and target.name not in self._removed_targets
+        ):
             self.shutdown_event.wait(max(5, self.config.poll_interval_seconds))
             if self._is_live(target):
                 current = self._resolve_status(target)
@@ -435,7 +447,11 @@ class RecorderService:
             segment_seconds=segment_seconds,
             burn_danmaku=target.record_danmaku,
         )
-        while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
+        while (
+            not self.shutdown_event.is_set()
+            and not self.interrupt_event.is_set()
+            and target.name not in self._removed_targets
+        ):
             self.storage.enforce_limit(self.config.max_cache_gb)
             usage = self._managed_usage_bytes() / (1024**3)
             self.config.video_dir.mkdir(parents=True, exist_ok=True)
@@ -756,9 +772,26 @@ class RecorderService:
     ) -> UploadResult:
         for attempt in range(self.config.upload_retry_count + 1):
             try:
-                part.status = "UPLOADING"
-                self.store.save(session)
                 with self._part_upload_lock(session.session_id, part.index):
+                    latest = self.store.load(session.session_id)
+                    latest_part = next(
+                        (item for item in latest.parts if item.index == part.index),
+                        None,
+                    )
+                    if latest_part is not None and (
+                        latest_part.status == "UPLOADED" or latest_part.bvid
+                    ):
+                        uploaded_bvid = latest_part.bvid or latest.bvid or session.bvid
+                        session.bvid = uploaded_bvid
+                        part.bvid = uploaded_bvid
+                        part.status = "UPLOADED"
+                        part.uploaded_at = latest_part.uploaded_at or int(time.time())
+                        part.error = ""
+                        return UploadResult(uploaded_bvid, bool(uploaded_bvid), ["part already uploaded"])
+                    if latest.bvid:
+                        session.bvid = latest.bvid
+                    part.status = "UPLOADING"
+                    self.store.save(session)
                     result = self.uploader.upload_part(
                         target,
                         session,
@@ -767,6 +800,13 @@ class RecorderService:
                         title=part.title,
                         bvid=session.bvid,
                     )
+                    if result.verified and result.bvid:
+                        session.bvid = result.bvid
+                        part.bvid = result.bvid
+                        part.status = "UPLOADED"
+                        part.uploaded_at = int(time.time())
+                        part.error = ""
+                        self.store.save(session)
                 if result.verified:
                     return result
                 if attempt < self.config.upload_retry_count:

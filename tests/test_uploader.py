@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from douyin_bili_recorder.config import load_config
-from douyin_bili_recorder.models import MediaFile, SessionRecord, SessionStatus
+from douyin_bili_recorder.models import MediaFile, SessionPart, SessionRecord, SessionStatus
 from douyin_bili_recorder.process import ProcessResult
 from douyin_bili_recorder.uploader import BiliupUploader
 
@@ -76,3 +76,58 @@ public = true
     upload_command = next(command for command in runner.commands if "upload" in command)
     assert expected_title in upload_command
     assert "--is-only-self" not in upload_command
+
+
+def test_upload_part_checks_existing_title_before_append(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+enabled = true
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "cookies.json").write_text("{}", encoding="utf-8")
+    config = load_config(config_path)
+    title = "anchor P02"
+
+    class ExistingRunner:
+        def __init__(self) -> None:
+            self.commands: list[list[str]] = []
+
+        def run(self, args, **_kwargs) -> ProcessResult:
+            command = [str(item) for item in args]
+            self.commands.append(command)
+            if "list" in command:
+                return ProcessResult(0, [f"BV0000000002\t{title}\t审核中"])
+            return ProcessResult(0, [])
+
+    runner = ExistingRunner()
+    uploader = BiliupUploader(config, runner, logging.getLogger("test"))
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/123",
+        parts=[SessionPart(index=2, title=title, path="part.mp4")],
+    )
+
+    result = uploader.upload_part(
+        config.targets[0],
+        session,
+        tmp_path / "part.mp4",
+        part_index=2,
+        title=title,
+        bvid="BV0000000002",
+    )
+
+    assert result.verified is True
+    assert result.bvid == "BV0000000002"
+    assert all("append" not in command for command in runner.commands)

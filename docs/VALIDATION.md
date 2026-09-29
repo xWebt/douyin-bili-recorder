@@ -208,3 +208,10 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Regression coverage verifies an offline target never enters the cache-capacity wait.
 - Regression coverage verifies the per-part upload lock blocks a second worker until the first upload releases it.
 - The UI delete action now calls the persisted state save path, so deleted targets disappear from runtime configuration and their worker receives the removal signal.
+
+## v2.2.14 restart-race and removed-worker validation
+
+- Full test suite: `68 passed`.
+- Regression coverage verifies a target removed during a cache-capacity wait exits without restarting the wait loop.
+- Regression coverage verifies two workers racing on the same P call the uploader once; the second worker reloads the completed part and skips submission.
+- Regression coverage verifies an append upload checks the exact Bilibili part title before issuing another append request.

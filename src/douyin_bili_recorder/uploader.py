@@ -123,6 +123,9 @@ class BiliupUploader:
             raise RuntimeError(f"Bilibili cookie file does not exist: {self.config.cookie_file}")
         source = target.source or target.url
         description = self._description(target, session)
+        existing = self.find_bvid_by_title(title)
+        if existing:
+            return UploadResult(existing, True, ["submission already exists"])
         if bvid:
             command = self._append_command(
                 target,
@@ -147,9 +150,6 @@ class BiliupUploader:
             self._mark_progress_complete(bvid, f"{session.session_id}:{part_index}")
             return UploadResult(bvid, True, list(result.lines))
 
-        existing = self.find_bvid_by_title(title)
-        if existing:
-            return UploadResult(existing, True, ["submission already exists"])
         command = self._upload_command(
             target,
             session,
