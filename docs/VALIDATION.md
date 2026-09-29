@@ -235,3 +235,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Full test suite: `66 passed`.
 - Regression coverage verifies cleanup removes uploaded final media and `.danmaku-runtime` files while preserving `session.json`.
 - Regression coverage verifies per-anchor usage includes a file found directly in the anchor video directory, including orphaned completed media not referenced by a session record.
+
+## v2.2.18 reopen-resume and current-target usage validation
+
+- Full test suite: `66 passed`.
+- Reopened the desktop app with a pending 7JIA P01 session; the worker recovered the session and completed the upload, producing BVID `BV1Pkap6RE4u`.
+- The final per-anchor usage calculation now receives target names from the saved UI state, matching the anchors visible in the control deck.

@@ -1,6 +1,11 @@
 # Changelog
 
 
+## v2.2.18
+
+- Per-anchor usage now uses the current saved UI target list rather than the base config target list, so orphaned completed files in active anchor folders are counted correctly.
+- Verified that reopening the app resumes `RECORDED`, `UPLOADING`, and `UPLOAD_FAILED` sessions; a pending 7JIA P01 upload resumed automatically and completed with a BVID.
+
 ## v2.2.17
 
 - Uploaded sessions with `delete_after_upload` enabled now clean their final media, original media, danmaku files, and `.danmaku-runtime` temporary files while retaining `session.json` history.

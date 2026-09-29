@@ -123,16 +123,18 @@ class ServiceController:
         started_at = int(runtime.get("started_at", 0) or 0)
         sessions = self._sessions()
         cache_used_gb = self._managed_usage_gb()
+        state = self.store.load()
         if cache_limit_gb is None:
             try:
-                cache_limit_gb = int(self.store.load().get("max_cache_gb", self.config.max_cache_gb))
+                cache_limit_gb = int(state.get("max_cache_gb", self.config.max_cache_gb))
             except (TypeError, ValueError):
                 cache_limit_gb = self.config.max_cache_gb
         saved_cache_limit = int(cache_limit_gb or self.config.max_cache_gb)
         upload_progress_store = UploadProgressStore(self.config.data_dir)
         upload_progresses = upload_progress_store.load_all()
         target_statuses = TargetStatusStore(self.config.data_dir).load_all()
-        target_usage_bytes = self._target_usage_bytes(sessions)
+        target_names = [str(item.get("name", "")) for item in state.get("targets", []) if item.get("name")]
+        target_usage_bytes = self._target_usage_bytes(sessions, target_names)
         return {
             "cache_used_gb": cache_used_gb,
             "cache_limit_gb": saved_cache_limit,
@@ -143,7 +145,7 @@ class ServiceController:
             "started_at": started_at if alive else None,
             "uptime_seconds": int(time.time()) - started_at if alive and started_at else 0,
             "mode": runtime.get("mode") if alive else None,
-            "desired_running": bool(self.store.load().get("worker_running", False)),
+            "desired_running": bool(state.get("worker_running", False)),
             "disk_free_gb": round(self._disk_free() / (1024**3), 2),
             "upload_progress": upload_progress_store.load(),
             "upload_progresses": upload_progresses,
@@ -239,11 +241,11 @@ class ServiceController:
                     continue
         return round(total / (1024**3), 2)
 
-    def _target_usage_bytes(self, sessions: list[SessionRecord]) -> dict[str, int]:
+    def _target_usage_bytes(self, sessions: list[SessionRecord], target_names: list[str]) -> dict[str, int]:
         paths_by_target: dict[str, set[Path]] = {}
-        for target in self.config.targets:
-            root = anchor_dir(self.config.video_dir.expanduser(), target.name)
-            paths = paths_by_target.setdefault(target.name, set())
+        for target_name in target_names:
+            root = anchor_dir(self.config.video_dir.expanduser(), target_name)
+            paths = paths_by_target.setdefault(target_name, set())
             if root.exists():
                 paths.update(path.resolve() for path in root.rglob("*") if path.is_file())
         for session in sessions:

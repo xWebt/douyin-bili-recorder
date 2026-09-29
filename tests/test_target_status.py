@@ -72,7 +72,7 @@ def test_target_usage_includes_session_and_final_files(tmp_path: Path) -> None:
     )
 
     controller = ServiceController(config, UIStateStore(config))
-    usage = controller._target_usage_bytes([session])
+    usage = controller._target_usage_bytes([session], ["anchor"])
 
     assert usage == {"anchor": 35}
 
