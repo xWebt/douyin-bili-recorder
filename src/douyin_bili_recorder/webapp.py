@@ -39,6 +39,7 @@ def create_app(config: AppConfig) -> FastAPI:
             yield
         finally:
             controller.stop_supervisor()
+            controller.stop("keep")
 
     app = FastAPI(title="Douyin recorder control deck", lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=WEB_ROOT), name="static")

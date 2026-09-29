@@ -215,3 +215,10 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Regression coverage verifies a target removed during a cache-capacity wait exits without restarting the wait loop.
 - Regression coverage verifies two workers racing on the same P call the uploader once; the second worker reloads the completed part and skips submission.
 - Regression coverage verifies an append upload checks the exact Bilibili part title before issuing another append request.
+
+## v2.2.15 application-exit process validation
+
+- Full test suite: `69 passed`.
+- Regression coverage verifies an interrupt request exits `run_forever` and sets the shutdown event even when no recording is active.
+- The control process records its PID in the worker environment; the worker monitors that PID and shuts down if the UI exits unexpectedly.
+- The FastAPI shutdown path now also requests worker stop, so a normal window close does not leave detached recorder children.

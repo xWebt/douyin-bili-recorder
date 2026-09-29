@@ -43,6 +43,7 @@ class ServiceController:
         self.config.logs_dir.mkdir(parents=True, exist_ok=True)
         environment = os.environ.copy()
         environment["DOUYIN_RECORDER_STOP_FILE"] = str(self.stop_request_path)
+        environment["DOUYIN_RECORDER_PARENT_PID"] = str(os.getpid())
         environment["PATH"] = os.pathsep.join(
             [
                 str(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "bin"),

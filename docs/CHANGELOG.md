@@ -1,6 +1,13 @@
 # Changelog
 
 
+## v2.2.15
+
+- Stopping the service now exits the main recorder loop even when no target recording is active, preventing a paused worker from retaining the recorder lock.
+- The desktop control process now stops its recorder worker when the app exits.
+- Recorder workers also monitor the parent control process PID. If the UI is force-quit or crashes, the worker terminates active recording, upload, and FFmpeg children instead of remaining detached.
+- Added regression coverage for interrupt-driven service shutdown without an active recording.
+
 ## v2.2.14
 
 - Removed targets now interrupt a worker that is already waiting for cache space, so deleted anchors cannot keep logging or surviving as old threads.

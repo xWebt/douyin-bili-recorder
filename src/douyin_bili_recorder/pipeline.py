@@ -61,14 +61,19 @@ class RecorderService:
         self._removed_targets: set[str] = set()
         self.upload_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="upload")
         self._pending_uploads: dict[str, list[Future[bool]]] = {}
+        self._parent_pid = int(os.environ.get("DOUYIN_RECORDER_PARENT_PID", "0") or 0)
 
     def run_forever(self) -> None:
         self._start_external_stop_watcher()
+        self._start_parent_watcher()
         self.config.sessions_dir.mkdir(parents=True, exist_ok=True)
         lock_path = self.config.data_dir / "recorder.lock"
         with SingleInstanceLock(lock_path):
             self.recover_pending()
             while not self.shutdown_event.is_set():
+                if self.interrupt_event.is_set():
+                    self.shutdown_event.set()
+                    break
                 enabled = self._sync_target_workers()
                 if not enabled:
                     self.logger.warning("no enabled targets configured")
@@ -1072,3 +1077,30 @@ class RecorderService:
                     return
 
         threading.Thread(target=watch, name="external-stop-watcher", daemon=True).start()
+
+    def _start_parent_watcher(self) -> None:
+        if self._parent_pid <= 0:
+            return
+
+        def watch() -> None:
+            while not self.shutdown_event.wait(2):
+                if self._pid_alive(self._parent_pid):
+                    continue
+                self.logger.info("parent control process exited; stopping recorder")
+                self.interrupt_event.set()
+                self.record_runner.terminate_active()
+                self.io_runner.terminate_active()
+                self.shutdown_event.set()
+                return
+
+        threading.Thread(target=watch, name="parent-watcher", daemon=True).start()
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True

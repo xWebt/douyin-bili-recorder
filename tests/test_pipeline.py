@@ -938,3 +938,32 @@ url = "https://live.douyin.com/1"
     assert len(results) == 2
     assert all(result.verified for result in results)
     assert service.store.load(session.session_id).parts[0].status == "UPLOADED"
+
+
+def test_run_forever_exits_after_interrupt_without_active_recording(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    service.interrupt_event.set()
+    worker = threading.Thread(target=service.run_forever)
+    worker.start()
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert service.shutdown_event.is_set()
