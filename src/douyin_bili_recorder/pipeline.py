@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import fcntl
+import json
 import logging
 import os
 import re
@@ -32,7 +33,7 @@ from .storage_guard import StorageGuard
 from .target_status import TargetStatusStore
 from .timeutil import build_title, epoch_iso, parse_duration_seconds
 from .ui_state import UIStateStore
-from .uploader import BiliupUploader, UploadRateLimited, UploadResult
+from .uploader import BiliupUploader, UploadCancelled, UploadRateLimited, UploadResult
 
 
 class RecorderService:
@@ -62,12 +63,14 @@ class RecorderService:
         self._last_live_epoch: dict[str, int] = {}
         self._target_workers: dict[str, threading.Thread] = {}
         self._removed_targets: set[str] = set()
+        self._cancelled_uploads: set[str] = set()
         self.upload_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="upload")
         self._pending_uploads: dict[str, list[Future[bool]]] = {}
         self._parent_pid = int(os.environ.get("DOUYIN_RECORDER_PARENT_PID", "0") or 0)
 
     def run_forever(self) -> None:
         self._start_external_stop_watcher()
+        self._start_upload_stop_watcher()
         self._start_parent_watcher()
         self.config.sessions_dir.mkdir(parents=True, exist_ok=True)
         lock_path = self.config.data_dir / "recorder.lock"
@@ -563,6 +566,14 @@ class RecorderService:
                 session.error = f"failed to prepare part {part_index}"
                 self.store.save(session)
                 continue
+            if (
+                part.duration_seconds is not None
+                and part.duration_seconds < self.config.min_upload_duration_seconds
+            ):
+                self._discard_short_part(session, part)
+                if part in session.parts:
+                    session.parts.remove(part)
+                continue
             if part.status == "PENDING":
                 future = self.upload_executor.submit(
                     self._upload_part_job,
@@ -574,6 +585,12 @@ class RecorderService:
                 self._pending_uploads.setdefault(session.session_id, []).append(future)
             part_index += 1
         return part_index
+
+    @staticmethod
+    def _discard_short_part(session: SessionRecord, part: SessionPart) -> None:
+        for value in (part.path, part.source_path, part.danmaku_path):
+            if value:
+                Path(value).unlink(missing_ok=True)
 
     def _final_media_paths(
         self,
@@ -996,6 +1013,8 @@ class RecorderService:
     ) -> UploadResult:
         for attempt in range(self.config.upload_retry_count + 1):
             try:
+                if self._upload_is_cancelled(session.session_id, part.index):
+                    raise UploadCancelled("上传已由用户停止")
                 with self._part_upload_lock(session.session_id, part.index):
                     latest = self.store.load(session.session_id)
                     latest_part = next(
@@ -1035,6 +1054,18 @@ class RecorderService:
                     return result
                 if attempt < self.config.upload_retry_count:
                     self.shutdown_event.wait(self.config.upload_retry_backoff_seconds * (attempt + 1))
+            except UploadCancelled:
+                part.status = "CANCELED"
+                part.error = "上传已由用户停止"
+                self.store.save(session)
+                self._set_target_status(
+                    target,
+                    "canceled",
+                    "该 P 上传已停止",
+                    session_id=session.session_id,
+                    part=part.index,
+                )
+                return UploadResult(None, False, ["upload canceled"])
             except UploadRateLimited as exc:  # noqa: BLE001
                 part.error = str(exc)
                 self.store.save(session)
@@ -1202,6 +1233,15 @@ class RecorderService:
             for part in session.parts:
                 if part.status == "UPLOADED":
                     continue
+                if part.status == "CANCELED":
+                    continue
+                if (
+                    part.duration_seconds is not None
+                    and part.duration_seconds < self.config.min_upload_duration_seconds
+                ):
+                    part.status = "DISCARDED"
+                    self._discard_short_part(session, part)
+                    continue
                 if not part.title:
                     part.title = f"{resolved_title}｜P{part.index:02d}"
                 media_path = Path(part.path)
@@ -1331,6 +1371,36 @@ class RecorderService:
                     return
 
         threading.Thread(target=watch, name="external-stop-watcher", daemon=True).start()
+
+    def _start_upload_stop_watcher(self) -> None:
+        stop_dir = self.config.data_dir / "ui" / "upload-stop"
+        stop_dir.mkdir(parents=True, exist_ok=True)
+
+        def watch() -> None:
+            while not self.shutdown_event.wait(1):
+                for path in stop_dir.glob("*.request"):
+                    try:
+                        payload = json.loads(path.read_text(encoding="utf-8"))
+                        session_id = str(payload.get("session_id", ""))
+                        part_index = int(payload.get("part_index", 0))
+                    except (OSError, ValueError, TypeError):
+                        path.unlink(missing_ok=True)
+                        continue
+                    if session_id and part_index > 0:
+                        key = self._upload_key(session_id, part_index)
+                        self._cancelled_uploads.add(key)
+                        self.uploader.cancel(key)
+                        self.logger.info("upload stop requested for %s", key)
+                    path.unlink(missing_ok=True)
+
+        threading.Thread(target=watch, name="upload-stop-watcher", daemon=True).start()
+
+    @staticmethod
+    def _upload_key(session_id: str, part_index: int) -> str:
+        return f"{session_id}:{part_index}"
+
+    def _upload_is_cancelled(self, session_id: str, part_index: int) -> bool:
+        return self._upload_key(session_id, part_index) in self._cancelled_uploads
 
     def _start_parent_watcher(self) -> None:
         if self._parent_pid <= 0:

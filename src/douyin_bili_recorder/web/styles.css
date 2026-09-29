@@ -377,6 +377,26 @@ h2 {
   font-size: 12px;
 }
 
+.upload-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stop-upload-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 113, 106, 0.42);
+  border-radius: 5px;
+  background: rgba(255, 113, 106, 0.08);
+  color: #ffaba6;
+  cursor: pointer;
+  font-size: 11px;
+}
+
 .select-row {
   display: flex;
   align-items: center;

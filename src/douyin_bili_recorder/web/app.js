@@ -165,6 +165,7 @@ const TARGET_STATE_META = {
   reconnecting: { label: "重连检测", tone: "checking" },
   waiting_space: { label: "等待空间", tone: "checking" },
   rate_limited: { label: "限流等待", tone: "checking" },
+  canceled: { label: "上传已停止", tone: "muted" },
   offline: { label: "未开播", tone: "offline" },
   recording: { label: "录制中", tone: "recording" },
   recording_uploading: { label: "录制中 / 上传中", tone: "uploading" },
@@ -262,9 +263,32 @@ function renderUploadProgress(progressesArg, fallback = {}) {
     info.append(title, meta);
     const itemPercent = document.createElement("strong");
     itemPercent.textContent = `${Math.max(0, Math.min(100, Number(item.percent || 0))).toFixed(1)}%`;
-    row.append(info, itemPercent);
+    const actions = document.createElement("div");
+    actions.className = "upload-row-actions";
+    actions.append(itemPercent);
+    if (Number(item.percent || 0) < 100 && item.message !== "已停止") {
+      const stop = document.createElement("button");
+      stop.type = "button";
+      stop.className = "stop-upload-button";
+      stop.append(icon("square"), document.createTextNode("停止"));
+      stop.addEventListener("click", () => stopUpload(item.key));
+      actions.append(stop);
+    }
+    row.append(info, actions);
     return row;
   }));
+}
+
+async function stopUpload(key) {
+  const match = String(key || "").match(/^(.*):(\d+)$/);
+  if (!match) return;
+  try {
+    await api(`/api/uploads/${encodeURIComponent(match[1])}/${match[2]}/stop`, { method: "POST" });
+    toast("已停止该视频上传");
+    await refreshService();
+  } catch (error) {
+    toast(`停止上传失败：${error.message}`, "error");
+  }
 }
 
 function renderSettings() {

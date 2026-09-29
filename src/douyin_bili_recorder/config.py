@@ -75,6 +75,7 @@ class AppConfig:
     reconnect_backoff_seconds: int
     segment_time: str
     min_file_size_mb: int
+    min_upload_duration_seconds: int
     quality: str
     frame_rate: str
     max_cache_gb: int
@@ -138,6 +139,7 @@ def load_config(path: str | Path) -> AppConfig:
         reconnect_backoff_seconds=int(app.get("reconnect_backoff_seconds", 15)),
         segment_time=str(recording.get("segment_time", "1h")),
         min_file_size_mb=int(recording.get("min_file_size_mb", 10)),
+        min_upload_duration_seconds=int(recording.get("min_upload_duration_seconds", 60)),
         quality=str(recording.get("quality", "origin")),
         frame_rate=str(recording.get("frame_rate", "source")),
         max_cache_gb=int(storage.get("max_cache_gb", 10)),
@@ -209,6 +211,8 @@ def _validate(config: AppConfig) -> None:
         raise ConfigError("max_reconnect_attempts cannot be negative")
     if config.min_file_size_mb < 0:
         raise ConfigError("min_file_size_mb cannot be negative")
+    if config.min_upload_duration_seconds < 0:
+        raise ConfigError("min_upload_duration_seconds cannot be negative")
     if config.quality not in {"origin", "1080p", "720p", "480p"}:
         raise ConfigError(f"quality is invalid: {config.quality}")
     if config.frame_rate not in {"source", "60", "30"}:

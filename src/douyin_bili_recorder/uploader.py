@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,12 +28,18 @@ class UploadRateLimited(RuntimeError):
     pass
 
 
+class UploadCancelled(RuntimeError):
+    pass
+
+
 class BiliupUploader:
     def __init__(self, config: AppConfig, runner: ProcessRunner, logger: logging.Logger) -> None:
         self.config = config
         self.runner = runner
         self.logger = logger
         self.progress_store = UploadProgressStore(config.data_dir)
+        self._cancel_lock = threading.Lock()
+        self._cancel_events: dict[str, threading.Event] = {}
 
     def upload_session(
         self,
@@ -150,6 +157,8 @@ class BiliupUploader:
                 existing_bvid=bvid,
             )
             if result.returncode != 0:
+                if result.cancelled:
+                    raise UploadCancelled("上传已由用户停止")
                 if self._is_rate_limited(result.lines):
                     raise UploadRateLimited("B站投稿频率限制（21566）")
                 raise RuntimeError(f"Bilibili append command failed with code {result.returncode}")
@@ -173,6 +182,8 @@ class BiliupUploader:
             title=title,
         )
         if result.returncode != 0:
+            if result.cancelled:
+                raise UploadCancelled("上传已由用户停止")
             if self._is_rate_limited(result.lines):
                 raise UploadRateLimited("B站投稿频率限制（21566）")
             raise RuntimeError(f"Bilibili submission command failed with code {result.returncode}")
@@ -274,9 +285,10 @@ class BiliupUploader:
             part_index=part_index,
             total_bytes=media_path.stat().st_size,
         )
+        cancel_event = self._cancel_event(progress_key)
         result = None
         try:
-            result = self.runner.run(command)
+            result = self.runner.run(command, cancel_event=cancel_event)
         finally:
             if result is None or result.returncode != 0:
                 message = "上传失败"
@@ -289,6 +301,13 @@ class BiliupUploader:
     def _is_rate_limited(lines: list[str]) -> bool:
         text = "\n".join(lines)
         return "21566" in text or "投稿过于频繁" in text
+
+    def cancel(self, key: str) -> None:
+        self._cancel_event(key).set()
+
+    def _cancel_event(self, key: str) -> threading.Event:
+        with self._cancel_lock:
+            return self._cancel_events.setdefault(key, threading.Event())
 
     def _mark_progress_complete(self, bvid: str, progress_key: str) -> None:
         payload = next(

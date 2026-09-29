@@ -1,6 +1,12 @@
 # Changelog
 
 
+## v2.2.25
+
+- Each active upload row now has a stop button. Stopping a part cancels its current biliup child and prevents future retries for that part.
+- Added a global minimum upload duration, defaulting to 60 seconds. Shorter final fragments are deleted and never enter the upload queue.
+- Stopping an upload does not affect the live recorder, other parts, or other anchors.
+
 ## v2.2.24
 
 - A live recorder session is now marked `RECORDING` as soon as the long-lived recorder process connects to the stream, not only when the first completed segment appears.

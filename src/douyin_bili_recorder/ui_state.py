@@ -116,6 +116,7 @@ class UIStateStore:
             f'quality = {json.dumps(quality)}',
             f'frame_rate = {json.dumps(frame_rate)}',
             f"min_file_size_mb = {self.config.min_file_size_mb}",
+            f"min_upload_duration_seconds = {self.config.min_upload_duration_seconds}",
             f"keep_original_files = {str(self.config.keep_original_files).lower()}",
             "",
             "[storage]",

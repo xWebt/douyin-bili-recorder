@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from .ui_state import UIStateStore
 from .bilibili_status import BilibiliSubmissionClient
 from .reports import ReportGenerator
 from .state import SessionStore
+from .upload_progress import UploadProgressStore
 
 WEB_ROOT = Path(__file__).with_name("web")
 
@@ -140,6 +142,31 @@ def create_app(config: AppConfig) -> FastAPI:
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=422, detail=f"report generation failed: {exc}") from exc
         return FileResponse(path, media_type="application/pdf", filename=path.name)
+
+    @app.post("/api/uploads/{session_id}/{part_index}/stop")
+    async def stop_upload(session_id: str, part_index: int) -> dict[str, Any]:
+        session_store = SessionStore(config.sessions_dir)
+        try:
+            session = session_store.load(session_id)
+        except (OSError, ValueError, KeyError) as exc:
+            raise HTTPException(status_code=404, detail="session not found") from exc
+        part = next((item for item in session.parts if item.index == part_index), None)
+        if part is None:
+            raise HTTPException(status_code=404, detail="part not found")
+        if part.status == "UPLOADED":
+            raise HTTPException(status_code=409, detail="part already uploaded")
+        part.status = "CANCELED"
+        part.error = "上传已由用户停止"
+        session_store.save(session)
+        stop_dir = config.data_dir / "ui" / "upload-stop"
+        stop_dir.mkdir(parents=True, exist_ok=True)
+        request_path = stop_dir / f"{session_id}-{part_index}.request"
+        request_path.write_text(
+            json.dumps({"session_id": session_id, "part_index": part_index}),
+            encoding="utf-8",
+        )
+        UploadProgressStore(config.data_dir).remove(f"{session_id}:{part_index}")
+        return {"ok": True, "session_id": session_id, "part_index": part_index}
 
     @app.get("/api/bilibili/submissions")
     async def bilibili_submissions() -> dict[str, Any]:

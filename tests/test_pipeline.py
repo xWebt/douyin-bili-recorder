@@ -166,11 +166,11 @@ class FakeMedia:
         return MediaFile(
             path=source.name,
             size=source.stat().st_size,
-            duration_seconds=10.0,
+            duration_seconds=60.0,
         )
 
     def probe_duration(self, _path: Path) -> float:
-        return 10.0
+        return 60.0
 
 
 class FakeDanmakuRenderer:

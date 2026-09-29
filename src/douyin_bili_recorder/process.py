@@ -17,6 +17,7 @@ from typing import Iterable
 class ProcessResult:
     returncode: int
     lines: list[str]
+    cancelled: bool = False
     timed_out: bool = False
 
 
@@ -121,13 +122,20 @@ class ProcessRunner:
         *,
         cwd: Path | None = None,
         timeout_seconds: int | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> ProcessResult:
         running = self.start(args, cwd=cwd)
         started = time.monotonic()
         timed_out = False
+        cancelled = False
 
         try:
             while running.poll() is None:
+                if cancel_event is not None and cancel_event.is_set():
+                    self.logger.info("upload cancellation requested, terminating child process")
+                    running.terminate()
+                    cancelled = True
+                    break
                 if self.shutdown_event.is_set() or (
                     self.interrupt_event is not None and self.interrupt_event.is_set()
                 ):
@@ -147,6 +155,7 @@ class ProcessRunner:
         return ProcessResult(
             returncode=running.process.returncode,
             lines=running.output(),
+            cancelled=cancelled,
             timed_out=timed_out,
         )
 

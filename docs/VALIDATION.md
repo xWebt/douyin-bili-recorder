@@ -275,3 +275,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Full test suite: `69 passed`.
 - The recorder writes `RECORDING` immediately after process start and keeps `detected_start_epoch` unset until actual media is available, preserving the offline-probe guard.
 - This prevents an upload rate-limit state from hiding an actively recording anchor.
+
+## v2.2.25 upload controls and short-part validation
+
+- Full test suite: `69 passed`.
+- Upload child processes accept a cancellation event; cancellation raises `UploadCancelled` and does not enter the normal retry loop.
+- Parts shorter than the configured minimum duration are discarded by deleting their final, source, and danmaku files.

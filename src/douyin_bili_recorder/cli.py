@@ -25,6 +25,7 @@ reconnect_backoff_seconds = 15
 
 [recording]
 segment_time = "1h"
+min_upload_duration_seconds = 60
 quality = "origin"
 frame_rate = "source"
 min_file_size_mb = 10
