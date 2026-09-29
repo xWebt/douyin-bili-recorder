@@ -148,10 +148,31 @@ async function refreshService() {
     state.authenticated = payload.authenticated;
     renderService();
     renderSettings();
+    renderTargets();
   } catch (_error) {
     els.connectionState.classList.remove("online");
   }
 }
+
+const TARGET_STATE_META = {
+  service_stopped: { label: "服务停止", tone: "muted" },
+  paused: { label: "已暂停", tone: "muted" },
+  scheduled: { label: "等待排班", tone: "muted" },
+  manual: { label: "手动待机", tone: "muted" },
+  checking: { label: "检测中", tone: "checking" },
+  starting: { label: "连接中", tone: "checking" },
+  connecting: { label: "连接中", tone: "checking" },
+  reconnecting: { label: "重连检测", tone: "checking" },
+  waiting_space: { label: "等待空间", tone: "checking" },
+  offline: { label: "未开播", tone: "offline" },
+  recording: { label: "录制中", tone: "recording" },
+  recording_uploading: { label: "录制中 / 上传中", tone: "uploading" },
+  monitoring: { label: "仅监视", tone: "recording" },
+  uploading: { label: "上传中", tone: "uploading" },
+  uploaded: { label: "上传完成", tone: "success" },
+  recorded: { label: "已录制", tone: "success" },
+  error: { label: "异常", tone: "error" },
+};
 
 async function refreshLogs() {
   try {
@@ -275,11 +296,73 @@ function renderTargets() {
   for (const session of state.service?.sessions || []) {
     if (!latestByTarget.has(session.target_name)) latestByTarget.set(session.target_name, session);
   }
-  for (const target of targets) els.targetList.append(buildTargetRow(target, latestByTarget.get(target.name)));
+  const runtimeByTarget = state.service?.target_statuses || {};
+  const usageByTarget = state.service?.target_usage_bytes || {};
+  const uploadByTarget = new Map();
+  for (const upload of state.service?.upload_progresses || []) {
+    if (!upload.target || Number(upload.percent || 0) >= 100) continue;
+    const current = uploadByTarget.get(upload.target);
+    if (!current || Number(upload.updated_at || 0) > Number(current.updated_at || 0)) uploadByTarget.set(upload.target, upload);
+  }
+  for (const target of targets) {
+    els.targetList.append(buildTargetRow(
+      target,
+      latestByTarget.get(target.name),
+      runtimeByTarget[target.name],
+      uploadByTarget.get(target.name),
+      usageByTarget[target.name] || 0,
+    ));
+  }
   renderIcons();
 }
 
-function buildTargetRow(target, latest) {
+function resolveTargetRuntime(target, latest, runtimeStatus, activeUpload) {
+  if (!target.enabled) return { meta: TARGET_STATE_META.paused, detail: "已暂停监控" };
+  if (!state.service?.running) return { meta: TARGET_STATE_META.service_stopped, detail: "录制服务未运行" };
+
+  const latestState = String(latest?.status || "").toUpperCase();
+  const runtime = runtimeStatus || {};
+  let stateName = String(runtime.state || "");
+  let message = String(runtime.message || "");
+  if (activeUpload) {
+    const percent = Math.max(0, Math.min(100, Number(activeUpload.percent || 0)));
+    const eta = activeUpload.eta_seconds != null ? ` · 剩余 ${formatDuration(activeUpload.eta_seconds)}` : "";
+    const recording = stateName === "recording" || stateName === "recording_uploading" || latestState === "RECORDING";
+    stateName = recording ? "recording_uploading" : "uploading";
+    message = `P${String(activeUpload.part || 1).padStart(2, "0")} · ${percent.toFixed(1)}%${eta}`;
+  }
+  if (!stateName) {
+    if (latestState === "RECORDING") stateName = target.record_mode === "monitor" ? "monitoring" : "recording";
+    else if (latestState === "UPLOADING") stateName = "uploading";
+    else if (latestState === "UPLOADED") stateName = "uploaded";
+    else if (latestState === "UPLOAD_FAILED" || latestState === "FAILED") stateName = "error";
+    else if (latestState === "RECORDED") stateName = "recorded";
+    else if (target.watch_mode === "manual") stateName = "manual";
+    else if (target.watch_mode === "scheduled") stateName = "scheduled";
+    else stateName = "checking";
+  }
+
+  const meta = TARGET_STATE_META[stateName] || TARGET_STATE_META.checking;
+  let detail = message || `${meta.label} · 等待下一次状态更新`;
+  const updatedAt = Number(runtime.updated_at || 0);
+  if (updatedAt && ["recording", "recording_uploading", "monitoring"].includes(stateName)) {
+    detail += ` · 已持续 ${formatDuration(Date.now() / 1000 - updatedAt)}`;
+  } else if (updatedAt && stateName !== "uploading") {
+    detail += ` · ${formatClock(updatedAt)}`;
+  }
+  return { meta, detail };
+}
+
+function formatClock(epochSeconds) {
+  return new Date(Number(epochSeconds) * 1000).toLocaleTimeString("zh-CN", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function buildTargetRow(target, latest, runtimeStatus, activeUpload, usageBytes) {
   const row = document.createElement("article");
   row.className = "target-row";
   row.dataset.targetId = target.id;
@@ -287,14 +370,22 @@ function buildTargetRow(target, latest) {
   header.className = "target-header";
   const identity = document.createElement("div");
   identity.className = "target-identity";
+  const runtime = resolveTargetRuntime(target, latest, runtimeStatus, activeUpload);
   const status = document.createElement("span");
-  status.className = `target-status ${target.enabled ? "enabled" : "disabled"}`;
-  status.append(makeDot(), document.createTextNode(target.enabled ? latest?.status || "待机" : "已暂停"));
+  status.className = `target-status ${runtime.meta.tone}`;
+  status.append(makeDot(), document.createTextNode(runtime.meta.label));
   const name = document.createElement("strong");
   name.textContent = target.name || "未命名主播";
   const url = document.createElement("small");
   url.textContent = target.url;
-  identity.append(status, name, url);
+  const runtimeMessage = document.createElement("small");
+  runtimeMessage.className = "target-runtime-message";
+  runtimeMessage.textContent = runtime.detail;
+  runtimeMessage.title = runtime.detail;
+  const usage = document.createElement("small");
+  usage.className = "target-usage";
+  usage.textContent = `空间占用 ${formatBytes(usageBytes)}`;
+  identity.append(status, name, url, runtimeMessage, usage);
 
   const actions = document.createElement("div");
   actions.className = "target-actions";

@@ -222,3 +222,10 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Regression coverage verifies an interrupt request exits `run_forever` and sets the shutdown event even when no recording is active.
 - The control process records its PID in the worker environment; the worker monitors that PID and shuts down if the UI exits unexpectedly.
 - The FastAPI shutdown path now also requests worker stop, so a normal window close does not leave detached recorder children.
+
+## v2.2.16 per-anchor status and usage validation
+
+- Full test suite: `65 passed`.
+- Regression coverage verifies target status files round-trip through the UI status store.
+- Regression coverage verifies per-anchor usage includes both temporary session files and final media paths without double-counting duplicate path fields.
+- The browser script passes `node --check` and the target cards consume status/usage data on every 3-second service refresh.

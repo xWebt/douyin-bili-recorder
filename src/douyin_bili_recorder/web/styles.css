@@ -11,6 +11,7 @@
   --signal: #74e5a5;
   --signal-soft: rgba(116, 229, 165, 0.13);
   --amber: #f3b85c;
+  --info: #67b7ff;
   --danger: #ff716a;
   --shadow: 0 22px 70px rgba(0, 0, 0, 0.33);
   --display: "Avenir Next Condensed", "Helvetica Neue", sans-serif;
@@ -690,11 +691,49 @@ input::placeholder {
   box-shadow: none;
 }
 
-.target-status.enabled .status-dot {
-  background: var(--signal);
+.target-status.recording,
+.target-status.success {
+  color: var(--signal);
 }
 
-.target-status.disabled .status-dot {
+.target-status.recording .status-dot,
+.target-status.success .status-dot {
+  background: var(--signal);
+  box-shadow: 0 0 0 4px var(--signal-soft), 0 0 12px rgba(116, 229, 165, 0.5);
+}
+
+.target-status.checking {
+  color: var(--amber);
+}
+
+.target-status.checking .status-dot {
+  background: var(--amber);
+}
+
+.target-status.uploading {
+  color: var(--info);
+}
+
+.target-status.uploading .status-dot {
+  background: var(--info);
+  box-shadow: 0 0 0 4px rgba(103, 183, 255, 0.13);
+}
+
+.target-status.error {
+  color: var(--danger);
+}
+
+.target-status.error .status-dot {
+  background: var(--danger);
+}
+
+.target-status.muted,
+.target-status.offline {
+  color: var(--ink-dim);
+}
+
+.target-status.muted .status-dot,
+.target-status.offline .status-dot {
   background: var(--ink-dim);
 }
 
@@ -1056,7 +1095,7 @@ input::placeholder {
 }
 
 .target-identity .target-status {
-  grid-row: 1 / 3;
+  grid-row: 1 / 5;
 }
 
 .target-identity strong,
@@ -1068,6 +1107,15 @@ input::placeholder {
 
 .target-identity small {
   color: var(--ink-dim);
+}
+
+.target-runtime-message {
+  color: var(--ink-soft) !important;
+}
+
+.target-usage {
+  color: var(--info) !important;
+  font-family: var(--mono);
 }
 
 .target-actions {

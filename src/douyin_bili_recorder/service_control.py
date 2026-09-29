@@ -12,6 +12,7 @@ from typing import Any
 from .config import AppConfig
 from .models import SessionRecord
 from .state import SessionStore
+from .target_status import TargetStatusStore
 from .ui_state import UIStateStore
 from .upload_progress import UploadProgressStore
 
@@ -129,6 +130,8 @@ class ServiceController:
         saved_cache_limit = int(cache_limit_gb or self.config.max_cache_gb)
         upload_progress_store = UploadProgressStore(self.config.data_dir)
         upload_progresses = upload_progress_store.load_all()
+        target_statuses = TargetStatusStore(self.config.data_dir).load_all()
+        target_usage_bytes = self._target_usage_bytes(sessions)
         return {
             "cache_used_gb": cache_used_gb,
             "cache_limit_gb": saved_cache_limit,
@@ -143,6 +146,8 @@ class ServiceController:
             "disk_free_gb": round(self._disk_free() / (1024**3), 2),
             "upload_progress": upload_progress_store.load(),
             "upload_progresses": upload_progresses,
+            "target_statuses": target_statuses,
+            "target_usage_bytes": target_usage_bytes,
             "sessions": [self._session_dict(item) for item in sessions[:20]],
         }
 
@@ -232,6 +237,29 @@ class ServiceController:
                 except OSError:
                     continue
         return round(total / (1024**3), 2)
+
+    def _target_usage_bytes(self, sessions: list[SessionRecord]) -> dict[str, int]:
+        usage: dict[str, int] = {}
+        for session in sessions:
+            paths: set[Path] = set()
+            session_dir = self.config.sessions_dir / session.session_id
+            if session_dir.exists():
+                paths.update(path.resolve() for path in session_dir.rglob("*") if path.is_file())
+            for part in session.parts:
+                for value in (part.path, part.source_path, part.danmaku_path):
+                    if not value:
+                        continue
+                    path = Path(value)
+                    if path.exists() and path.is_file():
+                        paths.add(path.resolve())
+            size = 0
+            for path in paths:
+                try:
+                    size += path.stat().st_size
+                except OSError:
+                    continue
+            usage[session.target_name] = usage.get(session.target_name, 0) + size
+        return usage
 
     def _disk_free(self) -> int:
         path = self.config.data_dir

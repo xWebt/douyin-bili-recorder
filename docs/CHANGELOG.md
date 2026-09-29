@@ -1,6 +1,12 @@
 # Changelog
 
 
+## v2.2.16
+
+- Added a per-anchor live status indicator with distinct states for checking, offline, scheduled waiting, recording, reconnect monitoring, upload, completion, and errors.
+- Added per-anchor managed space usage, including temporary session files and local/final media parts.
+- Target cards now refresh their runtime status and usage every service-state poll instead of waiting for a full page reload.
+
 ## v2.2.15
 
 - Stopping the service now exits the main recorder loop even when no target recording is active, preventing a paused worker from retaining the recorder lock.

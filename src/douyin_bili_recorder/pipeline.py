@@ -28,6 +28,7 @@ from .recorder import BiliupRecorder, discover_media
 from .scheduling import active_slot, expected_start_for_moment, is_late_detection, next_poll_delay_seconds, should_poll_now
 from .state import SessionStore, SingleInstanceLock, slugify
 from .storage_guard import StorageGuard
+from .target_status import TargetStatusStore
 from .timeutil import build_title, epoch_iso, parse_duration_seconds
 from .ui_state import UIStateStore
 from .uploader import BiliupUploader, UploadResult
@@ -54,6 +55,7 @@ class RecorderService:
         self.storage = StorageGuard(config.sessions_dir, logger)
         self.analytics = AnalyticsStore(config.video_dir, config.timezone)
         self.resolver = DouyinResolver()
+        self.target_status = TargetStatusStore(config.data_dir)
         self._pause_mode = ""
         self._state_lock = threading.Lock()
         self._last_live_epoch: dict[str, int] = {}
@@ -125,6 +127,7 @@ class RecorderService:
                 continue
             if name not in current_names:
                 self._removed_targets.add(name)
+                self.target_status.clear(name)
 
         for target in fresh.targets:
             if not target.enabled:
@@ -154,6 +157,12 @@ class RecorderService:
         grace_seconds = max(60, self.config.reconnect_grace_minutes * 60)
         return now.timestamp() - last_live <= grace_seconds
 
+    def _set_target_status(self, target: TargetConfig, state: str, message: str = "", **extra) -> None:
+        try:
+            self.target_status.update(target.name, state, message, **extra)
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning("failed to persist target status for %s: %s", target.name, exc)
+
 
     def _target_loop(self, target: TargetConfig) -> None:
         self.logger.info("target worker started for %s", target.name)
@@ -163,23 +172,30 @@ class RecorderService:
                     break
                 self._reload_runtime_settings(target)
                 if not target.enabled:
+                    self._set_target_status(target, "paused", "监控已暂停")
                     if self._wait_for_stop(max(10, self.config.poll_interval_seconds)):
                         break
                     continue
                 if target.watch_mode == "manual":
                     if not self._consume_manual_request(target):
+                        self._set_target_status(target, "manual", "等待手动检查")
                         if self._wait_for_stop(2):
                             break
                         continue
                 now = datetime.now(ZoneInfo(self.config.timezone))
                 if not self._schedule_allows_polling(target, now):
+                    self._set_target_status(target, "scheduled", "当前不在排班时段")
                     if self._wait_for_stop(next_poll_delay_seconds(target.schedule, now)):
                         break
                     continue
+                self._set_target_status(target, "checking", "正在检测直播间")
                 if self.record_and_upload(target):
                     self._last_live_epoch[target.name] = int(time.time())
+                else:
+                    self._set_target_status(target, "offline", "当前未开播")
             except Exception as exc:  # noqa: BLE001
                 self.logger.exception("target loop failed for %s: %s", target.name, exc)
+                self._set_target_status(target, "error", f"检测异常：{exc}")
             now = datetime.now(ZoneInfo(self.config.timezone))
             delay = next_poll_delay_seconds(
                 target.schedule,
@@ -196,14 +212,22 @@ class RecorderService:
         if target.record_mode == "monitor":
             return self._monitor_target(target)
         if not self._is_live(target):
+            self._set_target_status(target, "offline", "当前未开播")
             return False
         if not self._wait_for_capacity(target):
+            self._set_target_status(target, "error", "缓存空间不足，下一段录制已暂停")
             return False
 
         session = self._new_session(target)
         session_dir = self.store.session_dir(session.session_id)
         self.store.save(session)
         self.analytics.upsert(session)
+        self._set_target_status(
+            target,
+            "starting",
+            "检测到开播，正在建立录制连接",
+            session_id=session.session_id,
+        )
 
         segment_seconds = parse_duration_seconds(self.config.segment_time)
         seen_sources: set[str] = set()
@@ -225,6 +249,12 @@ class RecorderService:
             process = self.recorder.start(target, session_dir)
             connection_started = int(time.time())
             media_found = False
+            self._set_target_status(
+                target,
+                "connecting",
+                "正在接收直播流",
+                session_id=session.session_id,
+            )
 
             while (
                 not self.shutdown_event.is_set()
@@ -295,6 +325,12 @@ class RecorderService:
         session.ended_epoch = int(time.time())
         self.store.save(session)
         self.analytics.upsert(session)
+        if final_status == SessionStatus.UPLOAD_FAILED:
+            self._set_target_status(target, "error", session.error or "录制或上传异常", session_id=session.session_id)
+        elif session.parts and all(part.status == "UPLOADED" for part in session.parts):
+            self._set_target_status(target, "uploaded", "本场录像已上传", session_id=session.session_id, bvid=session.bvid)
+        else:
+            self._set_target_status(target, "recorded", "本场录像已保存到本地", session_id=session.session_id)
         self.storage.enforce_limit(self.config.max_cache_gb)
         remaining_files = [
             path
@@ -313,6 +349,7 @@ class RecorderService:
     def _monitor_target(self, target: TargetConfig) -> bool:
         self._reload_runtime_settings(target)
         if not self._is_live(target):
+            self._set_target_status(target, "offline", "当前未开播")
             return False
         status = self._resolve_status(target)
         session = self._new_session(target)
@@ -324,6 +361,12 @@ class RecorderService:
         session.status = SessionStatus.RECORDING
         self.store.save(session)
         self.analytics.upsert(session)
+        self._set_target_status(
+            target,
+            "monitoring",
+            "正在记录直播数据（不录制视频）",
+            session_id=session.session_id,
+        )
 
         last_seen = session.detected_start_epoch
         reconnect_started_at: int | None = None
@@ -341,6 +384,12 @@ class RecorderService:
                 session.room_title = (current.room_title if current is not None else "") or session.room_title
                 self.store.save(session)
                 continue
+            self._set_target_status(
+                target,
+                "reconnecting",
+                "直播可能中断，正在确认",
+                session_id=session.session_id,
+            )
             reconnect_started_at = reconnect_started_at or int(time.time())
             if int(time.time()) - reconnect_started_at <= self.config.reconnect_grace_minutes * 60:
                 continue
@@ -350,6 +399,7 @@ class RecorderService:
         session.ended_epoch = last_seen
         self.store.save(session)
         self.analytics.upsert(session)
+        self._set_target_status(target, "recorded", "本场直播数据已记录", session_id=session.session_id)
         if self.interrupt_event.is_set():
             self.shutdown_event.set()
         return True
@@ -384,6 +434,12 @@ class RecorderService:
         session.status = SessionStatus.RECORDING
         self.store.save(session)
         self.analytics.upsert(session)
+        self._set_target_status(
+            target,
+            "recording",
+            "正在录制直播",
+            session_id=session.session_id,
+        )
 
     def _process_media_batch(
         self,
@@ -452,6 +508,7 @@ class RecorderService:
             segment_seconds=segment_seconds,
             burn_danmaku=target.record_danmaku,
         )
+        waiting_reported = False
         while (
             not self.shutdown_event.is_set()
             and not self.interrupt_event.is_set()
@@ -463,6 +520,8 @@ class RecorderService:
             free_gb = shutil.disk_usage(self.config.video_dir).free / (1024**3)
             if usage + peak <= self.config.max_cache_gb:
                 if free_gb >= peak + 1:
+                    if waiting_reported:
+                        self._set_target_status(target, "connecting", "缓存空间已释放，准备继续录制")
                     return True
                 self.logger.warning(
                     "physical disk free space is too low for %s: free %.2f GB, need %.2f GB",
@@ -483,7 +542,14 @@ class RecorderService:
                     peak,
                     self.config.max_cache_gb,
                 )
+                self._set_target_status(target, "error", "缓存空间不足，无法开始下一段")
                 return False
+            self._set_target_status(
+                target,
+                "waiting_space",
+                f"等待上传释放空间（已用 {usage:.2f} GB，需预留 {peak:.2f} GB）",
+            )
+            waiting_reported = True
             self.logger.info(
                 "waiting for uploads to free space for %s: used %.2f GB, need %.2f GB",
                 target.name,
@@ -692,6 +758,19 @@ class RecorderService:
     ) -> bool:
         final_media = Path(part.path)
         original_final = Path(part.source_path) if part.source_path else None
+        upload_state = "recording_uploading" if session.status == SessionStatus.RECORDING else "uploading"
+        upload_message = (
+            f"正在录制，P{part.index:02d} 同时上传"
+            if upload_state == "recording_uploading"
+            else f"正在上传 P{part.index:02d}"
+        )
+        self._set_target_status(
+            target,
+            upload_state,
+            upload_message,
+            session_id=session.session_id,
+            part=part.index,
+        )
         result = self._upload_part_with_retries(target, session, final_media, part)
         if result.verified and result.bvid:
             session.bvid = result.bvid
@@ -700,6 +779,22 @@ class RecorderService:
             part.uploaded_at = int(time.time())
             self.store.save(session)
             self.analytics.upsert(session)
+            if session.status == SessionStatus.RECORDING:
+                self._set_target_status(
+                    target,
+                    "recording",
+                    f"正在录制，P{part.index:02d} 已上传",
+                    session_id=session.session_id,
+                    bvid=result.bvid,
+                )
+            else:
+                self._set_target_status(
+                    target,
+                    "uploaded",
+                    f"P{part.index:02d} 已上传",
+                    session_id=session.session_id,
+                    bvid=result.bvid,
+                )
             self._bind_collection(target, session)
             if self.config.delete_after_upload:
                 danmaku_final = Path(part.danmaku_path) if part.danmaku_path else None
@@ -711,6 +806,13 @@ class RecorderService:
         part.error = "submission was sent but BVID was not verified"
         self.store.save(session)
         self.analytics.upsert(session)
+        self._set_target_status(
+            target,
+            "error",
+            f"P{part.index:02d} 上传失败，本地文件已保留",
+            session_id=session.session_id,
+            part=part.index,
+        )
         return False
 
     def _wait_for_uploads(self, session_id: str, futures: list[Future[bool]]) -> None:
@@ -828,6 +930,12 @@ class RecorderService:
         if grace <= 0:
             return False
         started = int(time.time())
+        self._set_target_status(
+            target,
+            "reconnecting",
+            "直播中断，正在等待重新开播",
+            session_id=session.session_id,
+        )
         while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
             status = self._resolve_status(target)
             if status is not None and status.live:
@@ -837,6 +945,7 @@ class RecorderService:
                 session.last_seen_live_epoch = int(time.time())
                 self.store.save(session)
                 self.analytics.upsert(session)
+                self._set_target_status(target, "recording", "直播已恢复，继续录制", session_id=session.session_id)
                 return True
             elapsed = int(time.time()) - started
             if elapsed > grace:
@@ -971,6 +1080,13 @@ class RecorderService:
                     part.status = "UPLOAD_FAILED"
                     part.error = f"local media missing: {media_path}"
                     continue
+                self._set_target_status(
+                    target,
+                    "uploading",
+                    f"正在恢复上传 P{part.index:02d}",
+                    session_id=session.session_id,
+                    part=part.index,
+                )
                 result = self._upload_part_with_retries(target, session, media_path, part)
                 if result.verified and result.bvid:
                     session.bvid = result.bvid
@@ -985,13 +1101,22 @@ class RecorderService:
             self.store.save(session)
             self._bind_collection(target, session)
             self.analytics.upsert(session)
+            if session.status == SessionStatus.UPLOADED:
+                self._set_target_status(target, "uploaded", "待恢复录像已上传", session_id=session.session_id, bvid=session.bvid)
+            else:
+                self._set_target_status(target, "error", "待恢复录像上传失败，本地文件已保留", session_id=session.session_id)
             return
+        self._set_target_status(target, "uploading", "正在上传录像", session_id=session.session_id)
         result = self.uploader.upload_session(target, session, session_dir, title=resolved_title)
         session.bvid = result.bvid
         session.status = SessionStatus.UPLOADED if result.verified else SessionStatus.UPLOAD_SUBMITTED_UNVERIFIED
         session.error = "" if result.verified else "submission was sent but BVID was not verified"
         self.store.save(session)
         self.analytics.upsert(session)
+        if result.verified:
+            self._set_target_status(target, "uploaded", "录像已上传", session_id=session.session_id, bvid=result.bvid)
+        else:
+            self._set_target_status(target, "error", "已提交但未能确认 BVID", session_id=session.session_id)
 
     def _new_session(self, target: TargetConfig) -> SessionRecord:
         now = datetime.now(ZoneInfo(self.config.timezone))
