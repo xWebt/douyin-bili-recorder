@@ -269,3 +269,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Full test suite: `69 passed`.
 - Regression coverage verifies Bilibili response code `21566` raises `UploadRateLimited` rather than a generic failure.
 - Rate-limit retries now wait five minutes and publish a dedicated target status.
+
+## v2.2.24 live-session status validation
+
+- Full test suite: `69 passed`.
+- The recorder writes `RECORDING` immediately after process start and keeps `detected_start_epoch` unset until actual media is available, preserving the offline-probe guard.
+- This prevents an upload rate-limit state from hiding an actively recording anchor.

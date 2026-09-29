@@ -1,6 +1,11 @@
 # Changelog
 
 
+## v2.2.24
+
+- A live recorder session is now marked `RECORDING` as soon as the long-lived recorder process connects to the stream, not only when the first completed segment appears.
+- Per-anchor UI status therefore keeps showing `录制中` even when a previous part is in upload failure/rate-limit state.
+
 ## v2.2.23
 
 - Bilibili response code `21566` is now recognized as an explicit rate-limit condition instead of a generic upload failure.

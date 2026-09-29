@@ -336,12 +336,7 @@ class RecorderService:
             process = self.recorder.start(target, session_dir)
             connection_started = int(time.time())
             media_found = False
-            self._set_target_status(
-                target,
-                "recording",
-                "已连接直播流，正在录制",
-                session_id=session.session_id,
-            )
+            self._mark_recording_connected(target, session, connection_started)
 
             while (
                 not self.shutdown_event.is_set()
@@ -509,6 +504,19 @@ class RecorderService:
             )
             if str(path) not in seen_sources
         ]
+
+    def _mark_recording_connected(self, target: TargetConfig, session: SessionRecord, connected_epoch: int) -> None:
+        self._last_live_epoch[target.name] = int(time.time())
+        session.last_seen_live_epoch = connected_epoch
+        session.status = SessionStatus.RECORDING
+        self.store.save(session)
+        self.analytics.upsert(session)
+        self._set_target_status(
+            target,
+            "recording",
+            "已连接直播流，正在录制",
+            session_id=session.session_id,
+        )
 
     def _mark_recording_started(self, target: TargetConfig, session: SessionRecord, started_epoch: int) -> None:
         self._last_live_epoch[target.name] = int(time.time())
