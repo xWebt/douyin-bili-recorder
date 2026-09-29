@@ -164,6 +164,7 @@ const TARGET_STATE_META = {
   connecting: { label: "连接中", tone: "checking" },
   reconnecting: { label: "重连检测", tone: "checking" },
   waiting_space: { label: "等待空间", tone: "checking" },
+  rate_limited: { label: "限流等待", tone: "checking" },
   offline: { label: "未开播", tone: "offline" },
   recording: { label: "录制中", tone: "recording" },
   recording_uploading: { label: "录制中 / 上传中", tone: "uploading" },

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
+import pytest
 from pathlib import Path
 
 from douyin_bili_recorder.config import load_config
 from douyin_bili_recorder.models import MediaFile, SessionPart, SessionRecord, SessionStatus
 from douyin_bili_recorder.process import ProcessResult
-from douyin_bili_recorder.uploader import BiliupUploader
+from douyin_bili_recorder.uploader import BiliupUploader, UploadRateLimited
 
 
 class FakeRunner:
@@ -76,6 +77,52 @@ public = true
     upload_command = next(command for command in runner.commands if "upload" in command)
     assert expected_title in upload_command
     assert "--is-only-self" not in upload_command
+
+
+def test_upload_part_raises_rate_limit_error(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+enabled = true
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "cookies.json").write_text("{}", encoding="utf-8")
+    config = load_config(config_path)
+
+    class RateLimitedRunner:
+        def run(self, args, **_kwargs) -> ProcessResult:
+            command = [str(item) for item in args]
+            if "list" in command:
+                return ProcessResult(0, [])
+            return ProcessResult(1, ["ResponseData { code: 21566, message: 投稿过于频繁 }"])
+
+    media = tmp_path / "part.mp4"
+    media.write_bytes(b"video")
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/123",
+    )
+    uploader = BiliupUploader(config, RateLimitedRunner(), logging.getLogger("test"))
+
+    with pytest.raises(UploadRateLimited):
+        uploader.upload_part(
+            config.targets[0],
+            session,
+            media,
+            part_index=1,
+            title="anchor P01",
+        )
 
 
 def test_upload_part_checks_existing_title_before_append(tmp_path: Path) -> None:

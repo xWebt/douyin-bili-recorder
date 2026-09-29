@@ -1,6 +1,11 @@
 # Changelog
 
 
+## v2.2.23
+
+- Bilibili response code `21566` is now recognized as an explicit rate-limit condition instead of a generic upload failure.
+- Rate-limited parts wait five minutes between retries, and the target card shows `限流等待` instead of repeatedly failing every 30 seconds.
+
 ## v2.2.22
 
 - Startup recovery now dispatches each pending session upload to the upload thread pool in parallel instead of uploading sessions one by one.

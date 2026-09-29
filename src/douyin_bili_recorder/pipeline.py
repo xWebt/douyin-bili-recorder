@@ -32,7 +32,7 @@ from .storage_guard import StorageGuard
 from .target_status import TargetStatusStore
 from .timeutil import build_title, epoch_iso, parse_duration_seconds
 from .ui_state import UIStateStore
-from .uploader import BiliupUploader, UploadResult
+from .uploader import BiliupUploader, UploadRateLimited, UploadResult
 
 
 class RecorderService:
@@ -1027,6 +1027,18 @@ class RecorderService:
                     return result
                 if attempt < self.config.upload_retry_count:
                     self.shutdown_event.wait(self.config.upload_retry_backoff_seconds * (attempt + 1))
+            except UploadRateLimited as exc:  # noqa: BLE001
+                part.error = str(exc)
+                self.store.save(session)
+                self._set_target_status(
+                    target,
+                    "rate_limited",
+                    "B站投稿频率限制，已暂停快速重试",
+                    session_id=session.session_id,
+                    part=part.index,
+                )
+                if attempt < self.config.upload_retry_count:
+                    self.shutdown_event.wait(300)
             except Exception as exc:  # noqa: BLE001
                 part.error = str(exc)
                 self.logger.exception("part upload failed for %s", part.index)

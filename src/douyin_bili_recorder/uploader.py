@@ -23,6 +23,10 @@ class UploadResult:
     messages: list[str]
 
 
+class UploadRateLimited(RuntimeError):
+    pass
+
+
 class BiliupUploader:
     def __init__(self, config: AppConfig, runner: ProcessRunner, logger: logging.Logger) -> None:
         self.config = config
@@ -146,6 +150,8 @@ class BiliupUploader:
                 existing_bvid=bvid,
             )
             if result.returncode != 0:
+                if self._is_rate_limited(result.lines):
+                    raise UploadRateLimited("B站投稿频率限制（21566）")
                 raise RuntimeError(f"Bilibili append command failed with code {result.returncode}")
             self._mark_progress_complete(bvid, f"{session.session_id}:{part_index}")
             return UploadResult(bvid, True, list(result.lines))
@@ -167,6 +173,8 @@ class BiliupUploader:
             title=title,
         )
         if result.returncode != 0:
+            if self._is_rate_limited(result.lines):
+                raise UploadRateLimited("B站投稿频率限制（21566）")
             raise RuntimeError(f"Bilibili submission command failed with code {result.returncode}")
         found = self._wait_for_bvid(title)
         if found:
@@ -276,6 +284,11 @@ class BiliupUploader:
                 message = "上传完成" if existing_bvid else "等待 BVID"
             progress.stop(message=message, bvid=existing_bvid)
         return result
+
+    @staticmethod
+    def _is_rate_limited(lines: list[str]) -> bool:
+        text = "\n".join(lines)
+        return "21566" in text or "投稿过于频繁" in text
 
     def _mark_progress_complete(self, bvid: str, progress_key: str) -> None:
         payload = next(

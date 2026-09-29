@@ -263,3 +263,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 
 - Full test suite: `68 passed`.
 - Regression coverage starts two recovered uploads and verifies both reach the uploader before either is released, proving startup recovery is no longer serialized.
+
+## v2.2.23 Bilibili rate-limit validation
+
+- Full test suite: `69 passed`.
+- Regression coverage verifies Bilibili response code `21566` raises `UploadRateLimited` rather than a generic failure.
+- Rate-limit retries now wait five minutes and publish a dedicated target status.
