@@ -310,8 +310,12 @@ function buildTargetRow(target, latest) {
     actionButton("bar-chart-3", "数据详情", () => openAnalytics(target.name)),
     actionButton("folder-open", "打开目录", () => openFolder("anchor", target.name)),
     actionButton("trash-2", "删除主播", () => {
+      const removedName = target.name;
       state.config.targets = state.config.targets.filter((item) => item.id !== target.id);
       renderTargets();
+      saveState(`${removedName} 已删除`).then((saved) => {
+        if (!saved) loadState(true);
+      });
     }),
   );
   header.append(identity, actions);

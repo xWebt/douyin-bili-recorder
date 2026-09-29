@@ -743,3 +743,72 @@ enabled = true
     assert service._schedule_allows_polling(target, moment) is True
     service._last_live_epoch[target.name] = int((moment - timedelta(minutes=20)).timestamp())
     assert service._schedule_allows_polling(target, moment) is False
+
+
+def test_offline_target_skips_capacity_wait(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "offline"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    monkeypatch.setattr(service, "_is_live", lambda _target: False)
+    monkeypatch.setattr(
+        service,
+        "_wait_for_capacity",
+        lambda _target: (_ for _ in ()).throw(AssertionError("offline target must not wait for cache space")),
+    )
+
+    assert service.record_and_upload(config.targets[0]) is False
+
+
+def test_part_upload_lock_serializes_threads(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    acquired = threading.Event()
+    release = threading.Event()
+
+    def contender() -> None:
+        with service._part_upload_lock("session", 1):
+            acquired.set()
+        release.set()
+
+    with service._part_upload_lock("session", 1):
+        thread = threading.Thread(target=contender)
+        thread.start()
+        assert not acquired.wait(0.1)
+    assert acquired.wait(1)
+    thread.join(timeout=1)
+    assert release.is_set()

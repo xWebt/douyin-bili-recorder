@@ -202,3 +202,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Regression coverage verifies a scheduled target remains pollable after the configured end when it was live within the reconnect grace period, and expires after the grace window.
 - A live imxiaoxin source segment was measured at 1920x1080, 60 fps, about 20.48 Mbps video and 18.83 Mbps total.
 - Danmaku origin rendering now uses that measured source bitrate with `libx264 -preset medium`; the no-bitrate fallback uses CRF 16 instead of CRF 20.
+
+## v2.2.13 cache, deletion, and duplicate-upload validation
+
+- Regression coverage verifies an offline target never enters the cache-capacity wait.
+- Regression coverage verifies the per-part upload lock blocks a second worker until the first upload releases it.
+- The UI delete action now calls the persisted state save path, so deleted targets disappear from runtime configuration and their worker receives the removal signal.

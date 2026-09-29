@@ -1,6 +1,13 @@
 # Changelog
 
 
+## v2.2.13
+
+- Offline targets are now rejected before the cache-budget wait, preventing non-live anchors such as `7JIA九芊岁` from spamming `need space` while offline.
+- Deleting an anchor now persists immediately instead of only removing the row from the browser; the dynamic service then stops that target worker.
+- Added a cross-process filesystem lock per session part around Bilibili upload, preventing a restarted or manually stopped service from uploading the same P twice.
+
+
 ## v2.2.12
 
 - Schedule windows now control when monitoring starts, not when an active live stream must stop. A recently seen live target continues polling after the scheduled end during the reconnect grace period.
