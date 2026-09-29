@@ -11,6 +11,7 @@ from typing import Any
 
 from .config import AppConfig
 from .models import SessionRecord
+from .paths import anchor_dir
 from .state import SessionStore
 from .target_status import TargetStatusStore
 from .ui_state import UIStateStore
@@ -239,9 +240,14 @@ class ServiceController:
         return round(total / (1024**3), 2)
 
     def _target_usage_bytes(self, sessions: list[SessionRecord]) -> dict[str, int]:
-        usage: dict[str, int] = {}
+        paths_by_target: dict[str, set[Path]] = {}
+        for target in self.config.targets:
+            root = anchor_dir(self.config.video_dir.expanduser(), target.name)
+            paths = paths_by_target.setdefault(target.name, set())
+            if root.exists():
+                paths.update(path.resolve() for path in root.rglob("*") if path.is_file())
         for session in sessions:
-            paths: set[Path] = set()
+            paths = paths_by_target.setdefault(session.target_name, set())
             session_dir = self.config.sessions_dir / session.session_id
             if session_dir.exists():
                 paths.update(path.resolve() for path in session_dir.rglob("*") if path.is_file())
@@ -252,13 +258,15 @@ class ServiceController:
                     path = Path(value)
                     if path.exists() and path.is_file():
                         paths.add(path.resolve())
+        usage: dict[str, int] = {}
+        for target_name, paths in paths_by_target.items():
             size = 0
             for path in paths:
                 try:
                     size += path.stat().st_size
                 except OSError:
                     continue
-            usage[session.target_name] = usage.get(session.target_name, 0) + size
+            usage[target_name] = size
         return usage
 
     def _disk_free(self) -> int:

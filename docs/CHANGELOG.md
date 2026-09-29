@@ -1,6 +1,12 @@
 # Changelog
 
 
+## v2.2.17
+
+- Uploaded sessions with `delete_after_upload` enabled now clean their final media, original media, danmaku files, and `.danmaku-runtime` temporary files while retaining `session.json` history.
+- Per-anchor usage scanning now includes the complete anchor video directory, so orphaned final files not referenced by a session record are counted.
+- This fixes stale hidden FLV files and completed uploads that previously continued to appear as several GB of per-anchor usage.
+
 ## v2.2.16
 
 - Added a per-anchor live status indicator with distinct states for checking, offline, scheduled waiting, recording, reconnect monitoring, upload, completion, and errors.

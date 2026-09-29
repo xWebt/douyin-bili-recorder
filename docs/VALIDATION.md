@@ -229,3 +229,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 - Regression coverage verifies target status files round-trip through the UI status store.
 - Regression coverage verifies per-anchor usage includes both temporary session files and final media paths without double-counting duplicate path fields.
 - The browser script passes `node --check` and the target cards consume status/usage data on every 3-second service refresh.
+
+## v2.2.17 uploaded artifact cleanup validation
+
+- Full test suite: `66 passed`.
+- Regression coverage verifies cleanup removes uploaded final media and `.danmaku-runtime` files while preserving `session.json`.
+- Regression coverage verifies per-anchor usage includes a file found directly in the anchor video directory, including orphaned completed media not referenced by a session record.

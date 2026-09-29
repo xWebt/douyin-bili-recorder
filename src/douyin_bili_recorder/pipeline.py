@@ -109,6 +109,8 @@ class RecorderService:
                         session.status = SessionStatus.UPLOADED
                         session.error = ""
                         self.store.save(session)
+            if session.status == SessionStatus.UPLOADED and self.config.delete_after_upload:
+                self._cleanup_uploaded_artifacts(session)
 
     def _sync_target_workers(self) -> set[str]:
         try:
@@ -331,6 +333,8 @@ class RecorderService:
             self._set_target_status(target, "uploaded", "本场录像已上传", session_id=session.session_id, bvid=session.bvid)
         else:
             self._set_target_status(target, "recorded", "本场录像已保存到本地", session_id=session.session_id)
+        if final_status == SessionStatus.UPLOADED and self.config.delete_after_upload:
+            self._cleanup_uploaded_artifacts(session)
         self.storage.enforce_limit(self.config.max_cache_gb)
         remaining_files = [
             path
@@ -814,6 +818,26 @@ class RecorderService:
             part=part.index,
         )
         return False
+
+    def _cleanup_uploaded_artifacts(self, session: SessionRecord) -> None:
+        if not session.parts or not all(part.status == "UPLOADED" for part in session.parts):
+            return
+        session_dir = self.config.sessions_dir / session.session_id
+        for part in session.parts:
+            for value in (part.path, part.source_path, part.danmaku_path):
+                if not value:
+                    continue
+                Path(value).unlink(missing_ok=True)
+        shutil.rmtree(session_dir / ".danmaku-runtime", ignore_errors=True)
+        if session_dir.exists():
+            for path in session_dir.iterdir():
+                if path.name == "session.json":
+                    continue
+                if path.is_dir():
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    path.unlink(missing_ok=True)
+        self.logger.info("cleaned uploaded artifacts for %s", session.session_id)
 
     def _wait_for_uploads(self, session_id: str, futures: list[Future[bool]]) -> None:
         if futures:
