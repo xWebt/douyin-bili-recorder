@@ -1,6 +1,11 @@
 # Changelog
 
 
+## v2.2.20
+
+- Reopening the service now scans recent session output directories for completed `P02`/`P03` media that were never written into `session.json`, restores them as pending parts, and resumes upload automatically.
+- Orphan recovery prefers MP4 output and keeps the matching FLV/MKV/TS source and XML danmaku path for upload or cleanup.
+
 ## v2.2.19
 
 - The per-anchor status switches to `录制中` as soon as the recorder process connects to the live stream, instead of waiting for the first completed segment to appear on disk.

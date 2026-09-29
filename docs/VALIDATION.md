@@ -246,3 +246,9 @@ The successful end-to-end fixture was left at `/private/tmp/dbr-e2e-success.5sRB
 
 - The recorder worker now writes `recording` status immediately after the long-lived recorder process is started.
 - `node --check` and the Python test suite remain required before packaging.
+
+## v2.2.20 orphan-part resume validation
+
+- Full test suite: `67 passed`.
+- Regression coverage verifies a recent completed P02 in the session output directory is restored even when `session.json` only contains P01.
+- Regression coverage verifies MP4 is preferred over its matching FLV source and the XML danmaku sidecar is attached.

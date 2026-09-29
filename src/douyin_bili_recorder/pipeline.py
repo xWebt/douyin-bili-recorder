@@ -4,6 +4,7 @@ import hashlib
 import fcntl
 import logging
 import os
+import re
 import shutil
 import threading
 import time
@@ -93,6 +94,9 @@ class RecorderService:
 
     def recover_pending(self) -> None:
         for session in self.store.all():
+            target = self._target_by_name(session.target_name)
+            if target is not None:
+                self._recover_orphan_parts(session, target)
             if session.status == SessionStatus.RECORDING:
                 session.status = SessionStatus.RECORDED
                 session.ended_epoch = session.ended_epoch or int(time.time())
@@ -111,6 +115,85 @@ class RecorderService:
                         self.store.save(session)
             if session.status == SessionStatus.UPLOADED and self.config.delete_after_upload:
                 self._cleanup_uploaded_artifacts(session)
+
+    def _recover_orphan_parts(self, session: SessionRecord, target: TargetConfig) -> None:
+        if session.detected_start_epoch is None:
+            return
+        if int(time.time()) - session.created_epoch > 7 * 24 * 3600:
+            return
+        output_dir = session_output_dir(
+            self.config.video_dir,
+            session.target_name,
+            session.detected_start_epoch,
+            self.config.timezone,
+            session.room_title,
+            session.session_id,
+        )
+        if not output_dir.exists():
+            return
+        known_stems = {Path(part.path).stem for part in session.parts if part.path}
+        known_indices = {part.index for part in session.parts}
+        added = False
+        suffix_priority = {".mp4": 0, ".flv": 1, ".mkv": 2, ".ts": 3}
+        media_files = sorted(
+            (
+                path
+                for path in output_dir.iterdir()
+                if path.is_file() and path.suffix.lower() in suffix_priority
+            ),
+            key=lambda path: (suffix_priority[path.suffix.lower()], path.name),
+        )
+        for media_path in media_files:
+            if media_path.stem in known_stems:
+                continue
+            match = re.search(r"_P(\d+)", media_path.stem)
+            if match is None:
+                continue
+            part_index = int(match.group(1))
+            if part_index in known_indices:
+                continue
+            title = session.title or build_title(
+                target.title_template,
+                target.name,
+                target.url,
+                session,
+                self.config.timezone,
+            )
+            session.title = title
+            source_path = next(
+                (
+                    media_path.with_suffix(suffix)
+                    for suffix in (".flv", ".mkv", ".ts")
+                    if media_path.with_suffix(suffix).exists()
+                ),
+                None,
+            )
+            danmaku_path = media_path.with_suffix(".xml")
+            try:
+                duration = self.media.probe_duration(media_path)
+            except Exception:  # noqa: BLE001
+                duration = None
+            session.parts.append(
+                SessionPart(
+                    index=part_index,
+                    status="PENDING",
+                    title=f"{title}｜P{part_index:02d}",
+                    path=str(media_path),
+                    source_path=str(source_path or ""),
+                    danmaku_path=str(danmaku_path if danmaku_path.exists() else ""),
+                    size=media_path.stat().st_size,
+                    duration_seconds=duration,
+                )
+            )
+            known_stems.add(media_path.stem)
+            known_indices.add(part_index)
+            added = True
+        if added:
+            session.parts.sort(key=lambda part: part.index)
+            session.status = SessionStatus.RECORDED
+            self.store.save(session)
+            self.analytics.upsert(session)
+            self.logger.info("recovered orphan media parts for %s", session.session_id)
 
     def _sync_target_workers(self) -> set[str]:
         try:
