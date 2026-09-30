@@ -653,7 +653,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   });
   remote.addEventListener("input", () => { target.cloud_remote = remote.value.trim(); });
   const cloudHint = document.createElement("small");
-  cloudHint.textContent = "先在本机配置 rclone remote；如果 remote 指向 OpenList 的 /dav 根，路径需包含挂载名，例如 quark:/quark/DouyinBiliRecorder。";
+  cloudHint.textContent = "保存时会创建该主播目录；如果 remote 指向 OpenList 的 /dav 根，路径需包含挂载名，例如 quark:/quark/DouyinBiliRecorder。";
   const testButton = document.createElement("button");
   testButton.type = "button";
   testButton.className = "secondary-button compact-action";

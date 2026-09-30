@@ -119,6 +119,7 @@ class RecorderService:
                 self.store.save(session)
                 self.analytics.upsert(session)
             if target is not None and target.cloud_backup and session.record_mode != "monitor":
+                self._ensure_cloud_anchor_dir(target)
                 self._queue_pending_cloud_parts(session, target)
             if session.status in {SessionStatus.RECORDED, SessionStatus.UPLOADING, SessionStatus.UPLOAD_FAILED}:
                 future = self.upload_executor.submit(self._upload_with_retries, session)
@@ -263,6 +264,17 @@ class RecorderService:
         grace_seconds = max(60, self.config.reconnect_grace_minutes * 60)
         return now.timestamp() - last_live <= grace_seconds
 
+    def _ensure_cloud_anchor_dir(self, target: TargetConfig) -> None:
+        remote = target.cloud_remote.strip()
+        if not remote:
+            return
+        try:
+            path = self.cloud_uploader.ensure_anchor_dir(target.name, remote)
+        except CloudUploadError as exc:
+            self.logger.warning("cloud anchor folder unavailable for %s: %s", target.name, exc)
+            return
+        self.logger.info("cloud anchor folder ready for %s: %s", target.name, path)
+
     def _set_target_status(self, target: TargetConfig, state: str, message: str = "", **extra) -> None:
         try:
             self.target_status.update(target.name, state, message, **extra)
@@ -324,6 +336,7 @@ class RecorderService:
         if not self._is_live(target):
             self._set_target_status(target, "offline", "当前未开播")
             return False
+        self._ensure_cloud_anchor_dir(target)
         if not self._wait_for_capacity(target):
             self._set_target_status(target, "error", "缓存空间不足，下一段录制已暂停")
             return False

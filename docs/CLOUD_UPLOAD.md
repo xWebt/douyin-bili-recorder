@@ -47,11 +47,11 @@ pass: <rclone 加密后的密码>
 
 如果每个网盘使用单独的 remote，URL 应直达对应挂载点，例如 `http://127.0.0.1:5244/dav/quark`，路径写作 `quark:/DouyinBiliRecorder`。两种配法二选一，不要混用。
 
-6. 启动应用，确认左上角的 `rclone 可执行文件` 指向 `rclone` 或绝对路径。
-7. 在主播卡片中开启 `网盘备份`，选择百度/夸克，填写 remote 根路径。
+6. 启动应用。应用会自动启动 `Application Support/DouyinBiliRecorder/tools/openlist/openlist`（如果存在），并确认左上角的 `rclone 可执行文件` 指向 `rclone` 或绝对路径。
+7. 在主播卡片中选择百度/夸克并填写 remote 根路径；是否开启 `网盘备份` 不影响主播目录创建。
 8. 点击 `测试网盘` 验证远端可访问。
 9. 保存主播设置。
-10. 保存时会立即在网盘根目录下创建 `主播名/` 文件夹。例如填写 `openlist:/quark/DouyinBiliRecorder` 后，保存“凡晨”会创建 `openlist:/quark/DouyinBiliRecorder/凡晨/`。
+10. 保存时会立即在网盘根目录下创建 `主播名/` 文件夹；每次开播前也会再次确保目录存在。例如填写 `openlist:/quark/DouyinBiliRecorder` 后，“凡晨”会创建 `openlist:/quark/DouyinBiliRecorder/凡晨/`。
 
 ## 归档规则
 

@@ -100,6 +100,32 @@ class RcloneCloudUploader:
         with self._cancel_lock:
             return self._cancel_events.setdefault(key, threading.Event())
 
+    def ensure_anchor_dir(
+        self,
+        target_name: str,
+        remote: str,
+        *,
+        rclone_bin: str | None = None,
+    ) -> str:
+        remote_root = self._validate_remote(remote)
+        anchor = safe_path_name(target_name, "未命名主播")
+        remote_path = f"{remote_root}/{anchor}"
+        command = [rclone_bin or self.config.cloud_rclone_bin, "mkdir", remote_path]
+        try:
+            result = self.runner.run(command, timeout_seconds=60)
+        except FileNotFoundError as exc:
+            raise CloudUploadError(
+                f"rclone 不存在或不可执行：{command[0]}"
+            ) from exc
+        if result.cancelled:
+            raise CloudUploadError("创建网盘主播目录已停止")
+        if result.timed_out:
+            raise CloudUploadError("创建网盘主播目录超时")
+        if result.returncode != 0:
+            detail = result.lines[-1] if result.lines else f"exit code {result.returncode}"
+            raise CloudUploadError(f"创建网盘主播目录失败：{detail}")
+        return remote_path
+
     def test_remote(self, remote: str) -> CloudUploadResult:
         remote_root = self._validate_remote(remote)
         command = [

@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.38
+- Cloud anchor folders are now created whenever an anchor has a cloud remote configured, even when independent upload backup is disabled.
+- The recorder checks and creates the anchor folder again immediately before starting a live recording, so folder creation no longer depends on clicking save with the backup switch enabled.
+- The app now starts the installed OpenList helper automatically when the control deck opens and stops it on exit only if the app started it.
+
 ## v2.2.37
 - Aligned the default Quark and Baidu remote paths with the existing OpenList `/dav` root layout: `quark:/quark/DouyinBiliRecorder` and `baidu:/baidu/DouyinBiliRecorder`.
 - Existing enabled anchors will create their named folder under the same cloud root without duplicating or dropping the OpenList mount name.

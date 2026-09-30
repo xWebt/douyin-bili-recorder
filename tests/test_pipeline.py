@@ -1218,3 +1218,38 @@ url = "https://live.douyin.com/1"
     worker.join(timeout=2)
     assert not worker.is_alive()
     assert service.shutdown_event.is_set()
+
+
+def test_record_and_upload_ensures_cloud_anchor_before_recording(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+cloud_remote = "quark:/quark/DouyinBiliRecorder"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    calls = []
+
+    class FakeCloudUploader:
+        @staticmethod
+        def ensure_anchor_dir(name, remote):
+            calls.append((name, remote))
+            return remote
+
+    service.cloud_uploader = FakeCloudUploader()  # type: ignore[assignment]
+    service._is_live = lambda _target: True  # type: ignore[method-assign]
+    service._wait_for_capacity = lambda _target: False  # type: ignore[method-assign]
+
+    assert service.record_and_upload(config.targets[0]) is False
+    assert calls == [("anchor", "quark:/quark/DouyinBiliRecorder")]

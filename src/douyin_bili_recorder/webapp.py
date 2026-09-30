@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import json
 import shutil
 from contextlib import asynccontextmanager
@@ -25,6 +26,7 @@ from .bilibili_status import BilibiliSubmissionClient
 from .reports import ReportGenerator
 from .state import SessionStore
 from .models import SessionStatus
+from .openlist import OpenListManager
 from .upload_progress import UploadProgressStore
 
 WEB_ROOT = Path(__file__).with_name("web")
@@ -144,28 +146,16 @@ def _ensure_cloud_anchor_folder(config: AppConfig, state: dict[str, Any], target
 
 def _sync_cloud_anchor_folders(
     config: AppConfig,
-    previous: dict[str, Any],
     current: dict[str, Any],
 ) -> tuple[list[str], list[dict[str, str]]]:
-    previous_targets = {
-        str(item.get("id", "")): item
-        for item in previous.get("targets", [])
-        if isinstance(item, dict)
-    }
     folders: list[str] = []
     warnings: list[dict[str, str]] = []
     for target in current.get("targets", []):
-        if not isinstance(target, dict) or not target.get("cloud_backup", False):
+        if not isinstance(target, dict):
             continue
         name = str(target.get("name", "")).strip()
         remote = str(target.get("cloud_remote", "")).strip()
-        old = previous_targets.get(str(target.get("id", "")), {})
-        unchanged = (
-            old.get("cloud_backup")
-            and str(old.get("name", "")).strip() == name
-            and str(old.get("cloud_remote", "")).strip() == remote
-        )
-        if unchanged:
+        if not remote:
             continue
         try:
             folders.append(_ensure_cloud_anchor_folder(config, current, target))
@@ -328,17 +318,20 @@ def create_app(config: AppConfig) -> FastAPI:
     state_store = UIStateStore(config)
     auth = BilibiliAuth(config.cookie_file)
     controller = ServiceController(config, state_store)
+    openlist = OpenListManager(config.config_path.parent, logging.getLogger(__name__))
     analytics = AnalyticsStore(config.video_dir, config.timezone)
     resolver = DouyinResolver()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        openlist.ensure_running()
         controller.start_supervisor()
         try:
             yield
         finally:
             controller.stop_supervisor()
             controller.stop("keep")
+            openlist.stop()
 
     app = FastAPI(title="Douyin recorder control deck", lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=WEB_ROOT), name="static")
@@ -360,10 +353,9 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.put("/api/state")
     async def put_state(payload: dict[str, Any]) -> dict[str, Any]:
-        previous = state_store.load()
         state = state_store.save(payload)
         state_store.render_runtime_config(state)
-        cloud_folders, cloud_warnings = _sync_cloud_anchor_folders(config, previous, state)
+        cloud_folders, cloud_warnings = _sync_cloud_anchor_folders(config, state)
         return {
             "config": state,
             "restart_required": True,

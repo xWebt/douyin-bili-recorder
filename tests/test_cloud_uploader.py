@@ -107,3 +107,18 @@ def test_cloud_uploader_rejects_missing_remote(tmp_path: Path) -> None:
         assert "rclone 格式" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("expected missing remote to fail")
+
+
+def test_cloud_uploader_creates_anchor_directory(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    runner = FakeRunner()
+    uploader = RcloneCloudUploader(config, runner, logging.getLogger("test"))  # type: ignore[arg-type]
+
+    remote_path = uploader.ensure_anchor_dir(
+        "卢某某",
+        "quark:/DouyinBiliRecorder",
+        rclone_bin="rclone",
+    )
+
+    assert remote_path == "quark:/DouyinBiliRecorder/卢某某"
+    assert runner.commands == [["rclone", "mkdir", remote_path]]

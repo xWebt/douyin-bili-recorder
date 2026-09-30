@@ -74,7 +74,7 @@ def test_start_target_enables_target_and_queues_request(tmp_path: Path) -> None:
     assert (config.data_dir / "ui" / "manual" / f"{target_key('anchor')}.request").exists()
 
 
-def test_sync_cloud_anchor_folders_creates_new_enabled_anchor(tmp_path: Path, monkeypatch) -> None:
+def test_sync_cloud_anchor_folders_creates_configured_anchor(tmp_path: Path, monkeypatch) -> None:
     config = _config(tmp_path)
     calls = []
 
@@ -94,20 +94,20 @@ def test_sync_cloud_anchor_folders_creates_new_enabled_anchor(tmp_path: Path, mo
             {
                 "id": "anchor-id",
                 "name": "凡晨",
-                "cloud_backup": True,
+                "cloud_backup": False,
                 "cloud_remote": "quark:/DouyinBiliRecorder",
             }
         ],
     }
 
-    folders, warnings = _sync_cloud_anchor_folders(config, {"targets": []}, current)
+    folders, warnings = _sync_cloud_anchor_folders(config, current)
 
     assert warnings == []
     assert folders == ["quark:/DouyinBiliRecorder/凡晨"]
     assert calls[0][-1] == "quark:/DouyinBiliRecorder/凡晨"
 
 
-def test_sync_cloud_anchor_folders_skips_unchanged_anchor(tmp_path: Path, monkeypatch) -> None:
+def test_sync_cloud_anchor_folders_skips_anchor_without_remote(tmp_path: Path, monkeypatch) -> None:
     config = _config(tmp_path)
     calls = []
 
@@ -124,11 +124,11 @@ def test_sync_cloud_anchor_folders_skips_unchanged_anchor(tmp_path: Path, monkey
     target = {
         "id": "anchor-id",
         "name": "凡晨",
-        "cloud_backup": True,
-        "cloud_remote": "quark:/DouyinBiliRecorder",
+        "cloud_backup": False,
+        "cloud_remote": "",
     }
 
-    folders, warnings = _sync_cloud_anchor_folders(config, {"targets": [target]}, {"targets": [target]})
+    folders, warnings = _sync_cloud_anchor_folders(config, {"targets": [target]})
 
     assert folders == []
     assert warnings == []
