@@ -132,6 +132,25 @@ class ServiceController:
         saved_cache_limit = int(cache_limit_gb or self.config.max_cache_gb)
         upload_progress_store = UploadProgressStore(self.config.data_dir)
         upload_progresses = upload_progress_store.load_all()
+        parts_by_key = {
+            f"{session.session_id}:{part.index}": part
+            for session in sessions
+            for part in session.parts
+        }
+        for progress in upload_progresses:
+            part = parts_by_key.get(str(progress.get("key", "")))
+            if part is None:
+                continue
+            if part.status == "PAUSED":
+                progress["state"] = "paused"
+                progress["message"] = "已暂停"
+            elif part.status == "CANCELED":
+                progress["state"] = "stopped"
+                progress["message"] = "已停止"
+            elif part.status == "UPLOADED" and part.bvid:
+                progress["state"] = "completed"
+                progress["message"] = "上传完成"
+                progress["bvid"] = part.bvid
         target_statuses = TargetStatusStore(self.config.data_dir).load_all()
         target_names = [str(item.get("name", "")) for item in state.get("targets", []) if item.get("name")]
         target_usage_bytes = self._target_usage_bytes(sessions, target_names)

@@ -1307,18 +1307,24 @@ class RecorderService:
                     part.bvid = result.bvid
                     part.status = "UPLOADED"
                     part.uploaded_at = int(time.time())
-            session.status = (
+            latest = self.store.load(session.session_id)
+            latest.bvid = session.bvid or latest.bvid
+            latest.status = (
                 SessionStatus.UPLOADED
-                if session.parts and all(part.status == "UPLOADED" for part in session.parts)
+                if latest.parts and all(part.status == "UPLOADED" for part in latest.parts)
                 else SessionStatus.UPLOAD_FAILED
             )
-            self.store.save(session)
-            self._bind_collection(target, session)
-            self.analytics.upsert(session)
-            if session.status == SessionStatus.UPLOADED:
-                self._set_target_status(target, "uploaded", "待恢复录像已上传", session_id=session.session_id, bvid=session.bvid)
+            self.store.save(latest)
+            self._bind_collection(target, latest)
+            self.analytics.upsert(latest)
+            if latest.status == SessionStatus.UPLOADED:
+                self._set_target_status(target, "uploaded", "待恢复录像已上传", session_id=latest.session_id, bvid=latest.bvid)
+            elif any(part.status == "PAUSED" for part in latest.parts):
+                self._set_target_status(target, "paused", "有 P 已暂停，等待手动重试", session_id=latest.session_id)
+            elif any(part.status == "CANCELED" for part in latest.parts):
+                self._set_target_status(target, "canceled", "有 P 已停止，本地文件已保留", session_id=latest.session_id)
             else:
-                self._set_target_status(target, "error", "待恢复录像上传失败，本地文件已保留", session_id=session.session_id)
+                self._set_target_status(target, "error", "待恢复录像上传失败，本地文件已保留", session_id=latest.session_id)
             return
         self._set_target_status(target, "uploading", "正在上传录像", session_id=session.session_id)
         result = self.uploader.upload_session(target, session, session_dir, title=resolved_title)

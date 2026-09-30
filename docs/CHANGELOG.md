@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.27
+- Fixed a pause/retry race where the recovery worker could overwrite a `PAUSED` part with its stale `UPLOADING` state after the child process was canceled.
+- Service status now merges persisted part state into upload progress so the UI reliably shows `已暂停`, `已停止`, or completed BVID state even if a progress sampler updates later.
+
 ## v2.2.26
 - Upload rows now provide separate pause, retry, and stop controls. Pausing cancels only that P, keeps the local file, and waits for an explicit retry.
 - Retrying a paused, stopped, or failed part uses a new upload generation so stale cancellation events cannot overwrite the new attempt.

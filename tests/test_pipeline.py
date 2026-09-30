@@ -1060,6 +1060,18 @@ url = "https://live.douyin.com/1"
     assert service.store.load("stopped").parts[0].status == "CANCELED"
     assert service._upload_is_cancelled("stopped", 1)
 
+    service.store.save(
+        SessionRecord(
+            session_id="paused",
+            target_name="anchor",
+            target_url="https://live.douyin.com/1",
+            status=SessionStatus.RECORDED,
+            parts=[SessionPart(index=1, status="PAUSED", title="P1", path=str(media))],
+        )
+    )
+    service._upload_with_retries(service.store.load("paused"))
+    assert service.store.load("paused").parts[0].status == "PAUSED"
+
 
 def test_clear_target_cache_keeps_active_and_pending_files(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
