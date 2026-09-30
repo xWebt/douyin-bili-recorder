@@ -360,6 +360,23 @@ def create_app(config: AppConfig) -> FastAPI:
     openlist = OpenListManager(config.config_path.parent, logging.getLogger(__name__))
     analytics = AnalyticsStore(config.video_dir, config.timezone)
     resolver = DouyinResolver()
+    cleanup_done = False
+
+    def shutdown_cleanup() -> None:
+        nonlocal cleanup_done
+        if cleanup_done:
+            return
+        logger = logging.getLogger(__name__)
+        for label, action in (
+            ("OpenList", openlist.stop),
+            ("service supervisor", controller.stop_supervisor),
+            ("recorder worker", lambda: controller.stop("keep")),
+        ):
+            try:
+                action()
+            except Exception:
+                logger.exception("failed to stop %s during shutdown", label)
+        cleanup_done = True
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -368,11 +385,10 @@ def create_app(config: AppConfig) -> FastAPI:
         try:
             yield
         finally:
-            controller.stop_supervisor()
-            controller.stop("keep")
-            openlist.stop()
+            shutdown_cleanup()
 
     app = FastAPI(title="Douyin recorder control deck", lifespan=lifespan)
+    app.state.shutdown_cleanup = shutdown_cleanup
     app.mount("/static", StaticFiles(directory=WEB_ROOT), name="static")
 
     @app.get("/")

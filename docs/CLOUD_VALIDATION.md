@@ -1,5 +1,13 @@
 # Validation
 
+## v2.2.43 shutdown validation
+
+- Unit tests cover reclaiming an app-owned OpenList listener even when its owner PID file is missing.
+- The startup path stops a stale listener from the application directory before launching a fresh OpenList process.
+- Shutdown cleanups are independent: a failure in one cleanup step does not prevent recorder or OpenList cleanup.
+- The packaged `v2.2.43` app replaced a leaked OpenList listener that had no owner PID file, then wrote a fresh owner record for the new process.
+- Closing the packaged app removed the control-deck listener, OpenList listener on `5244`, recorder worker, ownership file, and runtime PID within two seconds.
+
 ## v2.2.42 control and cloud validation
 
 - Full Python test suite: `97 passed`.

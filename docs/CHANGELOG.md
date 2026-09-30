@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.43
+- App shutdown now stops the control server, recorder worker, biliup children, and app-owned OpenList instance, then clears the runtime PID.
+- Stale OpenList processes left by older or interrupted runs are identified from their executable path and reclaimed on the next app launch or exit.
+- Desktop shutdown handles SIGINT and SIGTERM in addition to normal window close, with a final `os._exit` after cleanup.
+
 ## v2.2.42
 - Upload rows now provide `重试`, `暂停`, `停止`, and `删除`; deletion cancels the upload and removes the corresponding local video and danmaku files.
 - Periodic service refresh now updates runtime text in place only and never rebuilds target cards, eliminating the three-second whole-page flicker.

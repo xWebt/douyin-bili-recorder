@@ -253,22 +253,18 @@ class ServiceController:
         return True
 
     def _terminate(self, pid: int) -> None:
-        try:
-            os.killpg(pid, signal.SIGINT)
-        except PermissionError:
-            pass
-        except ProcessLookupError:
-            return
-        deadline = time.time() + 8
-        while time.time() < deadline and self._pid_alive(pid):
-            time.sleep(0.2)
-        if self._pid_alive(pid):
+        for sig, timeout in ((signal.SIGINT, 5), (signal.SIGTERM, 3), (signal.SIGKILL, 2)):
             try:
-                os.killpg(pid, signal.SIGTERM)
+                os.killpg(pid, sig)
             except PermissionError:
                 pass
             except ProcessLookupError:
-                pass
+                return
+            deadline = time.time() + timeout
+            while time.time() < deadline and self._pid_alive(pid):
+                time.sleep(0.2)
+            if not self._pid_alive(pid):
+                return
 
     def _managed_usage_gb(self) -> float:
         roots = {self.config.sessions_dir, self.config.video_dir.expanduser()}
