@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.39
+- Unsaved target and global-setting changes are now protected from the three-second service refresh, so toggles such as `录制并烧录` no longer flicker back to the saved value.
+- Saving the anchor settings clears the dirty state and applies the server-returned configuration.
+
 ## v2.2.38
 - Cloud anchor folders are now created whenever an anchor has a cloud remote configured, even when independent upload backup is disabled.
 - The recorder checks and creates the anchor folder again immediately before starting a live recording, so folder creation no longer depends on clicking save with the backup switch enabled.

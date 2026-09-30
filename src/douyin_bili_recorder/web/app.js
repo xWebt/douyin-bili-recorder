@@ -8,6 +8,7 @@ const state = {
   analyticsTarget: "",
   submissions: null,
   reportTarget: "",
+  dirty: false,
   uploadSignature: "",
 };
 
@@ -122,6 +123,10 @@ function renderIcons() {
   if (window.lucide) window.lucide.createIcons();
 }
 
+function markDirty() {
+  state.dirty = true;
+}
+
 function toast(message, type = "info") {
   const node = document.createElement("div");
   node.className = `toast ${type}`;
@@ -133,7 +138,7 @@ function toast(message, type = "info") {
 async function loadState(showErrors = false) {
   try {
     const payload = await api("/api/state");
-    state.config = payload.config;
+    if (!state.dirty) state.config = payload.config;
     state.service = payload.service;
     state.authenticated = payload.authenticated;
     render();
@@ -147,9 +152,9 @@ async function loadState(showErrors = false) {
 async function refreshService() {
   try {
     const payload = await api("/api/state");
-    const configChanged = JSON.stringify(state.config) !== JSON.stringify(payload.config);
+    const configChanged = !state.dirty && JSON.stringify(state.config) !== JSON.stringify(payload.config);
     state.service = payload.service;
-    state.config = payload.config;
+    if (!state.dirty) state.config = payload.config;
     state.authenticated = payload.authenticated;
     renderService();
     if (configChanged) {
@@ -553,7 +558,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   actions.className = "target-actions";
   const enabled = checkbox(target.enabled);
   enabled.title = "启用/暂停";
-  enabled.addEventListener("change", () => { target.enabled = enabled.checked; renderTargets(); });
+  enabled.addEventListener("change", () => { target.enabled = enabled.checked; markDirty(); renderTargets(); });
   actions.append(
     enabled,
     actionButton("play-circle", "单独开始", () => manualStartTarget(target.name)),
@@ -692,6 +697,8 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
     : "监控方式、权限、合集、弹幕和网盘设置会一起保存";
   saveBar.append(saveTarget, saveHint);
   row.append(header, main, controls, modePanel, saveBar);
+  row.addEventListener("input", markDirty);
+  row.addEventListener("change", markDirty);
   return row;
 }
 
@@ -764,12 +771,13 @@ function buildScheduleList(target) {
     startField.querySelector("input").dataset.scheduleField = "start";
     endField.querySelector("input").dataset.scheduleField = "end";
     line.append(daysField, startField, endField);
-    const remove = actionButton("minus", "删除时段", () => { slots.splice(index, 1); renderTargets(); });
+    const remove = actionButton("minus", "删除时段", () => { slots.splice(index, 1); markDirty(); renderTargets(); });
     line.append(remove);
     wrapper.append(line);
   });
   wrapper.append(actionButton("plus", "添加时段", () => {
     slots.push({ days: [1, 2, 3, 4, 5, 6, 7], start: "20:00", end: "23:00", enabled: true });
+    markDirty();
     renderTargets();
   }));
   return wrapper;
@@ -804,6 +812,7 @@ function segmentedControl(label, value, options, onChange, field = "") {
     button.classList.toggle("active", key === value);
     button.addEventListener("click", () => {
       onChange(key);
+      markDirty();
       renderTargets();
     });
     group.append(button);
@@ -861,6 +870,7 @@ async function saveState(message = "") {
   try {
     syncStateFromDom();
     const payload = await api("/api/state", { method: "PUT", body: JSON.stringify(state.config) });
+    state.dirty = false;
     state.config = payload.config;
     render();
     let saveMessage = message || (payload.restart_required ? "设置已保存；缓存将在下一分段或重启后生效" : "设置已保存");
@@ -1289,6 +1299,15 @@ document.addEventListener("keydown", (event) => {
 window.setInterval(() => {
   if (!els.submissionsModal.hidden) openSubmissions();
 }, 20000);
+
+const globalControlRail = document.querySelector(".control-rail");
+if (globalControlRail) {
+  globalControlRail.addEventListener("input", markDirty);
+  globalControlRail.addEventListener("change", markDirty);
+  globalControlRail.addEventListener("click", (event) => {
+    if (event.target.closest(".segmented button")) markDirty();
+  });
+}
 
 loadState(true);
 refreshLogs();
