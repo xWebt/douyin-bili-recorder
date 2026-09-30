@@ -1,11 +1,11 @@
 # Validation
 
-## v2.2.40 control and cloud validation
+## v2.2.41 control and cloud validation
 
-- Full Python test suite: `94 passed`.
+- Full Python test suite: `95 passed`.
 - `node --check src/douyin_bili_recorder/web/app.js` passes.
 - Python bytecode compilation passes for `src` and `tests`.
-- The control deck was loaded from the source tree with `PYTHONPATH=src`; the page fetched `styles.css?v=2.2.40` and `app.js?v=2.2.40`.
+- The control deck was loaded from the source tree with `PYTHONPATH=src`; the page fetched `styles.css?v=2.2.41` and `app.js?v=2.2.41`.
 - The zip was extracted and the resulting `v2.2.38` app passed strict code-sign verification; the packaged runtime served the same `v2.2.38` assets and created the configured cloud anchor directory through the real Quark remote.
 - The global pause dialog was exercised in the browser:
   - `继续录制` closed the dialog without stopping the worker.
@@ -29,3 +29,4 @@
 - The control deck starts the installed OpenList helper on app startup and the helper serves the Quark WebDAV endpoint automatically.
 - The `录制并烧录` toggle was clicked, then observed after 4.2 seconds and one automatic service refresh; it remained `on` until saved.
 - Existing cloud anchor directories are detected with `rclone lsf --dirs-only` and are not recreated.
+- The all-anchors-disabled warning is verified to appear exactly once per transition.

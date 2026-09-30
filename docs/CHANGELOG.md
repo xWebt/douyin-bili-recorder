@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.41
+- The recorder now logs `no enabled targets configured` only once instead of repeating it every five seconds while all anchors are disabled.
+
 ## v2.2.40
 - Cloud folder synchronization now lists the remote first and skips creation when the anchor folder already exists.
 - Startup recovery no longer creates cloud folders for every historical session.

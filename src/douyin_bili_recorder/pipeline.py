@@ -88,13 +88,17 @@ class RecorderService:
         lock_path = self.config.data_dir / "recorder.lock"
         with SingleInstanceLock(lock_path):
             self.recover_pending()
+            no_targets_warned = False
             while not self.shutdown_event.is_set():
                 if self.interrupt_event.is_set():
                     self.shutdown_event.set()
                     break
                 enabled = self._sync_target_workers()
-                if not enabled:
+                if enabled:
+                    no_targets_warned = False
+                elif not no_targets_warned:
                     self.logger.warning("no enabled targets configured")
+                    no_targets_warned = True
                 self.shutdown_event.wait(5)
             for worker in list(self._target_workers.values()):
                 worker.join(timeout=5)

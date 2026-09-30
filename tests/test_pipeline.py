@@ -1288,3 +1288,32 @@ cloud_remote = "quark:/quark/DouyinBiliRecorder"
     service._queue_pending_cloud_parts(session, config.targets[0])
 
     assert service._pending_cloud_uploads == {}
+
+
+def test_no_enabled_targets_warning_is_logged_once(tmp_path: Path, caplog) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+enabled = false
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    worker = threading.Thread(target=service.run_forever)
+    caplog.set_level(logging.WARNING)
+    worker.start()
+    time.sleep(0.1)
+    service.shutdown_event.set()
+    worker.join(timeout=2)
+
+    assert [record.message for record in caplog.records].count("no enabled targets configured") == 1
