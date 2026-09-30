@@ -974,6 +974,12 @@ class RecorderService:
             or (not target.collection_id and not target.collection_name)
         ):
             return
+        if target.collection_id and session.collection_status != "FAILED":
+            session.collection_id = str(target.collection_id)
+            session.collection_status = "BOUND"
+            self.store.save(session)
+            self.analytics.upsert(session)
+            return
         try:
             manager = BilibiliCollectionManager(self.config.cookie_file)
             collection = None

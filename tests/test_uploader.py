@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import logging
 import pytest
 from pathlib import Path
@@ -42,6 +44,7 @@ line = "bda2"
 
 [[targets]]
 name = "imxiaoxin"
+collection_id = "12345"
 url = "https://live.douyin.com/123"
 title_template = "{name}｜{start_date} {start_time} 开播｜{room_title}"
 tags = ["直播录像"]
@@ -76,6 +79,8 @@ public = true
     assert result.bvid == "BV0000000001"
     upload_command = next(command for command in runner.commands if "upload" in command)
     assert expected_title in upload_command
+    extra_index = upload_command.index("--extra-fields")
+    assert json.loads(upload_command[extra_index + 1]) == {"season_id": 12345}
     assert "--is-only-self" not in upload_command
 
 

@@ -578,9 +578,19 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
       ["off", "不录制"], ["on", "录制并烧录"],
     ], (value) => { target.record_danmaku = value === "on"; }, "record_danmaku"),
   );
-  const collection = document.createElement("div");
+  const collection = document.createElement("label");
   collection.className = "collection-state";
-  collection.innerHTML = `<span>合集 ID</span><code>${target.collection_id || "保存后自动创建"}</code>`;
+  const collectionLabel = document.createElement("span");
+  collectionLabel.textContent = "合集 ID";
+  const collectionInput = document.createElement("input");
+  collectionInput.type = "text";
+  collectionInput.value = target.collection_id || "";
+  collectionInput.placeholder = "粘贴 B站合集 ID";
+  collectionInput.dataset.field = "collection_id";
+  collectionInput.addEventListener("input", () => { target.collection_id = collectionInput.value.trim(); });
+  const collectionHint = document.createElement("small");
+  collectionHint.textContent = "填写后，新稿件会直接进入该主播合集";
+  collection.append(collectionLabel, collectionInput, collectionHint);
   controls.append(collection);
 
   const saveBar = document.createElement("div");

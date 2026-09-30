@@ -1208,9 +1208,22 @@ input::placeholder {
 }
 
 .collection-state {
+  display: grid;
+  gap: 7px;
   padding: 12px;
   border: 1px solid var(--line);
   background: #f8fafc;
+}
+
+.collection-state input {
+  min-height: 36px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.collection-state small {
+  color: var(--ink-dim);
+  font-size: 10px;
 }
 
 .collection-state span {

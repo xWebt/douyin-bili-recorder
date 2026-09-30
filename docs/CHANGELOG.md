@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.33
+- Each anchor now has an editable Bilibili collection ID. New submissions and appended parts pass this ID directly to Bilibili so every daily multi-P submission for that anchor lands in the same collection.
+- Collection binding no longer relies only on creating a new collection after upload. Existing collection IDs are reused and persisted per anchor.
+
 ## v2.2.32
 - Added a per-anchor start button. It enables that anchor, starts the service when needed, and bypasses the schedule for the immediate check.
 - Replaced the dark green theme with a light slate and teal interface.

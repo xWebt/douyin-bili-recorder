@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import logging
 import re
 import threading
@@ -222,6 +224,7 @@ class BiliupUploader:
             str(target.tid),
             "--tag",
             ",".join(target.tags),
+            *self._collection_extra_args(target),
         ]
         if not target.public:
             command.extend(["--is-only-self", "1"])
@@ -260,6 +263,7 @@ class BiliupUploader:
             str(target.tid),
             "--tag",
             ",".join(target.tags),
+            *self._collection_extra_args(target),
         ]
         if not target.public:
             command.extend(["--is-only-self", "1"])
@@ -371,3 +375,13 @@ class BiliupUploader:
             f"开播检测时间：{start}\n"
             f"来源：{source}"
         )
+
+    def _collection_extra_args(self, target: TargetConfig) -> list[str]:
+        collection_id = str(target.collection_id or "").strip()
+        if not collection_id:
+            return []
+        try:
+            value: int | str = int(collection_id)
+        except ValueError:
+            value = collection_id
+        return ["--extra-fields", json.dumps({"season_id": value}, ensure_ascii=False)]
