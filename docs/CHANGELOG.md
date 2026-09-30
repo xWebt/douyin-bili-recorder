@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.30
+- Failed upload attempts now retry with a versioned title suffix such as `｜重试01`, replacing the previous retry suffix instead of stacking it.
+- Retry titles are capped to 80 characters to stay within Bilibili title limits.
+
 ## v2.2.29
 - Clicking retry now automatically starts the recorder worker when the service is stopped, so the queued retry request is consumed instead of appearing to do nothing.
 

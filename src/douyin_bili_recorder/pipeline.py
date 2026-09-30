@@ -1023,9 +1023,15 @@ class RecorderService:
         media_path: Path,
         part: SessionPart,
     ) -> UploadResult:
+        base_title = part.title or session.title or f"{session.target_name} P{part.index:02d}"
         generation = self._upload_generation(session.session_id, part.index)
         for attempt in range(self.config.upload_retry_count + 1):
             try:
+                if attempt > 0:
+                    part.title = self._retry_title(base_title, attempt)
+                    if part.index == 1:
+                        session.title = part.title
+                    self.store.save(session)
                 if generation != self._upload_generation(session.session_id, part.index):
                     return UploadResult(None, False, ["upload control changed"])
                 if self._upload_is_paused(session.session_id, part.index):
@@ -1551,6 +1557,12 @@ class RecorderService:
         key = self._upload_key(session_id, part_index)
         with self._upload_control_lock:
             return key in self._paused_uploads
+
+    @staticmethod
+    def _retry_title(title: str, attempt: int) -> str:
+        base = re.sub(r"｜重试\d{2,}$", "", title).rstrip()
+        suffix = f"｜重试{attempt:02d}"
+        return f"{base[: max(0, 80 - len(suffix))]}{suffix}"
 
     @staticmethod
     def _upload_key(session_id: str, part_index: int) -> str:

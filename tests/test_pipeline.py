@@ -995,6 +995,17 @@ url = "https://live.douyin.com/1"
     uploader.release.set()
 
 
+def test_retry_title_replaces_previous_retry_suffix_and_stays_within_limit() -> None:
+    first = RecorderService._retry_title("主播｜2026-09-30 02:22 开播｜P01", 1)
+    second = RecorderService._retry_title(first, 2)
+    assert first.endswith("｜重试01")
+    assert second.endswith("｜重试02")
+    assert first not in second
+    long_title = RecorderService._retry_title("主" * 100, 12)
+    assert long_title.endswith("｜重试12")
+    assert len(long_title) <= 80
+
+
 def test_upload_pause_retry_and_stop_are_isolated(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(
