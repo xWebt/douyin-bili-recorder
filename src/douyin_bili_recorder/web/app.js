@@ -642,7 +642,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   remote.type = "text";
   remote.dataset.field = "cloud_remote";
   remote.value = target.cloud_remote || "";
-  remote.placeholder = "baidu:/DouyinBiliRecorder";
+  remote.placeholder = "baidu:/baidu/DouyinBiliRecorder";
   provider.addEventListener("change", () => {
     const previousDefault = cloudProviderDefault(target.cloud_provider);
     target.cloud_provider = provider.value;
@@ -653,7 +653,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   });
   remote.addEventListener("input", () => { target.cloud_remote = remote.value.trim(); });
   const cloudHint = document.createElement("small");
-  cloudHint.textContent = "先在本机配置 rclone remote；remote 地址应直达对应网盘挂载点，例如 OpenList 的 /dav/quark。路径以主播/日期/P编号自动归档。";
+  cloudHint.textContent = "先在本机配置 rclone remote；如果 remote 指向 OpenList 的 /dav 根，路径需包含挂载名，例如 quark:/quark/DouyinBiliRecorder。";
   const testButton = document.createElement("button");
   testButton.type = "button";
   testButton.className = "secondary-button compact-action";
@@ -718,9 +718,9 @@ async function pauseTarget(target) {
 }
 
 function cloudProviderDefault(provider) {
-  if (provider === "quark") return "quark:/DouyinBiliRecorder";
+  if (provider === "quark") return "quark:/quark/DouyinBiliRecorder";
   if (provider === "custom") return "openlist:/DouyinBiliRecorder";
-  return "baidu:/DouyinBiliRecorder";
+  return "baidu:/baidu/DouyinBiliRecorder";
 }
 
 async function testCloudTarget(target) {

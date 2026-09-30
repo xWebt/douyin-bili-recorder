@@ -1,9 +1,13 @@
 # Changelog
 
+## v2.2.37
+- Aligned the default Quark and Baidu remote paths with the existing OpenList `/dav` root layout: `quark:/quark/DouyinBiliRecorder` and `baidu:/baidu/DouyinBiliRecorder`.
+- Existing enabled anchors will create their named folder under the same cloud root without duplicating or dropping the OpenList mount name.
+
 ## v2.2.36
 - Fixed the per-anchor `单独暂停` button: its handler was nested inside another function, so the button could render but throw a `ReferenceError` when clicked.
 - Fixed stale `运行中` status after a recorder child exited. The controller now keeps the `Popen` handle, calls `poll()` to reap the child, and clears the stale runtime PID.
-- Clarified that an rclone WebDAV remote must point at the provider storage mount (for example `/dav/quark`) when using remote paths such as `quark:/DouyinBiliRecorder`.
+- Clarified the two supported rclone layouts: a `/dav` root remote with a provider mount in the path (for example `openlist:/quark/DouyinBiliRecorder`), or a provider-specific remote with no repeated mount name.
 - Saving an anchor with cloud backup enabled now creates `网盘根目录/主播名/` immediately, instead of waiting for the first video upload.
 - Segmented controls now use standard click listeners; this fixes switches such as `独立备份`, `录制并烧录`, and visibility not changing in the packaged WebView.
 - Revalidated the global pause dialog actions, per-anchor controls, upload pause/retry/stop controls, clear-cache confirmation, cloud remote test, and a real Quark upload.
