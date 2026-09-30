@@ -18,7 +18,7 @@ from .analytics import AnalyticsStore
 from .config import AppConfig
 from .config import resolve_executable
 from .douyin import DouyinResolver
-from .paths import anchor_dir, session_output_dir, target_key
+from .paths import anchor_dir, safe_path_name, session_output_dir, target_key
 from .service_control import ServiceController
 from .ui_state import UIStateStore
 from .bilibili_status import BilibiliSubmissionClient
@@ -110,6 +110,68 @@ def _clear_target_cache(config: AppConfig, target_name: str) -> dict[str, Any]:
         "skipped_active_sessions": skipped_active_sessions,
         "skipped_cloud_pending": skipped_cloud_pending,
     }
+
+
+def _ensure_cloud_anchor_folder(config: AppConfig, state: dict[str, Any], target: dict[str, Any]) -> str:
+    remote = str(target.get("cloud_remote", "")).strip().rstrip("/")
+    if not remote or ":" not in remote:
+        raise ValueError("远端路径需使用 rclone 格式，例如 quark:/DouyinBiliRecorder")
+    anchor_name = safe_path_name(str(target.get("name", "")), "未命名主播")
+    remote_path = f"{remote}/{anchor_name}"
+    rclone_bin = resolve_executable(
+        str(state.get("cloud_rclone_bin", config.cloud_rclone_bin)),
+        config.config_path.parent,
+    )
+    try:
+        result = subprocess.run(
+            [rclone_bin, "mkdir", remote_path],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError(f"rclone 不存在：{rclone_bin}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("创建网盘主播目录超时") from exc
+    if result.returncode != 0:
+        detail = (result.stdout or result.stderr or "").strip()
+        raise ValueError(detail or f"rclone exited with {result.returncode}")
+    return remote_path
+
+
+def _sync_cloud_anchor_folders(
+    config: AppConfig,
+    previous: dict[str, Any],
+    current: dict[str, Any],
+) -> tuple[list[str], list[dict[str, str]]]:
+    previous_targets = {
+        str(item.get("id", "")): item
+        for item in previous.get("targets", [])
+        if isinstance(item, dict)
+    }
+    folders: list[str] = []
+    warnings: list[dict[str, str]] = []
+    for target in current.get("targets", []):
+        if not isinstance(target, dict) or not target.get("cloud_backup", False):
+            continue
+        name = str(target.get("name", "")).strip()
+        remote = str(target.get("cloud_remote", "")).strip()
+        old = previous_targets.get(str(target.get("id", "")), {})
+        unchanged = (
+            old.get("cloud_backup")
+            and str(old.get("name", "")).strip() == name
+            and str(old.get("cloud_remote", "")).strip() == remote
+        )
+        if unchanged:
+            continue
+        try:
+            folders.append(_ensure_cloud_anchor_folder(config, current, target))
+        except ValueError as exc:
+            warnings.append({"target": name or "未命名主播", "message": str(exc)})
+    return folders, warnings
 
 
 def _test_cloud_remote(config: AppConfig, remote: str) -> dict[str, Any]:
@@ -298,9 +360,16 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.put("/api/state")
     async def put_state(payload: dict[str, Any]) -> dict[str, Any]:
+        previous = state_store.load()
         state = state_store.save(payload)
         state_store.render_runtime_config(state)
-        return {"config": state, "restart_required": True}
+        cloud_folders, cloud_warnings = _sync_cloud_anchor_folders(config, previous, state)
+        return {
+            "config": state,
+            "restart_required": True,
+            "cloud_folders": cloud_folders,
+            "cloud_warnings": cloud_warnings,
+        }
 
     @app.post("/api/service/{action}")
     async def service_action(action: str, mode: str = "upload") -> dict[str, Any]:

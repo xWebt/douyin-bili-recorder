@@ -36,6 +36,14 @@ class FakeController:
         return {"running": True}
 
 
+class PollingProcess:
+    pid = 424242
+
+    @staticmethod
+    def poll() -> int:
+        return 0
+
+
 def _config(tmp_path: Path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(
@@ -79,6 +87,20 @@ def test_stop_discard_writes_discard_request(tmp_path: Path) -> None:
     controller.stop("discard")
 
     assert controller.stop_request_path.read_text(encoding="utf-8") == "discard"
+
+
+def test_status_reaps_exited_worker_process(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    state_store = UIStateStore(config)
+    state_store.save_runtime_state({"pid": PollingProcess.pid, "started_at": 1})
+    controller = ServiceController(config, state_store)
+    controller._process = PollingProcess()  # type: ignore[assignment]
+
+    status = controller.status()
+
+    assert status["running"] is False
+    assert status["pid"] is None
+    assert state_store.load_runtime_state() == {}
 
 
 def test_discard_current_session_deletes_files_and_marks_canceled(tmp_path: Path) -> None:

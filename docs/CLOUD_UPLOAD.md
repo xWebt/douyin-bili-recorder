@@ -35,20 +35,23 @@
 5. 使用 `rclone config` 创建 WebDAV remote，例如：
 
 ```text
-name: baidu
+name: quark
 type: webdav
-url: http://127.0.0.1:5244/dav
+url: http://127.0.0.1:5244/dav/quark
 vendor: other
 user: <OpenList 用户名>
 pass: <rclone 加密后的密码>
 ```
 
-夸克可以再配置一个 remote，例如 `quark`。也可以使用同一个 `openlist` remote，通过不同路径区分。
+remote 的 `url` 应直达对应网盘在 OpenList 中的挂载点。上例的 `quark:` 对应 `/dav/quark`，因此应用里可填写 `quark:/DouyinBiliRecorder`。百度网盘可另建一个 `baidu:` remote，并把 URL 写成 `http://127.0.0.1:5244/dav/baidu`。
+
+如果 remote URL 只写到 `http://127.0.0.1:5244/dav`，应用里的远端路径就必须包含存储挂载名，例如 `quark:/quark/DouyinBiliRecorder`。两种配法二选一，不要混用。
 
 6. 启动应用，确认左上角的 `rclone 可执行文件` 指向 `rclone` 或绝对路径。
 7. 在主播卡片中开启 `网盘备份`，选择百度/夸克，填写 remote 根路径。
 8. 点击 `测试网盘` 验证远端可访问。
 9. 保存主播设置。
+10. 保存时会立即在网盘根目录下创建 `主播名/` 文件夹。例如填写 `quark:/DouyinBiliRecorder` 后，保存“凡晨”会创建 `quark:/DouyinBiliRecorder/凡晨/`。
 
 ## 归档规则
 

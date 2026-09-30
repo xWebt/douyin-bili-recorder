@@ -653,7 +653,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   });
   remote.addEventListener("input", () => { target.cloud_remote = remote.value.trim(); });
   const cloudHint = document.createElement("small");
-  cloudHint.textContent = "先在本机配置 rclone remote。百度/夸克通过 OpenList WebDAV 接入；路径以主播/日期/P编号自动归档。";
+  cloudHint.textContent = "先在本机配置 rclone remote；remote 地址应直达对应网盘挂载点，例如 OpenList 的 /dav/quark。路径以主播/日期/P编号自动归档。";
   const testButton = document.createElement("button");
   testButton.type = "button";
   testButton.className = "secondary-button compact-action";
@@ -696,6 +696,16 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
 }
 
 async function manualStartTarget(name) {
+  try {
+    await api(`/api/targets/${encodeURIComponent(name)}/manual-start`, { method: "POST" });
+    toast(`${name} 已单独启动`);
+    await loadState(true);
+    window.setTimeout(refreshLogs, 800);
+  } catch (error) {
+    toast(`手动开始失败：${error.message}`, "error");
+  }
+}
+
 async function pauseTarget(target) {
   try {
     await api(`/api/targets/${encodeURIComponent(target.name)}/pause`, { method: "POST" });
@@ -704,16 +714,6 @@ async function pauseTarget(target) {
     window.setTimeout(refreshLogs, 800);
   } catch (error) {
     toast(`暂停失败：${error.message}`, "error");
-  }
-}
-
-  try {
-    await api(`/api/targets/${encodeURIComponent(name)}/manual-start`, { method: "POST" });
-    toast(`${name} 已单独启动`);
-    await loadState(true);
-    window.setTimeout(refreshLogs, 800);
-  } catch (error) {
-    toast(`手动开始失败：${error.message}`, "error");
   }
 }
 
@@ -802,10 +802,10 @@ function segmentedControl(label, value, options, onChange, field = "") {
     button.textContent = text;
     button.dataset.value = key;
     button.classList.toggle("active", key === value);
-    button.onclick = () => {
+    button.addEventListener("click", () => {
       onChange(key);
       renderTargets();
-    };
+    });
     group.append(button);
   }
   wrapper.append(title, group);
@@ -863,7 +863,16 @@ async function saveState(message = "") {
     const payload = await api("/api/state", { method: "PUT", body: JSON.stringify(state.config) });
     state.config = payload.config;
     render();
-    toast(message || (payload.restart_required ? "设置已保存；缓存将在下一分段或重启后生效" : "设置已保存"));
+    let saveMessage = message || (payload.restart_required ? "设置已保存；缓存将在下一分段或重启后生效" : "设置已保存");
+    const folders = Array.isArray(payload.cloud_folders) ? payload.cloud_folders : [];
+    const warnings = Array.isArray(payload.cloud_warnings) ? payload.cloud_warnings : [];
+    if (folders.length) saveMessage += `；已同步 ${folders.length} 个云盘主播目录`;
+    if (warnings.length) {
+      saveMessage += `；云盘目录失败：${warnings.map((item) => `${item.target} ${item.message}`).join("；")}`;
+      toast(saveMessage, "error");
+    } else {
+      toast(saveMessage);
+    }
     return true;
   } catch (error) {
     toast(`保存失败：${error.message}`, "error");

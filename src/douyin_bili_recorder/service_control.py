@@ -25,6 +25,7 @@ class ServiceController:
         self._stop_event = threading.Event()
         self._supervisor: threading.Thread | None = None
         self.stop_request_path = self.store.root / "stop.request"
+        self._process: subprocess.Popen[Any] | None = None
 
     def start(self) -> dict[str, Any]:
         self.stop_request_path.unlink(missing_ok=True)
@@ -82,6 +83,7 @@ class ServiceController:
             env=environment,
             close_fds=True,
         )
+        self._process = process
         self.store.save_runtime_state(
             {
                 "pid": process.pid,
@@ -123,6 +125,11 @@ class ServiceController:
         runtime = self.store.load_runtime_state()
         pid = int(runtime.get("pid", 0) or 0)
         alive = bool(pid and self._pid_alive(pid))
+        if pid and self._process is not None and self._process.pid == pid and self._process.poll() is not None:
+            alive = False
+            self._process = None
+            self.store.save_runtime_state({})
+            runtime = {}
         started_at = int(runtime.get("started_at", 0) or 0)
         sessions = self._sessions()
         cache_used_gb = self._managed_usage_gb()
@@ -235,6 +242,8 @@ class ServiceController:
         }
 
     def _pid_alive(self, pid: int) -> bool:
+        if self._process is not None and self._process.pid == pid:
+            return self._process.poll() is None
         try:
             os.kill(pid, 0)
         except ProcessLookupError:

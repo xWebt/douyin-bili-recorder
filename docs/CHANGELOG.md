@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.2.36
+- Fixed the per-anchor `单独暂停` button: its handler was nested inside another function, so the button could render but throw a `ReferenceError` when clicked.
+- Fixed stale `运行中` status after a recorder child exited. The controller now keeps the `Popen` handle, calls `poll()` to reap the child, and clears the stale runtime PID.
+- Clarified that an rclone WebDAV remote must point at the provider storage mount (for example `/dav/quark`) when using remote paths such as `quark:/DouyinBiliRecorder`.
+- Saving an anchor with cloud backup enabled now creates `网盘根目录/主播名/` immediately, instead of waiting for the first video upload.
+- Segmented controls now use standard click listeners; this fixes switches such as `独立备份`, `录制并烧录`, and visibility not changing in the packaged WebView.
+- Revalidated the global pause dialog actions, per-anchor controls, upload pause/retry/stop controls, clear-cache confirmation, cloud remote test, and a real Quark upload.
+
 ## v2.2.35
 - Added a global `停止并删除当前录像` option to the pause/stop confirmation dialog.
 - Added a per-anchor `单独暂停` button. Pausing one anchor no longer requires disabling all recorder workers.
