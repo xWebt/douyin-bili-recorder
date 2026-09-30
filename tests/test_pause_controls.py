@@ -110,6 +110,9 @@ def test_discard_current_session_deletes_files_and_marks_canceled(tmp_path: Path
     source = tmp_path / "part.flv"
     media.write_bytes(b"mp4")
     source.write_bytes(b"flv")
+    runtime = service.store.session_dir("session") / ".danmaku-runtime"
+    runtime.mkdir(parents=True)
+    (runtime / "data.bin").write_bytes(b"x")
     session = SessionRecord(
         session_id="session",
         target_name="anchor",
@@ -129,8 +132,22 @@ def test_discard_current_session_deletes_files_and_marks_canceled(tmp_path: Path
 
     assert not media.exists()
     assert not source.exists()
+    assert not runtime.exists()
     saved = service.store.load("session")
     assert saved.status == "CANCELED"
     assert saved.parts[0].status == "CANCELED"
     assert saved.parts[0].path == ""
     assert saved.parts[0].source_path == ""
+
+
+def test_recorder_stop_reads_discard_request(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    request = tmp_path / "stop.request"
+    request.write_text("discard", encoding="utf-8")
+    monkeypatch.setenv("DOUYIN_RECORDER_STOP_FILE", str(request))
+
+    service.stop()
+
+    assert service.pause_mode() == "discard"
+    assert service.interrupt_event.is_set()

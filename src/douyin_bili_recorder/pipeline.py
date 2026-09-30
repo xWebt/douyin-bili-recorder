@@ -125,6 +125,12 @@ class RecorderService:
             if target is not None and target.cloud_backup and session.record_mode != "monitor":
                 self._queue_pending_cloud_parts(session, target)
             if session.status in {SessionStatus.RECORDED, SessionStatus.UPLOADING, SessionStatus.UPLOAD_FAILED}:
+                retryable_parts = any(
+                    part.status not in {"UPLOADED", "CANCELED", "DISCARDED", "PAUSED", "LOCAL_ONLY"}
+                    for part in session.parts
+                )
+                if not retryable_parts:
+                    continue
                 future = self.upload_executor.submit(self._upload_with_retries, session)
                 self._pending_uploads.setdefault(session.session_id, []).append(future)
                 future.add_done_callback(lambda _future, session_id=session.session_id: self._pending_uploads.pop(session_id, None))
@@ -661,16 +667,24 @@ class RecorderService:
         cloud_futures = list(self._pending_cloud_uploads.pop(session.session_id, []))
         if cloud_futures:
             wait(cloud_futures)
+        cleanup_dirs: set[Path] = set()
         for part in session.parts:
             if part.status != "UPLOADED":
                 part.status = "CANCELED"
                 part.error = "用户停止全部任务并删除当前录像"
             for value in (part.path, part.source_path, part.danmaku_path):
                 if value:
+                    cleanup_dirs.add(Path(value).parent)
                     Path(value).unlink(missing_ok=True)
             part.path = ""
             part.source_path = ""
             part.danmaku_path = ""
+        shutil.rmtree(self.store.session_dir(session.session_id) / ".danmaku-runtime", ignore_errors=True)
+        for directory in sorted(cleanup_dirs, key=lambda item: len(item.parts), reverse=True):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
         session.status = "CANCELED"
         session.ended_epoch = int(time.time())
         session.error = "用户停止全部任务并删除当前录像"
@@ -1528,7 +1542,7 @@ class RecorderService:
                     continue
                 if target.cloud_backup and part.path and Path(part.path).exists():
                     self._queue_cloud_part(session, target, part)
-                if part.status in {"UPLOADED", "CANCELED", "PAUSED"}:
+                if part.status in {"UPLOADED", "CANCELED", "DISCARDED", "PAUSED", "LOCAL_ONLY"}:
                     continue
                 if not part.title:
                     part.title = f"{resolved_title}｜P{part.index:02d}"
@@ -1616,7 +1630,16 @@ class RecorderService:
         return target
 
     def stop(self) -> None:
-        self.request_pause("upload")
+        mode = "upload"
+        stop_path = os.environ.get("DOUYIN_RECORDER_STOP_FILE", "").strip()
+        if stop_path:
+            try:
+                requested = Path(stop_path).read_text(encoding="utf-8").strip()
+            except OSError:
+                requested = ""
+            if requested in {"upload", "keep", "discard"}:
+                mode = requested
+        self.request_pause(mode)
 
     def request_pause(self, mode: str) -> None:
         with self._state_lock:
@@ -1751,6 +1774,16 @@ class RecorderService:
             self._schedule_upload_retry(session_id, part_index)
             self.logger.info("upload retry requested for %s", key)
             return
+        if action == "delete":
+            with self._upload_control_lock:
+                self._paused_uploads.discard(key)
+                self._cancelled_uploads.add(key)
+                self._upload_generations[key] = self._upload_generations.get(key, 0) + 1
+            self.uploader.cancel(key)
+            self.cloud_uploader.cancel(key)
+            self._delete_upload_part_files(session_id, part_index)
+            self.logger.info("upload delete requested for %s", key)
+            return
         with self._upload_control_lock:
             self._paused_uploads.discard(key)
             self._cancelled_uploads.add(key)
@@ -1758,6 +1791,36 @@ class RecorderService:
         self.uploader.cancel(key)
         self._set_upload_part_control_state(session_id, part_index, "CANCELED", "上传已由用户停止")
         self.logger.info("upload stop requested for %s", key)
+
+    def _delete_upload_part_files(self, session_id: str, part_index: int) -> None:
+        try:
+            session = self.store.load(session_id)
+        except (OSError, ValueError, KeyError):
+            return
+        part = next((item for item in session.parts if item.index == part_index), None)
+        if part is None:
+            return
+        cleanup_dirs: set[Path] = set()
+        for value in (part.path, part.source_path, part.danmaku_path):
+            if not value:
+                continue
+            path = Path(value)
+            cleanup_dirs.add(path.parent)
+            path.unlink(missing_ok=True)
+        for directory in sorted(cleanup_dirs, key=lambda item: len(item.parts), reverse=True):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+        part.status = "CANCELED"
+        part.error = "上传任务和本地录像已由用户删除"
+        part.path = ""
+        part.source_path = ""
+        part.danmaku_path = ""
+        if all(item.status in {"CANCELED", "DISCARDED", "UPLOADED"} for item in session.parts):
+            session.status = "CANCELED"
+            session.error = "上传任务和本地录像已由用户删除"
+        self.store.save(session)
 
     def _set_upload_part_control_state(
         self,

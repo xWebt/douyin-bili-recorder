@@ -152,17 +152,10 @@ async function loadState(showErrors = false) {
 async function refreshService() {
   try {
     const payload = await api("/api/state");
-    const configChanged = !state.dirty && JSON.stringify(state.config) !== JSON.stringify(payload.config);
     state.service = payload.service;
-    if (!state.dirty) state.config = payload.config;
     state.authenticated = payload.authenticated;
     renderService();
-    if (configChanged) {
-      renderSettings();
-      renderTargets();
-    } else {
-      updateTargetRuntime();
-    }
+    updateTargetRuntime();
   } catch (_error) {
     els.connectionState.classList.remove("online");
   }
@@ -293,9 +286,11 @@ function renderUploadProgress(progressesArg, fallback = {}) {
     if (!completed) {
       if (paused || stopped || failed) {
         actions.append(uploadControlButton("rotate-cw", "重试", "retry-upload-button", () => retryUpload(item.key)));
+        actions.append(uploadControlButton("trash-2", "删除", "delete-upload-button", () => deleteUpload(item.key)));
       } else {
         actions.append(uploadControlButton("pause", "暂停", "pause-upload-button", () => pauseUpload(item.key)));
         actions.append(uploadControlButton("square", "停止", "stop-upload-button", () => stopUpload(item.key)));
+        actions.append(uploadControlButton("trash-2", "删除", "delete-upload-button", () => deleteUpload(item.key)));
       }
     }
     row.append(info, actions);
@@ -335,6 +330,11 @@ function retryUpload(key) {
 
 function stopUpload(key) {
   return uploadControl("stop", key, "已停止该视频上传", "停止上传失败");
+}
+
+function deleteUpload(key) {
+  if (!window.confirm("停止这个上传任务，并删除对应的本地录像文件？")) return;
+  return uploadControl("delete", key, "已删除上传任务和本地录像", "删除上传任务失败");
 }
 
 async function clearTargetCache(name) {

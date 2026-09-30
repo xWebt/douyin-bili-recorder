@@ -233,6 +233,11 @@ def _request_upload_control(
         part.error = "上传已暂停"
         progress_message = "已暂停"
         progress_state = "paused"
+    elif action == "delete":
+        part.status = "CANCELED"
+        part.error = "上传任务和本地录像已由用户删除"
+        progress_message = "已删除"
+        progress_state = "deleted"
     else:
         part.status = "CANCELED"
         part.error = "上传已由用户停止"
@@ -250,6 +255,28 @@ def _request_upload_control(
         encoding="utf-8",
     )
 
+    if action == "delete":
+        roots = [config.sessions_dir.resolve(), config.video_dir.expanduser().resolve()]
+        cleanup_dirs: set[Path] = set()
+        for value in (part.path, part.source_path, part.danmaku_path):
+            if not value:
+                continue
+            path = Path(value)
+            cleanup_dirs.add(path.parent)
+            _delete_managed_file(path, roots)
+        for directory in sorted(cleanup_dirs, key=lambda item: len(item.parts), reverse=True):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+        part.path = ""
+        part.source_path = ""
+        part.danmaku_path = ""
+        if all(item.status in {"CANCELED", "DISCARDED", "UPLOADED"} for item in session.parts):
+            session.status = "CANCELED"
+            session.error = "上传任务和本地录像已由用户删除"
+        session_store.save(session)
+
     existing = next(
         (item for item in UploadProgressStore(config.data_dir).load_all() if item.get("key") == f"{session_id}:{part_index}"),
         {},
@@ -257,7 +284,7 @@ def _request_upload_control(
     payload = dict(existing)
     payload.update(
         {
-            "available": True,
+            "available": action != "delete",
             "message": progress_message,
             "state": progress_state,
             "target": session.target_name,
@@ -454,6 +481,10 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.post("/api/uploads/{session_id}/{part_index}/stop")
     async def stop_upload(session_id: str, part_index: int) -> dict[str, Any]:
         return _request_upload_control(config, session_id, part_index, "stop")
+
+    @app.post("/api/uploads/{session_id}/{part_index}/delete")
+    async def delete_upload(session_id: str, part_index: int) -> dict[str, Any]:
+        return _request_upload_control(config, session_id, part_index, "delete")
 
     @app.post("/api/uploads/{session_id}/{part_index}/pause")
     async def pause_upload(session_id: str, part_index: int) -> dict[str, Any]:

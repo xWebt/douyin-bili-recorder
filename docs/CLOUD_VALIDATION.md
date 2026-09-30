@@ -1,11 +1,11 @@
 # Validation
 
-## v2.2.41 control and cloud validation
+## v2.2.42 control and cloud validation
 
-- Full Python test suite: `95 passed`.
+- Full Python test suite: `97 passed`.
 - `node --check src/douyin_bili_recorder/web/app.js` passes.
 - Python bytecode compilation passes for `src` and `tests`.
-- The control deck was loaded from the source tree with `PYTHONPATH=src`; the page fetched `styles.css?v=2.2.41` and `app.js?v=2.2.41`.
+- The control deck was loaded from the source tree with `PYTHONPATH=src`; the page fetched `styles.css?v=2.2.42` and `app.js?v=2.2.42`.
 - The zip was extracted and the resulting `v2.2.38` app passed strict code-sign verification; the packaged runtime served the same `v2.2.38` assets and created the configured cloud anchor directory through the real Quark remote.
 - The global pause dialog was exercised in the browser:
   - `继续录制` closed the dialog without stopping the worker.
@@ -30,3 +30,7 @@
 - The `录制并烧录` toggle was clicked, then observed after 4.2 seconds and one automatic service refresh; it remained `on` until saved.
 - Existing cloud anchor directories are detected with `rclone lsf --dirs-only` and are not recreated.
 - The all-anchors-disabled warning is verified to appear exactly once per transition.
+- Recovery tests confirm that historical `UPLOAD_FAILED` sessions with only `CANCELED` or `DISCARDED` parts no longer enter either Bilibili or cloud upload queues.
+- Discard tests verify that media, source files, danmaku runtime data, and empty output directories are removed.
+- The upload delete action is covered by a test that verifies both media and danmaku files are removed and the progress entry disappears.
+- Periodic refresh no longer calls the full target renderer; runtime state is updated in place to avoid flicker.

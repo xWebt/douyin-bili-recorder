@@ -1281,13 +1281,15 @@ cloud_remote = "quark:/quark/DouyinBiliRecorder"
         session_id="canceled",
         target_name="anchor",
         target_url="https://live.douyin.com/1",
-        status="CANCELED",
+        status="UPLOAD_FAILED",
         parts=[SessionPart(index=1, status="CANCELED", path=str(media))],
     )
 
-    service._queue_pending_cloud_parts(session, config.targets[0])
+    service.store.save(session)
+    service.recover_pending()
 
     assert service._pending_cloud_uploads == {}
+    assert service._pending_uploads == {}
 
 
 def test_no_enabled_targets_warning_is_logged_once(tmp_path: Path, caplog) -> None:

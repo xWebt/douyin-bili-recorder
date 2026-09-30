@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.2.42
+- Upload rows now provide `重试`, `暂停`, `停止`, and `删除`; deletion cancels the upload and removes the corresponding local video and danmaku files.
+- Periodic service refresh now updates runtime text in place only and never rebuilds target cards, eliminating the three-second whole-page flicker.
+- Historical `UPLOAD_FAILED` sessions no longer resurrect `CANCELED` or `DISCARDED` parts into the Bilibili upload queue.
+- Startup recovery only schedules upload work when a session still has a retryable part.
+- The SIGINT handler now reads the stop request file before choosing `upload`, `keep`, or `discard`; this fixes stop-and-delete racing back into upload mode.
+- Discarding a session also removes danmaku runtime data and empty recording directories.
+
 ## v2.2.41
 - The recorder now logs `no enabled targets configured` only once instead of repeating it every five seconds while all anchors are disabled.
 
