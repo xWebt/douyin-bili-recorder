@@ -45,7 +45,7 @@ cookie_file = "cookies.json"
 line = "bda2"
 public = false
 delete_after_upload = false
-retry_count = 5
+retry_count = 2
 retry_backoff_seconds = 30
 
 [launchd]

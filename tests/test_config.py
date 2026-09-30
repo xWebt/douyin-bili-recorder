@@ -57,6 +57,25 @@ end = "23:00"
     assert config.frame_rate == "source"
 
 
+def test_upload_retry_count_is_capped_at_two(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[upload]
+retry_count = 5
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.upload_retry_count == 2
+
+
 def test_load_config_rejects_duplicate_names(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(

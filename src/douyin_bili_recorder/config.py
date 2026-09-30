@@ -10,6 +10,8 @@ from typing import Any
 
 from .models import ScheduleSlot
 
+AUTOMATIC_UPLOAD_RETRY_LIMIT = 2
+
 
 class ConfigError(ValueError):
     pass
@@ -157,7 +159,10 @@ def load_config(path: str | Path) -> AppConfig:
         upload_line=str(upload.get("line", "bda2")),
         public=bool(upload.get("public", False)),
         delete_after_upload=bool(upload.get("delete_after_upload", False)),
-        upload_retry_count=int(upload.get("retry_count", 5)),
+        upload_retry_count=min(
+            AUTOMATIC_UPLOAD_RETRY_LIMIT,
+            int(upload.get("retry_count", AUTOMATIC_UPLOAD_RETRY_LIMIT)),
+        ),
         upload_retry_backoff_seconds=int(upload.get("retry_backoff_seconds", 30)),
         launchd_label=str(launchd.get("label", "com.webt.douyin-bili-recorder")),
         targets=targets,
