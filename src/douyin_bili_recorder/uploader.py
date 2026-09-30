@@ -302,7 +302,14 @@ class BiliupUploader:
         text = "\n".join(lines)
         return any(
             marker in text
-            for marker in ("21566", "601", "投稿过于频繁", "上传视频过快")
+            for marker in (
+                "21566",
+                "601",
+                "投稿过于频繁",
+                "上传视频过快",
+                "request limited",
+                "Failed to pre_upload",
+            )
         )
 
     def cancel(self, key: str) -> None:

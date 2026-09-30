@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.28
+- Bilibili `Failed to pre_upload ... request limited` responses are now treated as rate limits and use the five-minute backoff instead of rapid generic retries.
+
 ## v2.2.27
 - Fixed a pause/retry race where the recovery worker could overwrite a `PAUSED` part with its stale `UPLOADING` state after the child process was canceled.
 - Service status now merges persisted part state into upload progress so the UI reliably shows `已暂停`, `已停止`, or completed BVID state even if a progress sampler updates later.
