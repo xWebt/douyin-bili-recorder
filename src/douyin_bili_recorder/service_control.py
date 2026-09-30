@@ -141,7 +141,14 @@ class ServiceController:
                 cache_limit_gb = self.config.max_cache_gb
         saved_cache_limit = int(cache_limit_gb or self.config.max_cache_gb)
         upload_progress_store = UploadProgressStore(self.config.data_dir)
-        upload_progresses = upload_progress_store.load_all()
+        upload_progresses: list[dict[str, Any]] = []
+        for progress in upload_progress_store.load_all():
+            key = str(progress.get("key", ""))
+            if progress.get("state") == "deleted" or progress.get("available") is False:
+                if key:
+                    upload_progress_store.remove(key)
+                continue
+            upload_progresses.append(progress)
         parts_by_key = {
             f"{session.session_id}:{part.index}": part
             for session in sessions

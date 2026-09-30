@@ -1,5 +1,15 @@
 # Validation
 
+## v2.2.44 upload-state validation
+
+- Full Python test suite: `100 passed`.
+- The delete-upload test verifies that the upload-progress record is removed instead of being left with `available = false`.
+- Service-status tests verify that deleted or unavailable progress entries are purged while active entries remain.
+- The control page and static assets are served with `no-store` cache headers to prevent WKWebView from mixing an old `app.js` with a new page.
+- `node --check` and Python bytecode compilation pass for the updated two-state target card.
+- Packaged `v2.2.44` native window verified with the recorder stopped: every anchor rendered separate recording and upload badges, and the deleted 卢某某 upload no longer appeared.
+- Closing the packaged app removed the control server, recorder worker, OpenList listener, ownership file, and runtime PID.
+
 ## v2.2.43 shutdown validation
 
 - Unit tests cover reclaiming an app-owned OpenList listener even when its owner PID file is missing.

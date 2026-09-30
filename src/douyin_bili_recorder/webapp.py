@@ -276,6 +276,8 @@ def _request_upload_control(
             session.status = "CANCELED"
             session.error = "上传任务和本地录像已由用户删除"
         session_store.save(session)
+        UploadProgressStore(config.data_dir).remove(f"{session_id}:{part_index}")
+        return {"ok": True, "session_id": session_id, "part_index": part_index, "action": action}
 
     existing = next(
         (item for item in UploadProgressStore(config.data_dir).load_all() if item.get("key") == f"{session_id}:{part_index}"),
@@ -389,6 +391,16 @@ def create_app(config: AppConfig) -> FastAPI:
 
     app = FastAPI(title="Douyin recorder control deck", lifespan=lifespan)
     app.state.shutdown_cleanup = shutdown_cleanup
+
+    @app.middleware("http")
+    async def disable_ui_cache(request, call_next):
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
     app.mount("/static", StaticFiles(directory=WEB_ROOT), name="static")
 
     @app.get("/")

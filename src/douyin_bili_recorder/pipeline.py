@@ -34,6 +34,7 @@ from .storage_guard import StorageGuard
 from .target_status import TargetStatusStore
 from .timeutil import build_title, epoch_iso, parse_duration_seconds
 from .ui_state import UIStateStore
+from .upload_progress import UploadProgressStore
 from .uploader import BiliupUploader, UploadCancelled, UploadRateLimited, UploadResult
 
 
@@ -1782,6 +1783,7 @@ class RecorderService:
             self.uploader.cancel(key)
             self.cloud_uploader.cancel(key)
             self._delete_upload_part_files(session_id, part_index)
+            UploadProgressStore(self.config.data_dir).remove(key)
             self.logger.info("upload delete requested for %s", key)
             return
         with self._upload_control_lock:

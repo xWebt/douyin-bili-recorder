@@ -171,7 +171,6 @@ def test_delete_upload_control_removes_local_media(tmp_path: Path) -> None:
     assert saved.status == "CANCELED"
     assert saved.parts[0].path == ""
     assert saved.parts[0].danmaku_path == ""
-    progress = UploadProgressStore(config.data_dir).load()
-    assert progress["available"] is False
+    assert UploadProgressStore(config.data_dir).load() == {}
     request = config.data_dir / "ui" / "upload-control" / f"{session.session_id}-1.request"
     assert '"action": "delete"' in request.read_text(encoding="utf-8")

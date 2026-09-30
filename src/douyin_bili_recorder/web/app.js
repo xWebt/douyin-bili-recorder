@@ -162,6 +162,7 @@ async function refreshService() {
 }
 
 const TARGET_STATE_META = {
+  muted: { label: "无上传任务", tone: "muted" },
   service_stopped: { label: "服务停止", tone: "muted" },
   paused: { label: "已暂停", tone: "muted" },
   scheduled: { label: "等待排班", tone: "muted" },
@@ -182,6 +183,60 @@ const TARGET_STATE_META = {
   recorded: { label: "已录制", tone: "success" },
   error: { label: "异常", tone: "error" },
 };
+
+const UPLOAD_RUNTIME_STATES = new Set(["uploading", "uploaded", "canceled"]);
+
+function isUploadRuntime(runtime, latest) {
+  const stateName = String(runtime?.state || "");
+  const message = String(runtime?.message || "");
+  const latestState = String(latest?.status || "").toUpperCase();
+  return UPLOAD_RUNTIME_STATES.has(stateName)
+    || /上传|投稿|BVID/i.test(message)
+    || latestState === "UPLOADING";
+}
+
+function resolveRecordingStateName(target, latest, runtime, isRecordingTarget) {
+  const latestState = String(latest?.status || "").toUpperCase();
+  const runtimeState = String(runtime?.state || "");
+  if (isRecordingTarget || runtimeState === "recording" || runtimeState === "recording_uploading" || latestState === "RECORDING") {
+    return target.record_mode === "monitor" ? "monitoring" : "recording";
+  }
+  if (runtimeState && !isUploadRuntime(runtime, latest) && TARGET_STATE_META[runtimeState]) return runtimeState;
+  if (["RECORDED", "UPLOADED", "UPLOAD_FAILED", "FAILED"].includes(latestState)) return "recorded";
+  if (target.watch_mode === "manual") return "manual";
+  if (target.watch_mode === "scheduled") return "scheduled";
+  return "checking";
+}
+
+function resolveUploadRuntime(activeUpload, latest) {
+  const latestState = String(latest?.status || "").toUpperCase();
+    if (!activeUpload) {
+    if (latestState === "UPLOAD_FAILED" || latestState === "FAILED") {
+      return { meta: { label: "上传失败", tone: "error" }, detail: "最近一次上传失败，本地文件已保留" };
+    }
+    if (latestState === "UPLOADED") {
+      return { meta: { label: "上传完成", tone: "success" }, detail: "最近一次录像已上传" };
+    }
+    return { meta: TARGET_STATE_META.muted, detail: "" };
+  }
+  const message = String(activeUpload.message || "上传中");
+  const uploadState = String(activeUpload.state || "").toLowerCase();
+  const percent = Math.max(0, Math.min(100, Number(activeUpload.percent || 0)));
+  const completed = Boolean(activeUpload.bvid) || percent >= 100 || message === "上传完成";
+  const paused = uploadState === "paused" || message === "已暂停";
+  const stopped = uploadState === "stopped" || message === "已停止";
+  const failed = uploadState === "failed" || message.includes("失败");
+  let meta = { label: `上传中 ${percent.toFixed(1)}%`, tone: "uploading" };
+  if (completed) meta = { label: "上传完成", tone: "success" };
+  else if (failed) meta = { label: "上传失败", tone: "error" };
+  else if (paused) meta = { label: "上传已暂停", tone: "muted" };
+  else if (stopped) meta = { label: "上传已停止", tone: "muted" };
+  const eta = activeUpload.eta_seconds != null ? ` · 剩余 ${formatDuration(activeUpload.eta_seconds)}` : "";
+  return {
+    meta,
+    detail: `上传 P${String(activeUpload.part || 1).padStart(2, "0")} · ${percent.toFixed(1)}%${eta}`,
+  };
+}
 
 async function refreshLogs() {
   try {
@@ -242,10 +297,10 @@ function renderUploadProgress(progressesArg, fallback = {}) {
   const signature = JSON.stringify([progresses, fallback]);
   if (state.uploadSignature === signature) return;
   state.uploadSignature = signature;
-  const progress = progresses[0] || fallback || {};
+  const progress = progresses.find((item) => Boolean(item.available)) || fallback || {};
   const available = Boolean(progress.available);
   const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
-  els.uploadPanel.classList.toggle("active", available || progresses.length > 0);
+  els.uploadPanel.classList.toggle("active", available || progresses.some((item) => Boolean(item.available)));
   els.uploadTitle.textContent = available ? progress.title || "正在上传" : "当前没有上传";
   els.uploadMeta.textContent = available
     ? `${progress.target || "主播"} · P${String(progress.part || 1).padStart(2, "0")} · ${progress.message || "上传中"}`
@@ -371,6 +426,18 @@ function renderSettings() {
   els.loginLabel.textContent = state.authenticated ? "B站已登录" : "B站登录";
 }
 
+function uploadsByTarget(progresses) {
+  const result = new Map();
+  for (const upload of progresses || []) {
+    if (!upload.target || upload.available === false || String(upload.state || "") === "deleted") continue;
+    const current = result.get(upload.target);
+    if (!current || String(upload.updated_at || "") > String(current.updated_at || "")) {
+      result.set(upload.target, upload);
+    }
+  }
+  return result;
+}
+
 function renderTargets() {
   els.targetList.replaceChildren();
   const targets = state.config?.targets || [];
@@ -386,12 +453,7 @@ function renderTargets() {
       .map((session) => session.target_name),
   );
   const usageByTarget = state.service?.target_usage_bytes || {};
-  const uploadByTarget = new Map();
-  for (const upload of state.service?.upload_progresses || []) {
-    if (!upload.target || Number(upload.percent || 0) >= 100) continue;
-    const current = uploadByTarget.get(upload.target);
-    if (!current || Number(upload.updated_at || 0) > Number(current.updated_at || 0)) uploadByTarget.set(upload.target, upload);
-  }
+  const uploadByTarget = uploadsByTarget(state.service?.upload_progresses || []);
   for (const target of targets) {
     els.targetList.append(buildTargetRow(
       target,
@@ -419,12 +481,7 @@ function updateTargetRuntime() {
       .map((session) => session.target_name),
   );
   const usageByTarget = state.service?.target_usage_bytes || {};
-  const uploadByTarget = new Map();
-  for (const upload of state.service?.upload_progresses || []) {
-    if (!upload.target || Number(upload.percent || 0) >= 100) continue;
-    const current = uploadByTarget.get(upload.target);
-    if (!current || Number(upload.updated_at || 0) > Number(current.updated_at || 0)) uploadByTarget.set(upload.target, upload);
-  }
+  const uploadByTarget = uploadsByTarget(state.service?.upload_progresses || []);
 
   for (const row of els.targetList.querySelectorAll(".target-row")) {
     const target = targetById.get(row.dataset.targetId);
@@ -436,25 +493,31 @@ function updateTargetRuntime() {
       uploadByTarget.get(target.name),
       recordingTargets.has(target.name),
     );
-    const status = row.querySelector(".target-status");
-    if (status) {
-      status.className = `target-status ${runtime.meta.tone}`;
-      status.replaceChildren(makeDot(), document.createTextNode(runtime.meta.label));
+    const normalized = normalizeTargetRuntime(runtime, target, latestByTarget.get(target.name));
+    const recordingStatus = row.querySelector(".target-recording-status");
+    if (recordingStatus) {
+      recordingStatus.className = `target-status target-recording-status ${normalized.recordingMeta.tone}`;
+      recordingStatus.replaceChildren(makeDot(), document.createTextNode(normalized.recordingMeta.label));
+    }
+    const uploadStatus = row.querySelector(".target-upload-status");
+    if (uploadStatus) {
+      uploadStatus.className = `target-status target-upload-status ${normalized.uploadMeta.tone}`;
+      uploadStatus.replaceChildren(makeDot(), document.createTextNode(normalized.uploadMeta.label));
     }
     const detail = row.querySelector(".target-runtime-message");
     if (detail) {
-      detail.textContent = runtime.detail;
-      detail.title = runtime.detail;
+      detail.textContent = normalized.detail;
+      detail.title = normalized.detail;
     }
     const upload = row.querySelector(".target-upload-progress");
     if (upload) {
-      upload.textContent = runtime.uploadDetail;
-      upload.hidden = !runtime.uploadDetail;
+      upload.textContent = normalized.uploadDetail;
+      upload.hidden = !normalized.uploadDetail;
     }
     const cloud = row.querySelector(".target-cloud-progress");
     if (cloud) {
-      cloud.textContent = runtime.cloudDetail;
-      cloud.hidden = !runtime.cloudDetail;
+      cloud.textContent = normalized.cloudDetail;
+      cloud.hidden = !normalized.cloudDetail;
     }
     const usage = row.querySelector(".target-usage");
     if (usage) usage.textContent = `空间占用 ${formatBytes(usageByTarget[target.name] || 0)}`;
@@ -463,42 +526,40 @@ function updateTargetRuntime() {
 }
 
 function resolveTargetRuntime(target, latest, runtimeStatus, activeUpload, isRecordingTarget) {
-  if (!target.enabled) return { meta: TARGET_STATE_META.paused, detail: "已暂停监控" };
-  if (!state.service?.running) return { meta: TARGET_STATE_META.service_stopped, detail: "录制服务未运行" };
-
-  const latestState = String(latest?.status || "").toUpperCase();
   const runtime = runtimeStatus || {};
-  let stateName = String(runtime.state || "");
-  let message = String(runtime.message || "");
-  const isRecording = Boolean(isRecordingTarget) || stateName === "recording" || stateName === "recording_uploading" || latestState === "RECORDING";
-  if (activeUpload) {
-    const percent = Math.max(0, Math.min(100, Number(activeUpload.percent || 0)));
-    const eta = activeUpload.eta_seconds != null ? ` · 剩余 ${formatDuration(activeUpload.eta_seconds)}` : "";
-    stateName = isRecording ? "recording_uploading" : "uploading";
-    message = `P${String(activeUpload.part || 1).padStart(2, "0")} · ${percent.toFixed(1)}%${eta}`;
+  const uploadRuntime = resolveUploadRuntime(activeUpload, latest);
+  if (!target.enabled) {
+    return {
+      recordingMeta: TARGET_STATE_META.paused,
+      uploadMeta: TARGET_STATE_META.muted,
+      detail: "已暂停监控",
+      uploadDetail: uploadRuntime.detail,
+      cloudDetail: "",
+      isRecording: false,
+    };
   }
-  if (!stateName) {
-    if (latestState === "RECORDING") stateName = target.record_mode === "monitor" ? "monitoring" : "recording";
-    else if (latestState === "UPLOADING") stateName = "uploading";
-    else if (latestState === "UPLOADED") stateName = "uploaded";
-    else if (latestState === "UPLOAD_FAILED" || latestState === "FAILED") stateName = "error";
-    else if (latestState === "RECORDED") stateName = "recorded";
-    else if (target.watch_mode === "manual") stateName = "manual";
-    else if (target.watch_mode === "scheduled") stateName = "scheduled";
-    else stateName = "checking";
+  if (!state.service?.running) {
+    return {
+      recordingMeta: TARGET_STATE_META.service_stopped,
+      uploadMeta: TARGET_STATE_META.muted,
+      detail: "录制服务未运行",
+      uploadDetail: "",
+      cloudDetail: "",
+      isRecording: false,
+    };
   }
 
-  const meta = TARGET_STATE_META[stateName] || TARGET_STATE_META.checking;
-  let detail = message || `${meta.label} · 等待下一次状态更新`;
+  const recordingStateName = resolveRecordingStateName(target, latest, runtime, isRecordingTarget);
+  const recordingMeta = TARGET_STATE_META[recordingStateName] || TARGET_STATE_META.checking;
+  const uploadRelated = isUploadRuntime(runtime, latest);
+  const message = String(runtime.message || "");
+  let detail = !uploadRelated && message ? message : `${recordingMeta.label} · 等待下一次状态更新`;
   const updatedAt = Number(runtime.updated_at || 0);
-  if (updatedAt && ["recording", "recording_uploading", "monitoring"].includes(stateName)) {
+  if (updatedAt && ["recording", "monitoring"].includes(recordingStateName)) {
     detail += ` · 已持续 ${formatDuration(Date.now() / 1000 - updatedAt)}`;
-  } else if (updatedAt && stateName !== "uploading") {
+  } else if (updatedAt) {
     detail += ` · ${formatClock(updatedAt)}`;
   }
-  const uploadDetail = activeUpload
-    ? `上传进度：P${String(activeUpload.part || 1).padStart(2, "0")} · ${Math.max(0, Math.min(100, Number(activeUpload.percent || 0))).toFixed(1)}%${activeUpload.eta_seconds != null ? ` · 剩余 ${formatDuration(activeUpload.eta_seconds)}` : ""}`
-    : "";
   const cloudState = String(runtime.cloud_state || latest?.cloud_status || "").toLowerCase();
   const cloudMessage = String(runtime.cloud_message || "");
   let cloudDetail = "";
@@ -509,7 +570,32 @@ function resolveTargetRuntime(target, latest, runtimeStatus, activeUpload, isRec
     else if (cloudState === "pending" || cloudState === "uploading") cloudDetail = "网盘备份排队中";
     else if (Number(latest?.cloud_pending_parts || 0) > 0) cloudDetail = `网盘待备份 ${latest.cloud_pending_parts} 个分段`;
   }
-  return { meta, detail, uploadDetail, cloudDetail, isRecording };
+  return {
+    recordingMeta,
+    uploadMeta: uploadRuntime.meta,
+    detail,
+    uploadDetail: uploadRuntime.detail,
+    cloudDetail,
+    isRecording: ["recording", "monitoring"].includes(recordingStateName),
+  };
+}
+
+function normalizeTargetRuntime(runtime, target, latest) {
+  const value = runtime || {};
+  if (value.recordingMeta && value.uploadMeta) return value;
+  const latestState = String(latest?.status || "").toUpperCase();
+  let recordingMeta = value.meta || TARGET_STATE_META.checking;
+  if (value.isRecording || latestState === "RECORDING") {
+    recordingMeta = target.record_mode === "monitor" ? TARGET_STATE_META.monitoring : TARGET_STATE_META.recording;
+  } else if (["uploading", "success"].includes(recordingMeta.tone)) {
+    recordingMeta = ["RECORDED", "UPLOADED", "UPLOAD_FAILED", "FAILED"].includes(latestState)
+      ? TARGET_STATE_META.recorded
+      : TARGET_STATE_META.checking;
+  }
+  const uploadMeta = recordingMeta.tone === "uploading"
+    ? recordingMeta
+    : value.uploadMeta || TARGET_STATE_META.muted;
+  return {...value, recordingMeta, uploadMeta};
 }
 
 function formatClock(epochSeconds) {
@@ -530,29 +616,36 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   const identity = document.createElement("div");
   identity.className = "target-identity";
   const runtime = resolveTargetRuntime(target, latest, runtimeStatus, activeUpload, isRecordingTarget);
-  const status = document.createElement("span");
-  status.className = `target-status ${runtime.meta.tone}`;
-  status.append(makeDot(), document.createTextNode(runtime.meta.label));
+  const normalized = normalizeTargetRuntime(runtime, target, latest);
+  const statusStack = document.createElement("div");
+  statusStack.className = "target-status-stack";
+  const recordingStatus = document.createElement("span");
+  recordingStatus.className = `target-status target-recording-status ${normalized.recordingMeta.tone}`;
+  recordingStatus.append(makeDot(), document.createTextNode(normalized.recordingMeta.label));
+  const uploadStatus = document.createElement("span");
+  uploadStatus.className = `target-status target-upload-status ${normalized.uploadMeta.tone}`;
+  uploadStatus.append(makeDot(), document.createTextNode(normalized.uploadMeta.label));
+  statusStack.append(recordingStatus, uploadStatus);
   const name = document.createElement("strong");
   name.textContent = target.name || "未命名主播";
   const url = document.createElement("small");
   url.textContent = target.url;
   const runtimeMessage = document.createElement("small");
   runtimeMessage.className = "target-runtime-message";
-  runtimeMessage.textContent = runtime.detail;
-  runtimeMessage.title = runtime.detail;
+  runtimeMessage.textContent = normalized.detail;
+  runtimeMessage.title = normalized.detail;
   const usage = document.createElement("small");
   usage.className = "target-usage";
   usage.textContent = `空间占用 ${formatBytes(usageBytes)}`;
   const uploadMessage = document.createElement("small");
   uploadMessage.className = "target-upload-progress";
-  uploadMessage.textContent = runtime.uploadDetail;
-  uploadMessage.hidden = !runtime.uploadDetail;
+  uploadMessage.textContent = normalized.uploadDetail;
+  uploadMessage.hidden = !normalized.uploadDetail;
   const cloudMessage = document.createElement("small");
   cloudMessage.className = "target-cloud-progress";
-  cloudMessage.textContent = runtime.cloudDetail;
-  cloudMessage.hidden = !runtime.cloudDetail;
-  identity.append(status, name, url, runtimeMessage, uploadMessage, cloudMessage, usage);
+  cloudMessage.textContent = normalized.cloudDetail;
+  cloudMessage.hidden = !normalized.cloudDetail;
+  identity.append(statusStack, name, url, runtimeMessage, uploadMessage, cloudMessage, usage);
 
   const actions = document.createElement("div");
   actions.className = "target-actions";

@@ -10,6 +10,7 @@ from douyin_bili_recorder.paths import session_output_dir
 from douyin_bili_recorder.service_control import ServiceController
 from douyin_bili_recorder.target_status import TargetStatusStore
 from douyin_bili_recorder.ui_state import UIStateStore
+from douyin_bili_recorder.upload_progress import UploadProgressStore
 
 
 def _config(tmp_path: Path):
@@ -46,6 +47,30 @@ def test_target_status_store_round_trip(tmp_path: Path) -> None:
 
     store.clear("anchor")
     assert store.load_all() == {}
+
+
+def test_status_removes_deleted_upload_progress(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    progress = UploadProgressStore(config.data_dir)
+    progress.upsert(
+        "live:1",
+        {"available": True, "target": "anchor", "percent": 50, "updated_at": "2026-09-30T01:00:00"},
+    )
+    progress.upsert(
+        "deleted:1",
+        {
+            "available": False,
+            "state": "deleted",
+            "target": "anchor",
+            "percent": 99.9,
+            "updated_at": "2026-09-30T01:00:01",
+        },
+    )
+
+    status = ServiceController(config, UIStateStore(config)).status()
+
+    assert [item["key"] for item in status["upload_progresses"]] == ["live:1"]
+    assert [item["key"] for item in progress.load_all()] == ["live:1"]
 
 
 def test_target_usage_includes_session_and_final_files(tmp_path: Path) -> None:

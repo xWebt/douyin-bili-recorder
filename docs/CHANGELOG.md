@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.44
+- Deleting an upload now removes its upload-progress record completely, so a deleted item cannot reappear as a phantom upload.
+- Legacy deleted or unavailable upload-progress entries are purged when service status is read.
+- Each anchor card now has separate recording and upload status badges, allowing recording state to remain visible while uploads are running, paused, stopped, or failed.
+- The target-card renderer now tolerates old cached runtime shapes and includes the missing muted-state metadata, so the stopped-service state renders instead of crashing.
+
 ## v2.2.43
 - App shutdown now stops the control server, recorder worker, biliup children, and app-owned OpenList instance, then clears the runtime PID.
 - Stale OpenList processes left by older or interrupted runs are identified from their executable path and reclaimed on the next app launch or exit.

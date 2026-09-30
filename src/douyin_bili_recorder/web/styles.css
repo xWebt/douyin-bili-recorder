@@ -1126,8 +1126,16 @@ input::placeholder {
   gap: 4px 10px;
 }
 
-.target-identity .target-status {
-  grid-row: 1 / 6;
+.target-status-stack {
+  grid-row: 1 / 7;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.target-upload-status {
+  color: var(--ink-dim);
 }
 
 .target-identity strong,
