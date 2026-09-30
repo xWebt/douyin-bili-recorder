@@ -160,7 +160,7 @@ class BiliupUploader:
                 if result.cancelled:
                     raise UploadCancelled("上传已由用户停止")
                 if self._is_rate_limited(result.lines):
-                    raise UploadRateLimited("B站投稿频率限制（21566）")
+                    raise UploadRateLimited("B站投稿频率限制，请稍后重试")
                 raise RuntimeError(f"Bilibili append command failed with code {result.returncode}")
             self._mark_progress_complete(bvid, f"{session.session_id}:{part_index}")
             return UploadResult(bvid, True, list(result.lines))
@@ -185,7 +185,7 @@ class BiliupUploader:
             if result.cancelled:
                 raise UploadCancelled("上传已由用户停止")
             if self._is_rate_limited(result.lines):
-                raise UploadRateLimited("B站投稿频率限制（21566）")
+                raise UploadRateLimited("B站投稿频率限制，请稍后重试")
             raise RuntimeError(f"Bilibili submission command failed with code {result.returncode}")
         found = self._wait_for_bvid(title)
         if found:
@@ -300,10 +300,17 @@ class BiliupUploader:
     @staticmethod
     def _is_rate_limited(lines: list[str]) -> bool:
         text = "\n".join(lines)
-        return "21566" in text or "投稿过于频繁" in text
+        return any(
+            marker in text
+            for marker in ("21566", "601", "投稿过于频繁", "上传视频过快")
+        )
 
     def cancel(self, key: str) -> None:
         self._cancel_event(key).set()
+
+    def reset_cancel(self, key: str) -> None:
+        with self._cancel_lock:
+            self._cancel_events.pop(key, None)
 
     def _cancel_event(self, key: str) -> threading.Event:
         with self._cancel_lock:

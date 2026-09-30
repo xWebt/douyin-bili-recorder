@@ -383,7 +383,9 @@ h2 {
   gap: 8px;
 }
 
-.stop-upload-button {
+.stop-upload-button,
+.pause-upload-button,
+.retry-upload-button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -395,6 +397,18 @@ h2 {
   color: #ffaba6;
   cursor: pointer;
   font-size: 11px;
+}
+
+.pause-upload-button {
+  border-color: rgba(244, 190, 89, 0.42);
+  background: rgba(244, 190, 89, 0.08);
+  color: #f7d08a;
+}
+
+.retry-upload-button {
+  border-color: rgba(89, 220, 174, 0.42);
+  background: rgba(89, 220, 174, 0.08);
+  color: #91e9c8;
 }
 
 .select-row {

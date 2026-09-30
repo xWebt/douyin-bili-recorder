@@ -262,32 +262,72 @@ function renderUploadProgress(progressesArg, fallback = {}) {
     meta.textContent = `${item.message || "上传中"} · ${formatBytes(item.uploaded_bytes)} / ${formatBytes(item.total_bytes)}${item.bvid ? ` · ${item.bvid}` : ""}`;
     info.append(title, meta);
     const itemPercent = document.createElement("strong");
-    itemPercent.textContent = `${Math.max(0, Math.min(100, Number(item.percent || 0))).toFixed(1)}%`;
+    const itemPercentValue = Math.max(0, Math.min(100, Number(item.percent || 0)));
+    itemPercent.textContent = `${itemPercentValue.toFixed(1)}%`;
     const actions = document.createElement("div");
     actions.className = "upload-row-actions";
     actions.append(itemPercent);
-    if (Number(item.percent || 0) < 100 && item.message !== "已停止") {
-      const stop = document.createElement("button");
-      stop.type = "button";
-      stop.className = "stop-upload-button";
-      stop.append(icon("square"), document.createTextNode("停止"));
-      stop.addEventListener("click", () => stopUpload(item.key));
-      actions.append(stop);
+    const message = String(item.message || "");
+    const uploadState = String(item.state || "");
+    const completed = Boolean(item.bvid) || itemPercentValue >= 100 || message === "上传完成";
+    const paused = uploadState === "paused" || message === "已暂停";
+    const stopped = uploadState === "stopped" || message === "已停止";
+    const failed = uploadState === "failed" || message.includes("失败");
+    if (!completed) {
+      if (paused || stopped || failed) {
+        actions.append(uploadControlButton("rotate-cw", "重试", "retry-upload-button", () => retryUpload(item.key)));
+      } else {
+        actions.append(uploadControlButton("pause", "暂停", "pause-upload-button", () => pauseUpload(item.key)));
+        actions.append(uploadControlButton("square", "停止", "stop-upload-button", () => stopUpload(item.key)));
+      }
     }
     row.append(info, actions);
     return row;
   }));
 }
 
-async function stopUpload(key) {
+function uploadControlButton(iconName, label, className, handler) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.title = label;
+  button.append(icon(iconName), document.createTextNode(label));
+  button.addEventListener("click", handler);
+  return button;
+}
+
+async function uploadControl(action, key, successMessage, failureMessage) {
   const match = String(key || "").match(/^(.*):(\d+)$/);
   if (!match) return;
   try {
-    await api(`/api/uploads/${encodeURIComponent(match[1])}/${match[2]}/stop`, { method: "POST" });
-    toast("已停止该视频上传");
+    await api(`/api/uploads/${encodeURIComponent(match[1])}/${match[2]}/${action}`, { method: "POST" });
+    toast(successMessage);
     await refreshService();
   } catch (error) {
-    toast(`停止上传失败：${error.message}`, "error");
+    toast(`${failureMessage}：${error.message}`, "error");
+  }
+}
+
+function pauseUpload(key) {
+  return uploadControl("pause", key, "已暂停该视频上传", "暂停上传失败");
+}
+
+function retryUpload(key) {
+  return uploadControl("retry", key, "已重新加入上传队列", "重试上传失败");
+}
+
+function stopUpload(key) {
+  return uploadControl("stop", key, "已停止该视频上传", "停止上传失败");
+}
+
+async function clearTargetCache(name) {
+  if (!window.confirm(`清除“${name}”已上传、已停止或已丢弃片段的本地缓存？不会删除正在录制或待上传的文件。`)) return;
+  try {
+    const result = await api(`/api/targets/${encodeURIComponent(name)}/clear-cache`, { method: "POST" });
+    toast(`已释放 ${formatBytes(result.freed_bytes || 0)}`);
+    await refreshService();
+  } catch (error) {
+    toast(`清除缓存失败：${error.message}`, "error");
   }
 }
 
@@ -438,6 +478,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
     actionButton("file-text", "生成报告", () => openReportDialog(target.name)),
     actionButton("bar-chart-3", "数据详情", () => openAnalytics(target.name)),
     actionButton("folder-open", "打开目录", () => openFolder("anchor", target.name)),
+    actionButton("eraser", "清除缓存", () => clearTargetCache(target.name)),
     actionButton("trash-2", "删除主播", () => {
       const removedName = target.name;
       state.config.targets = state.config.targets.filter((item) => item.id !== target.id);

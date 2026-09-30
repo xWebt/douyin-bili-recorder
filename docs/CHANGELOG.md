@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.26
+- Upload rows now provide separate pause, retry, and stop controls. Pausing cancels only that P, keeps the local file, and waits for an explicit retry.
+- Retrying a paused, stopped, or failed part uses a new upload generation so stale cancellation events cannot overwrite the new attempt.
+- Each anchor card now has a clear-cache action. It deletes only uploaded, canceled, or discarded parts and never removes files from an active recording session or pending/uploads-in-progress parts.
+- Bilibili upload rate-limit detection now also handles response code `601` (`上传视频过快`) in addition to `21566`.
+
 
 ## v2.2.25
 

@@ -125,6 +125,12 @@ enabled = true
         )
 
 
+def test_upload_rate_limit_detection_includes_bilibili_601() -> None:
+    assert BiliupUploader._is_rate_limited([
+        "ResponseData { code: 601, message: 您上传视频过快，请您稍作休息后再继续 }"
+    ])
+
+
 def test_upload_part_checks_existing_title_before_append(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(

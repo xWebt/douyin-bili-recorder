@@ -64,6 +64,9 @@ class RecorderService:
         self._target_workers: dict[str, threading.Thread] = {}
         self._removed_targets: set[str] = set()
         self._cancelled_uploads: set[str] = set()
+        self._paused_uploads: set[str] = set()
+        self._upload_generations: dict[str, int] = {}
+        self._upload_control_lock = threading.Lock()
         self.upload_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="upload")
         self._pending_uploads: dict[str, list[Future[bool]]] = {}
         self._parent_pid = int(os.environ.get("DOUYIN_RECORDER_PARENT_PID", "0") or 0)
@@ -885,6 +888,7 @@ class RecorderService:
             session_id=session.session_id,
             part=part.index,
         )
+        generation = self._upload_generation(session.session_id, part.index)
         result = self._upload_part_with_retries(target, session, final_media, part)
         if result.verified and result.bvid:
             session.bvid = result.bvid
@@ -916,6 +920,14 @@ class RecorderService:
                     if path is not None and path.exists():
                         path.unlink(missing_ok=True)
             return True
+        if generation != self._upload_generation(session.session_id, part.index):
+            return False
+        latest = self.store.load(session.session_id)
+        latest_part = next((item for item in latest.parts if item.index == part.index), None)
+        if latest_part is not None and latest_part.status in {"PAUSED", "CANCELED"}:
+            part.status = latest_part.status
+            part.error = latest_part.error
+            return False
         part.status = "UPLOAD_FAILED"
         part.error = "submission was sent but BVID was not verified"
         self.store.save(session)
@@ -1011,11 +1023,28 @@ class RecorderService:
         media_path: Path,
         part: SessionPart,
     ) -> UploadResult:
+        generation = self._upload_generation(session.session_id, part.index)
         for attempt in range(self.config.upload_retry_count + 1):
             try:
+                if generation != self._upload_generation(session.session_id, part.index):
+                    return UploadResult(None, False, ["upload control changed"])
+                if self._upload_is_paused(session.session_id, part.index):
+                    part.status = "PAUSED"
+                    part.error = "上传已暂停"
+                    self.store.save(session)
+                    return UploadResult(None, False, ["upload paused"])
                 if self._upload_is_cancelled(session.session_id, part.index):
                     raise UploadCancelled("上传已由用户停止")
                 with self._part_upload_lock(session.session_id, part.index):
+                    if generation != self._upload_generation(session.session_id, part.index):
+                        return UploadResult(None, False, ["upload control changed"])
+                    if self._upload_is_paused(session.session_id, part.index):
+                        part.status = "PAUSED"
+                        part.error = "上传已暂停"
+                        self.store.save(session)
+                        return UploadResult(None, False, ["upload paused"])
+                    if self._upload_is_cancelled(session.session_id, part.index):
+                        raise UploadCancelled("上传已由用户停止")
                     latest = self.store.load(session.session_id)
                     latest_part = next(
                         (item for item in latest.parts if item.index == part.index),
@@ -1055,6 +1084,20 @@ class RecorderService:
                 if attempt < self.config.upload_retry_count:
                     self.shutdown_event.wait(self.config.upload_retry_backoff_seconds * (attempt + 1))
             except UploadCancelled:
+                if generation != self._upload_generation(session.session_id, part.index):
+                    return UploadResult(None, False, ["stale upload canceled"])
+                if self._upload_is_paused(session.session_id, part.index):
+                    part.status = "PAUSED"
+                    part.error = "上传已暂停"
+                    self.store.save(session)
+                    self._set_target_status(
+                        target,
+                        "paused",
+                        f"P{part.index:02d} 上传已暂停",
+                        session_id=session.session_id,
+                        part=part.index,
+                    )
+                    return UploadResult(None, False, ["upload paused"])
                 part.status = "CANCELED"
                 part.error = "上传已由用户停止"
                 self.store.save(session)
@@ -1235,6 +1278,8 @@ class RecorderService:
                     continue
                 if part.status == "CANCELED":
                     continue
+                if part.status == "PAUSED":
+                    continue
                 if (
                     part.duration_seconds is not None
                     and part.duration_seconds < self.config.min_upload_duration_seconds
@@ -1373,34 +1418,142 @@ class RecorderService:
         threading.Thread(target=watch, name="external-stop-watcher", daemon=True).start()
 
     def _start_upload_stop_watcher(self) -> None:
-        stop_dir = self.config.data_dir / "ui" / "upload-stop"
-        stop_dir.mkdir(parents=True, exist_ok=True)
+        control_dirs = (
+            self.config.data_dir / "ui" / "upload-control",
+            self.config.data_dir / "ui" / "upload-stop",
+        )
+        for control_dir in control_dirs:
+            control_dir.mkdir(parents=True, exist_ok=True)
 
         def watch() -> None:
             while not self.shutdown_event.wait(1):
-                for path in stop_dir.glob("*.request"):
-                    try:
-                        payload = json.loads(path.read_text(encoding="utf-8"))
-                        session_id = str(payload.get("session_id", ""))
-                        part_index = int(payload.get("part_index", 0))
-                    except (OSError, ValueError, TypeError):
+                for control_dir in control_dirs:
+                    for path in control_dir.glob("*.request"):
+                        try:
+                            payload = json.loads(path.read_text(encoding="utf-8"))
+                            session_id = str(payload.get("session_id", ""))
+                            part_index = int(payload.get("part_index", 0))
+                            action = str(payload.get("action", "stop"))
+                        except (OSError, ValueError, TypeError):
+                            path.unlink(missing_ok=True)
+                            continue
+                        if session_id and part_index > 0:
+                            self._handle_upload_control(action, session_id, part_index)
                         path.unlink(missing_ok=True)
-                        continue
-                    if session_id and part_index > 0:
-                        key = self._upload_key(session_id, part_index)
-                        self._cancelled_uploads.add(key)
-                        self.uploader.cancel(key)
-                        self.logger.info("upload stop requested for %s", key)
-                    path.unlink(missing_ok=True)
 
-        threading.Thread(target=watch, name="upload-stop-watcher", daemon=True).start()
+        threading.Thread(target=watch, name="upload-control-watcher", daemon=True).start()
+
+    def _handle_upload_control(self, action: str, session_id: str, part_index: int) -> None:
+        key = self._upload_key(session_id, part_index)
+        if action == "pause":
+            with self._upload_control_lock:
+                self._paused_uploads.add(key)
+                self._cancelled_uploads.add(key)
+                self._upload_generations[key] = self._upload_generations.get(key, 0) + 1
+            self.uploader.cancel(key)
+            self._set_upload_part_control_state(session_id, part_index, "PAUSED", "上传已暂停")
+            self.logger.info("upload pause requested for %s", key)
+            return
+        if action == "retry":
+            with self._upload_control_lock:
+                self._paused_uploads.discard(key)
+                self._cancelled_uploads.discard(key)
+                self._upload_generations[key] = self._upload_generations.get(key, 0) + 1
+            self.uploader.reset_cancel(key)
+            self._schedule_upload_retry(session_id, part_index)
+            self.logger.info("upload retry requested for %s", key)
+            return
+        with self._upload_control_lock:
+            self._paused_uploads.discard(key)
+            self._cancelled_uploads.add(key)
+            self._upload_generations[key] = self._upload_generations.get(key, 0) + 1
+        self.uploader.cancel(key)
+        self._set_upload_part_control_state(session_id, part_index, "CANCELED", "上传已由用户停止")
+        self.logger.info("upload stop requested for %s", key)
+
+    def _set_upload_part_control_state(
+        self,
+        session_id: str,
+        part_index: int,
+        status: str,
+        error: str,
+    ) -> None:
+        try:
+            session = self.store.load(session_id)
+        except (OSError, ValueError, KeyError):
+            return
+        part = next((item for item in session.parts if item.index == part_index), None)
+        if part is None or part.status == "UPLOADED":
+            return
+        part.status = status
+        part.error = error
+        self.store.save(session)
+
+    def _schedule_upload_retry(self, session_id: str, part_index: int) -> None:
+        try:
+            session = self.store.load(session_id)
+        except (OSError, ValueError, KeyError):
+            return
+        target = self._target_by_name(session.target_name)
+        if target is None:
+            return
+        part = next((item for item in session.parts if item.index == part_index), None)
+        if part is None or part.status == "UPLOADED":
+            return
+        if not part.path or not Path(part.path).exists():
+            part.status = "UPLOAD_FAILED"
+            part.error = "本地文件不存在，无法重试"
+            self.store.save(session)
+            return
+        part.status = "PENDING"
+        part.error = ""
+        self.store.save(session)
+        future = self.upload_executor.submit(
+            self._retry_upload_part_job,
+            target,
+            session_id,
+            part_index,
+        )
+        self._pending_uploads.setdefault(session_id, []).append(future)
+        future.add_done_callback(lambda _future, sid=session_id: self._pending_uploads.pop(sid, None))
+
+    def _retry_upload_part_job(self, target: TargetConfig, session_id: str, part_index: int) -> bool:
+        try:
+            session = self.store.load(session_id)
+        except (OSError, ValueError, KeyError):
+            return False
+        part = next((item for item in session.parts if item.index == part_index), None)
+        if part is None or part.status == "UPLOADED":
+            return bool(part and part.status == "UPLOADED")
+        media_path = Path(part.path)
+        if not media_path.exists():
+            part.status = "UPLOAD_FAILED"
+            part.error = "本地文件不存在，无法重试"
+            self.store.save(session)
+            return False
+        self._upload_part_job(target, session, part)
+        latest = self.store.load(session_id)
+        latest_part = next((item for item in latest.parts if item.index == part_index), None)
+        return bool(latest_part and latest_part.status == "UPLOADED")
+
+    def _upload_generation(self, session_id: str, part_index: int) -> int:
+        key = self._upload_key(session_id, part_index)
+        with self._upload_control_lock:
+            return self._upload_generations.get(key, 0)
+
+    def _upload_is_paused(self, session_id: str, part_index: int) -> bool:
+        key = self._upload_key(session_id, part_index)
+        with self._upload_control_lock:
+            return key in self._paused_uploads
 
     @staticmethod
     def _upload_key(session_id: str, part_index: int) -> str:
         return f"{session_id}:{part_index}"
 
     def _upload_is_cancelled(self, session_id: str, part_index: int) -> bool:
-        return self._upload_key(session_id, part_index) in self._cancelled_uploads
+        key = self._upload_key(session_id, part_index)
+        with self._upload_control_lock:
+            return key in self._cancelled_uploads
 
     def _start_parent_watcher(self) -> None:
         if self._parent_pid <= 0:

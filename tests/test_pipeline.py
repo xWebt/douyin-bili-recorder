@@ -12,7 +12,9 @@ from douyin_bili_recorder.config import load_config
 from douyin_bili_recorder.models import MediaFile, SessionPart, SessionRecord, SessionStatus
 from douyin_bili_recorder.pipeline import RecorderService
 from douyin_bili_recorder.recorder import RecordAttempt
+from douyin_bili_recorder.state import SessionStore
 from douyin_bili_recorder.uploader import UploadResult
+from douyin_bili_recorder.webapp import _clear_target_cache
 
 
 class FakeRunningProcess:
@@ -202,6 +204,12 @@ class FakeUploader:
     def __init__(self) -> None:
         self.title = ""
         self.parts: list[tuple[int, str | None]] = []
+
+    def cancel(self, _key: str) -> None:
+        return None
+
+    def reset_cancel(self, _key: str) -> None:
+        return None
 
     def upload_session(self, _target, _session, _session_dir, title=None) -> UploadResult:
         self.title = title or ""
@@ -985,6 +993,138 @@ url = "https://live.douyin.com/1"
         time.sleep(0.01)
     assert uploader.calls == 2
     uploader.release.set()
+
+
+def test_upload_pause_retry_and_stop_are_isolated(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+retry_count = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    media = tmp_path / "part.mp4"
+    media.write_bytes(b"video")
+    service.store.save(
+        SessionRecord(
+            session_id="session",
+            target_name="anchor",
+            target_url="https://live.douyin.com/1",
+            status=SessionStatus.RECORDED,
+            parts=[SessionPart(index=1, status="PENDING", title="anchor P01", path=str(media))],
+        )
+    )
+
+    service._handle_upload_control("pause", "session", 1)
+    assert service.store.load("session").parts[0].status == "PAUSED"
+    assert service._upload_is_paused("session", 1)
+    assert service._upload_is_cancelled("session", 1)
+
+    uploader = FakeUploader()
+    service.uploader = uploader  # type: ignore[assignment]
+    service._handle_upload_control("retry", "session", 1)
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        if service.store.load("session").parts[0].status == "UPLOADED":
+            break
+        time.sleep(0.01)
+    assert service.store.load("session").parts[0].status == "UPLOADED"
+    assert uploader.parts == [(1, None)]
+    assert not service._upload_is_paused("session", 1)
+    assert not service._upload_is_cancelled("session", 1)
+
+    service.store.save(
+        SessionRecord(
+            session_id="stopped",
+            target_name="anchor",
+            target_url="https://live.douyin.com/1",
+            status=SessionStatus.RECORDED,
+            parts=[SessionPart(index=1, status="PENDING", title="P1", path=str(media))],
+        )
+    )
+    service._handle_upload_control("stop", "stopped", 1)
+    assert service.store.load("stopped").parts[0].status == "CANCELED"
+    assert service._upload_is_cancelled("stopped", 1)
+
+
+def test_clear_target_cache_keeps_active_and_pending_files(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    config.video_dir.mkdir(parents=True, exist_ok=True)
+    uploaded = config.video_dir / "uploaded.mp4"
+    active = config.video_dir / "active.mp4"
+    pending = config.video_dir / "pending.mp4"
+    uploaded.write_bytes(b"a" * 10)
+    active.write_bytes(b"b" * 20)
+    pending.write_bytes(b"c" * 30)
+    store = SessionStore(config.sessions_dir)
+    store.save(
+        SessionRecord(
+            session_id="uploaded",
+            target_name="anchor",
+            target_url="https://live.douyin.com/1",
+            status=SessionStatus.UPLOADED,
+            bvid="BV0000000001",
+            parts=[SessionPart(index=1, status="UPLOADED", path=str(uploaded), bvid="BV0000000001")],
+        )
+    )
+    store.save(
+        SessionRecord(
+            session_id="active",
+            target_name="anchor",
+            target_url="https://live.douyin.com/1",
+            status=SessionStatus.RECORDING,
+            parts=[SessionPart(index=1, status="UPLOADING", path=str(active))],
+        )
+    )
+    store.save(
+        SessionRecord(
+            session_id="pending",
+            target_name="anchor",
+            target_url="https://live.douyin.com/1",
+            status=SessionStatus.RECORDED,
+            parts=[SessionPart(index=1, status="PENDING", path=str(pending))],
+        )
+    )
+
+    result = _clear_target_cache(config, "anchor")
+
+    assert result["freed_bytes"] == 10
+    assert result["skipped_active_sessions"] == 1
+    assert not uploaded.exists()
+    assert active.exists()
+    assert pending.exists()
 
 
 def test_run_forever_exits_after_interrupt_without_active_recording(tmp_path: Path) -> None:

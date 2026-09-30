@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -22,9 +23,143 @@ from .ui_state import UIStateStore
 from .bilibili_status import BilibiliSubmissionClient
 from .reports import ReportGenerator
 from .state import SessionStore
+from .models import SessionStatus
 from .upload_progress import UploadProgressStore
 
 WEB_ROOT = Path(__file__).with_name("web")
+
+
+def _delete_managed_file(path: Path, roots: list[Path]) -> int:
+    try:
+        resolved = path.expanduser().resolve()
+        if not any(resolved == root or root in resolved.parents for root in roots):
+            return 0
+        size = resolved.stat().st_size
+        resolved.unlink(missing_ok=True)
+        return size
+    except OSError:
+        return 0
+
+
+def _clear_target_cache(config: AppConfig, target_name: str) -> dict[str, Any]:
+    sessions = [
+        session
+        for session in SessionStore(config.sessions_dir).all()
+        if session.target_name == target_name
+    ]
+    roots = [config.sessions_dir.resolve(), config.video_dir.expanduser().resolve()]
+    progress_store = UploadProgressStore(config.data_dir)
+    safe_statuses = {"UPLOADED", "CANCELED", "DISCARDED"}
+    deleted_files = 0
+    freed_bytes = 0
+    skipped_active_sessions = 0
+
+    for session in sessions:
+        if session.status in {SessionStatus.RECORDING, SessionStatus.STARTING}:
+            skipped_active_sessions += 1
+            continue
+        if not session.parts:
+            continue
+        for part in session.parts:
+            if part.status not in safe_statuses:
+                continue
+            for value in (part.path, part.source_path, part.danmaku_path):
+                if not value:
+                    continue
+                freed = _delete_managed_file(Path(value), roots)
+                if freed:
+                    deleted_files += 1
+                    freed_bytes += freed
+            progress_store.remove(f"{session.session_id}:{part.index}")
+        if all(part.status in safe_statuses for part in session.parts):
+            session_dir = config.sessions_dir / session.session_id
+            if session_dir.exists():
+                for child in list(session_dir.iterdir()):
+                    if child.name == "session.json":
+                        continue
+                    try:
+                        if child.is_dir():
+                            shutil.rmtree(child, ignore_errors=True)
+                        else:
+                            child.unlink(missing_ok=True)
+                    except OSError:
+                        continue
+    return {
+        "ok": True,
+        "target": target_name,
+        "deleted_files": deleted_files,
+        "freed_bytes": freed_bytes,
+        "skipped_active_sessions": skipped_active_sessions,
+    }
+
+
+def _request_upload_control(
+    config: AppConfig,
+    session_id: str,
+    part_index: int,
+    action: str,
+) -> dict[str, Any]:
+    session_store = SessionStore(config.sessions_dir)
+    try:
+        session = session_store.load(session_id)
+    except (OSError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail="session not found") from exc
+    part = next((item for item in session.parts if item.index == part_index), None)
+    if part is None:
+        raise HTTPException(status_code=404, detail="part not found")
+    if part.status == "UPLOADED":
+        raise HTTPException(status_code=409, detail="part already uploaded")
+    if action == "retry":
+        if not part.path or not Path(part.path).exists():
+            raise HTTPException(status_code=409, detail="本地视频文件不存在，无法重试")
+        part.status = "PENDING"
+        part.error = ""
+        progress_message = "等待重试"
+        progress_state = "queued"
+    elif action == "pause":
+        part.status = "PAUSED"
+        part.error = "上传已暂停"
+        progress_message = "已暂停"
+        progress_state = "paused"
+    else:
+        part.status = "CANCELED"
+        part.error = "上传已由用户停止"
+        progress_message = "已停止"
+        progress_state = "stopped"
+    session_store.save(session)
+    control_dir = config.data_dir / "ui" / "upload-control"
+    control_dir.mkdir(parents=True, exist_ok=True)
+    request_path = control_dir / f"{session_id}-{part_index}.request"
+    request_path.write_text(
+        json.dumps(
+            {"session_id": session_id, "part_index": part_index, "action": action},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    existing = next(
+        (item for item in UploadProgressStore(config.data_dir).load_all() if item.get("key") == f"{session_id}:{part_index}"),
+        {},
+    )
+    payload = dict(existing)
+    payload.update(
+        {
+            "available": True,
+            "message": progress_message,
+            "state": progress_state,
+            "target": session.target_name,
+            "part": part_index,
+            "title": part.title or session.title,
+            "path": part.path,
+            "total_bytes": part.size,
+            "uploaded_bytes": payload.get("uploaded_bytes", 0),
+            "percent": 0 if action == "retry" else payload.get("percent", 0),
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+    )
+    UploadProgressStore(config.data_dir).upsert(f"{session_id}:{part_index}", payload)
+    return {"ok": True, "session_id": session_id, "part_index": part_index, "action": action}
 
 
 def create_app(config: AppConfig) -> FastAPI:
@@ -145,28 +280,23 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.post("/api/uploads/{session_id}/{part_index}/stop")
     async def stop_upload(session_id: str, part_index: int) -> dict[str, Any]:
-        session_store = SessionStore(config.sessions_dir)
-        try:
-            session = session_store.load(session_id)
-        except (OSError, ValueError, KeyError) as exc:
-            raise HTTPException(status_code=404, detail="session not found") from exc
-        part = next((item for item in session.parts if item.index == part_index), None)
-        if part is None:
-            raise HTTPException(status_code=404, detail="part not found")
-        if part.status == "UPLOADED":
-            raise HTTPException(status_code=409, detail="part already uploaded")
-        part.status = "CANCELED"
-        part.error = "上传已由用户停止"
-        session_store.save(session)
-        stop_dir = config.data_dir / "ui" / "upload-stop"
-        stop_dir.mkdir(parents=True, exist_ok=True)
-        request_path = stop_dir / f"{session_id}-{part_index}.request"
-        request_path.write_text(
-            json.dumps({"session_id": session_id, "part_index": part_index}),
-            encoding="utf-8",
-        )
-        UploadProgressStore(config.data_dir).remove(f"{session_id}:{part_index}")
-        return {"ok": True, "session_id": session_id, "part_index": part_index}
+        return _request_upload_control(config, session_id, part_index, "stop")
+
+    @app.post("/api/uploads/{session_id}/{part_index}/pause")
+    async def pause_upload(session_id: str, part_index: int) -> dict[str, Any]:
+        return _request_upload_control(config, session_id, part_index, "pause")
+
+    @app.post("/api/uploads/{session_id}/{part_index}/retry")
+    async def retry_upload(session_id: str, part_index: int) -> dict[str, Any]:
+        return _request_upload_control(config, session_id, part_index, "retry")
+
+    @app.post("/api/targets/{target_name}/clear-cache")
+    async def clear_target_cache(target_name: str) -> dict[str, Any]:
+        state = state_store.load()
+        known = {str(item.get("name", "")) for item in state.get("targets", [])}
+        if target_name not in known:
+            raise HTTPException(status_code=404, detail="target not found")
+        return _clear_target_cache(config, target_name)
 
     @app.get("/api/bilibili/submissions")
     async def bilibili_submissions() -> dict[str, Any]:
