@@ -162,6 +162,14 @@ def _request_upload_control(
     return {"ok": True, "session_id": session_id, "part_index": part_index, "action": action}
 
 
+
+def _ensure_service_running(config: AppConfig, state_store: UIStateStore, controller: ServiceController) -> None:
+    state = state_store.load()
+    limit = int(state.get("max_cache_gb", config.max_cache_gb))
+    if not controller.status(limit).get("running"):
+        controller.start()
+
+
 def create_app(config: AppConfig) -> FastAPI:
     state_store = UIStateStore(config)
     auth = BilibiliAuth(config.cookie_file)
@@ -288,7 +296,9 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.post("/api/uploads/{session_id}/{part_index}/retry")
     async def retry_upload(session_id: str, part_index: int) -> dict[str, Any]:
-        return _request_upload_control(config, session_id, part_index, "retry")
+        result = _request_upload_control(config, session_id, part_index, "retry")
+        _ensure_service_running(config, state_store, controller)
+        return result
 
     @app.post("/api/targets/{target_name}/clear-cache")
     async def clear_target_cache(target_name: str) -> dict[str, Any]:

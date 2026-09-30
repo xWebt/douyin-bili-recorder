@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.29
+- Clicking retry now automatically starts the recorder worker when the service is stopped, so the queued retry request is consumed instead of appearing to do nothing.
+
 ## v2.2.28
 - Bilibili `Failed to pre_upload ... request limited` responses are now treated as rate limits and use the five-minute backoff instead of rapid generic retries.
 
