@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.32
+- Added a per-anchor start button. It enables that anchor, starts the service when needed, and bypasses the schedule for the immediate check.
+- Replaced the dark green theme with a light slate and teal interface.
+- Service polling now updates target status text in place instead of rebuilding the entire target list every three seconds, removing the visible refresh flicker.
+
 ## v2.2.31
 - Automatic upload retries are capped at two after the original attempt, preventing runaway Bilibili `21566` rate-limit pressure. Manual retry starts a fresh two-retry cycle.
 

@@ -1,19 +1,19 @@
 :root {
-  --ink: #e9eee9;
-  --ink-soft: #a1afa9;
-  --ink-dim: #6f7d77;
-  --canvas: #0e1412;
-  --surface: #121a17;
-  --surface-raised: #17211d;
-  --surface-hot: #1d2924;
-  --line: #2b3a34;
-  --line-bright: #3f564d;
-  --signal: #74e5a5;
-  --signal-soft: rgba(116, 229, 165, 0.13);
-  --amber: #f3b85c;
-  --info: #67b7ff;
-  --danger: #ff716a;
-  --shadow: 0 22px 70px rgba(0, 0, 0, 0.33);
+  --ink: #1f2937;
+  --ink-soft: #52606d;
+  --ink-dim: #8995a3;
+  --canvas: #f5f7fb;
+  --surface: #ffffff;
+  --surface-raised: #fbfcfe;
+  --surface-hot: #eef6f8;
+  --line: #dce3eb;
+  --line-bright: #bdc9d6;
+  --signal: #0f8b8d;
+  --signal-soft: rgba(15, 139, 141, 0.1);
+  --amber: #c47712;
+  --info: #2563eb;
+  --danger: #e11d48;
+  --shadow: 0 16px 42px rgba(44, 62, 80, 0.1);
   --display: "Avenir Next Condensed", "Helvetica Neue", sans-serif;
   --body: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --mono: "SFMono-Regular", "Menlo", "Monaco", monospace;
@@ -34,11 +34,9 @@ body {
   color: var(--ink);
   font-family: var(--body);
   background:
-    linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-    radial-gradient(circle at 78% 8%, rgba(116, 229, 165, 0.08), transparent 30%),
+    radial-gradient(circle at 82% 4%, rgba(37, 99, 235, 0.08), transparent 30%),
+    radial-gradient(circle at 8% 18%, rgba(15, 139, 141, 0.07), transparent 28%),
     var(--canvas);
-  background-size: 42px 42px, 42px 42px, auto, auto;
 }
 
 button,
@@ -105,7 +103,7 @@ input:focus-visible {
   height: 34px;
   padding: 7px;
   border: 1px solid var(--line-bright);
-  background: #0b100e;
+  background: #ffffff;
 }
 
 .brand-mark span {
@@ -200,18 +198,18 @@ h2 {
 .primary-button {
   border-color: var(--signal);
   background: var(--signal);
-  color: #0b1410;
+  color: #ffffff;
 }
 
 .primary-button:hover,
 .save-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 28px rgba(116, 229, 165, 0.16);
+  box-shadow: 0 10px 28px rgba(15, 139, 141, 0.16);
 }
 
 .danger-button {
   border-color: rgba(255, 113, 106, 0.42);
-  color: #ffaba6;
+  color: var(--danger);
 }
 
 .danger-button:hover {
@@ -255,7 +253,7 @@ h2 {
 .connection-state.online .status-dot,
 .pulse-indicator.online {
   background: var(--signal);
-  box-shadow: 0 0 0 4px var(--signal-soft), 0 0 18px rgba(116, 229, 165, 0.55);
+  box-shadow: 0 0 0 4px var(--signal-soft), 0 0 18px rgba(15, 139, 141, 0.55);
 }
 
 .status-strip {
@@ -263,7 +261,7 @@ h2 {
   grid-template-columns: repeat(4, 1fr);
   margin-top: 22px;
   border: 1px solid var(--line);
-  background: rgba(18, 26, 23, 0.82);
+  background: rgba(255, 255, 255, 0.9);
   box-shadow: var(--shadow);
   animation: reveal 500ms ease both;
 }
@@ -302,12 +300,12 @@ h2 {
   margin-top: 14px;
   padding: 15px 18px;
   border: 1px solid var(--line);
-  background: rgba(18, 26, 23, 0.82);
+  background: rgba(255, 255, 255, 0.9);
   box-shadow: var(--shadow);
 }
 
 .upload-strip.active {
-  border-color: rgba(116, 229, 165, 0.38);
+  border-color: rgba(15, 139, 141, 0.38);
 }
 
 .upload-heading,
@@ -394,7 +392,7 @@ h2 {
   border: 1px solid rgba(255, 113, 106, 0.42);
   border-radius: 5px;
   background: rgba(255, 113, 106, 0.08);
-  color: #ffaba6;
+  color: var(--danger);
   cursor: pointer;
   font-size: 11px;
 }
@@ -402,13 +400,13 @@ h2 {
 .pause-upload-button {
   border-color: rgba(244, 190, 89, 0.42);
   background: rgba(244, 190, 89, 0.08);
-  color: #f7d08a;
+  color: var(--amber);
 }
 
 .retry-upload-button {
-  border-color: rgba(89, 220, 174, 0.42);
-  background: rgba(89, 220, 174, 0.08);
-  color: #91e9c8;
+  border-color: rgba(15, 139, 141, 0.42);
+  background: rgba(15, 139, 141, 0.08);
+  color: var(--signal);
 }
 
 .select-row {
@@ -428,7 +426,7 @@ h2 {
   padding: 0 9px;
   border: 1px solid var(--line-bright);
   border-radius: 5px;
-  background: #0b100e;
+  background: #ffffff;
   color: var(--ink);
 }
 
@@ -436,7 +434,7 @@ h2 {
   margin-top: 10px;
   padding: 11px 12px;
   border: 1px solid var(--line);
-  background: #0d1411;
+  background: #f8fafc;
 }
 
 .encoding-estimate strong,
@@ -468,7 +466,7 @@ h2 {
 .log-panel {
   min-width: 0;
   border: 1px solid var(--line);
-  background: rgba(18, 26, 23, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--shadow);
   animation: reveal 500ms ease both;
 }
@@ -523,7 +521,7 @@ h2 {
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #0c1210;
+  background: #f3f6fa;
 }
 
 .segmented button {
@@ -622,7 +620,7 @@ h2 {
   height: 24px;
   border: 1px solid var(--line-bright);
   border-radius: 12px;
-  background: #0b100e;
+  background: #ffffff;
 }
 
 .switch-track::after {
@@ -648,7 +646,7 @@ h2 {
   gap: 10px;
   padding: 14px;
   border: 1px solid var(--line);
-  background: #0f1613;
+  background: #f8fafc;
 }
 
 .target-form label {
@@ -674,12 +672,12 @@ input {
   padding: 0 11px;
   border: 1px solid var(--line);
   border-radius: 5px;
-  background: #0b100e;
+  background: #ffffff;
   color: var(--ink);
 }
 
 input::placeholder {
-  color: #56625d;
+  color: #9aa6b2;
 }
 
 .add-button {
@@ -703,7 +701,7 @@ input::placeholder {
   padding: 13px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: rgba(23, 33, 29, 0.78);
+  background: #fbfcfe;
   animation: reveal 350ms ease both;
 }
 
@@ -733,7 +731,7 @@ input::placeholder {
 .target-status.recording .status-dot,
 .target-status.success .status-dot {
   background: var(--signal);
-  box-shadow: 0 0 0 4px var(--signal-soft), 0 0 12px rgba(116, 229, 165, 0.5);
+  box-shadow: 0 0 0 4px var(--signal-soft), 0 0 12px rgba(15, 139, 141, 0.5);
 }
 
 .target-status.checking {
@@ -772,7 +770,7 @@ input::placeholder {
 }
 
 .target-delete {
-  color: #ff9b96;
+  color: var(--danger);
 }
 
 .empty-state {
@@ -803,9 +801,9 @@ input::placeholder {
   margin: 0;
   overflow: auto;
   padding: 15px;
-  border: 1px solid #26342f;
-  background: #090e0c;
-  color: #a9c8b8;
+  border: 1px solid #cfd8e3;
+  background: #f8fafc;
+  color: #334155;
   font-family: var(--mono);
   font-size: 11px;
   line-height: 1.62;
@@ -827,7 +825,7 @@ input::placeholder {
   padding: 12px 15px;
   border: 1px solid var(--line-bright);
   border-left: 3px solid var(--signal);
-  background: #16211d;
+  background: #ffffff;
   box-shadow: var(--shadow);
   font-size: 13px;
 }
@@ -842,7 +840,7 @@ input::placeholder {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(4, 8, 6, 0.82);
+  background: rgba(15, 23, 42, 0.32);
   backdrop-filter: blur(5px);
   z-index: 40;
 }
@@ -1035,7 +1033,7 @@ input::placeholder {
   height: 4px;
   margin-top: 10px;
   overflow: hidden;
-  background: #26342f;
+  background: #cfd8e3;
 }
 
 .meter span {
@@ -1212,7 +1210,7 @@ input::placeholder {
 .collection-state {
   padding: 12px;
   border: 1px solid var(--line);
-  background: #0d1411;
+  background: #f8fafc;
 }
 
 .collection-state span {
@@ -1335,7 +1333,7 @@ input::placeholder {
   gap: 14px;
   padding: 12px;
   border: 1px solid var(--line);
-  background: #0d1411;
+  background: #f8fafc;
 }
 
 .library-root code {
@@ -1357,7 +1355,7 @@ input::placeholder {
   gap: 12px;
   padding: 13px;
   border: 1px solid var(--line);
-  background: rgba(23, 33, 29, 0.78);
+  background: #fbfcfe;
 }
 
 .library-row strong,
@@ -1380,7 +1378,7 @@ input::placeholder {
 .metric-card {
   padding: 13px;
   border: 1px solid var(--line);
-  background: #0d1411;
+  background: #f8fafc;
 }
 
 .metric-card span {
@@ -1406,7 +1404,7 @@ input::placeholder {
   min-width: 0;
   padding: 13px;
   border: 1px solid var(--line);
-  background: #0d1411;
+  background: #f8fafc;
 }
 
 .chart-panel h3 {
@@ -1493,7 +1491,7 @@ th {
   gap: 18px;
   padding: 13px 14px;
   border: 1px solid var(--line);
-  background: rgba(23, 33, 29, 0.78);
+  background: #fbfcfe;
 }
 
 .submission-info {
@@ -1532,7 +1530,7 @@ th {
 }
 
 .submission-badge.published {
-  border-color: rgba(116, 229, 165, 0.5);
+  border-color: rgba(15, 139, 141, 0.5);
   color: var(--signal);
 }
 

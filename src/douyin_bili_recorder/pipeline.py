@@ -269,14 +269,15 @@ class RecorderService:
                     if self._wait_for_stop(max(10, self.config.poll_interval_seconds)):
                         break
                     continue
+                manual_requested = self._consume_manual_request(target)
                 if target.watch_mode == "manual":
-                    if not self._consume_manual_request(target):
+                    if not manual_requested:
                         self._set_target_status(target, "manual", "等待手动检查")
                         if self._wait_for_stop(2):
                             break
                         continue
                 now = datetime.now(ZoneInfo(self.config.timezone))
-                if not self._schedule_allows_polling(target, now):
+                if not manual_requested and not self._schedule_allows_polling(target, now):
                     self._set_target_status(target, "scheduled", "当前不在排班时段")
                     if self._wait_for_stop(next_poll_delay_seconds(target.schedule, now)):
                         break

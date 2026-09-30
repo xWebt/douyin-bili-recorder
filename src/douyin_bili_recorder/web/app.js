@@ -8,6 +8,7 @@ const state = {
   analyticsTarget: "",
   submissions: null,
   reportTarget: "",
+  uploadSignature: "",
 };
 
 const els = {
@@ -144,11 +145,17 @@ async function loadState(showErrors = false) {
 async function refreshService() {
   try {
     const payload = await api("/api/state");
+    const configChanged = JSON.stringify(state.config) !== JSON.stringify(payload.config);
     state.service = payload.service;
+    state.config = payload.config;
     state.authenticated = payload.authenticated;
     renderService();
-    renderSettings();
-    renderTargets();
+    if (configChanged) {
+      renderSettings();
+      renderTargets();
+    } else {
+      updateTargetRuntime();
+    }
   } catch (_error) {
     els.connectionState.classList.remove("online");
   }
@@ -232,6 +239,9 @@ function renderEncodingEstimate() {
 
 function renderUploadProgress(progressesArg, fallback = {}) {
   const progresses = Array.isArray(progressesArg) ? progressesArg : [];
+  const signature = JSON.stringify([progresses, fallback]);
+  if (state.uploadSignature === signature) return;
+  state.uploadSignature = signature;
   const progress = progresses[0] || fallback || {};
   const available = Boolean(progress.available);
   const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
@@ -387,6 +397,58 @@ function renderTargets() {
   renderIcons();
 }
 
+function updateTargetRuntime() {
+  const targets = state.config?.targets || [];
+  const targetById = new Map(targets.map((target) => [target.id, target]));
+  const latestByTarget = new Map();
+  for (const session of state.service?.sessions || []) {
+    if (!latestByTarget.has(session.target_name)) latestByTarget.set(session.target_name, session);
+  }
+  const runtimeByTarget = state.service?.target_statuses || {};
+  const recordingTargets = new Set(
+    (state.service?.sessions || [])
+      .filter((session) => String(session.status || "").toUpperCase() === "RECORDING")
+      .map((session) => session.target_name),
+  );
+  const usageByTarget = state.service?.target_usage_bytes || {};
+  const uploadByTarget = new Map();
+  for (const upload of state.service?.upload_progresses || []) {
+    if (!upload.target || Number(upload.percent || 0) >= 100) continue;
+    const current = uploadByTarget.get(upload.target);
+    if (!current || Number(upload.updated_at || 0) > Number(current.updated_at || 0)) uploadByTarget.set(upload.target, upload);
+  }
+
+  for (const row of els.targetList.querySelectorAll(".target-row")) {
+    const target = targetById.get(row.dataset.targetId);
+    if (!target) continue;
+    const runtime = resolveTargetRuntime(
+      target,
+      latestByTarget.get(target.name),
+      runtimeByTarget[target.name],
+      uploadByTarget.get(target.name),
+      recordingTargets.has(target.name),
+    );
+    const status = row.querySelector(".target-status");
+    if (status) {
+      status.className = `target-status ${runtime.meta.tone}`;
+      status.replaceChildren(makeDot(), document.createTextNode(runtime.meta.label));
+    }
+    const detail = row.querySelector(".target-runtime-message");
+    if (detail) {
+      detail.textContent = runtime.detail;
+      detail.title = runtime.detail;
+    }
+    const upload = row.querySelector(".target-upload-progress");
+    if (upload) {
+      upload.textContent = runtime.uploadDetail;
+      upload.hidden = !runtime.uploadDetail;
+    }
+    const usage = row.querySelector(".target-usage");
+    if (usage) usage.textContent = `空间占用 ${formatBytes(usageByTarget[target.name] || 0)}`;
+  }
+  renderIcons();
+}
+
 function resolveTargetRuntime(target, latest, runtimeStatus, activeUpload, isRecordingTarget) {
   if (!target.enabled) return { meta: TARGET_STATE_META.paused, detail: "已暂停监控" };
   if (!state.service?.running) return { meta: TARGET_STATE_META.service_stopped, detail: "录制服务未运行" };
@@ -472,9 +534,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   enabled.addEventListener("change", () => { target.enabled = enabled.checked; renderTargets(); });
   actions.append(
     enabled,
-    ...(target.watch_mode === "manual"
-      ? [actionButton("play-circle", "手动开始", () => manualStartTarget(target.name))]
-      : []),
+    actionButton("play-circle", "单独开始", () => manualStartTarget(target.name)),
     actionButton("file-text", "生成报告", () => openReportDialog(target.name)),
     actionButton("bar-chart-3", "数据详情", () => openAnalytics(target.name)),
     actionButton("folder-open", "打开目录", () => openFolder("anchor", target.name)),
@@ -559,7 +619,8 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
 async function manualStartTarget(name) {
   try {
     await api(`/api/targets/${encodeURIComponent(name)}/manual-start`, { method: "POST" });
-    toast(`${name} 已发送手动检查请求`);
+    toast(`${name} 已单独启动`);
+    await loadState(true);
     window.setTimeout(refreshLogs, 800);
   } catch (error) {
     toast(`手动开始失败：${error.message}`, "error");

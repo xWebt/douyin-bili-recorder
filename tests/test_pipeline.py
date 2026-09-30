@@ -995,6 +995,47 @@ url = "https://live.douyin.com/1"
     uploader.release.set()
 
 
+def test_manual_request_bypasses_schedule_for_scheduled_target(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+watch_mode = "scheduled"
+
+[[targets.schedule]]
+days = [1, 2, 3, 4, 5, 6, 7]
+start = "20:00"
+end = "21:00"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    target = config.targets[0]
+    checked: list[str] = []
+    monkeypatch.setattr(service, "_reload_runtime_settings", lambda _target: None)
+    monkeypatch.setattr(service, "_consume_manual_request", lambda _target: True)
+    monkeypatch.setattr(service, "_schedule_allows_polling", lambda _target, _now: False)
+    monkeypatch.setattr(service, "_set_target_status", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(service, "record_and_upload", lambda candidate: checked.append(candidate.name) or False)
+    monkeypatch.setattr(service, "_wait_for_stop", lambda _seconds: True)
+
+    service._target_loop(target)
+
+    assert checked == ["anchor"]
+
+
 def test_retry_title_replaces_previous_retry_suffix_and_stays_within_limit() -> None:
     first = RecorderService._retry_title("主播｜2026-09-30 02:22 开播｜P01", 1)
     second = RecorderService._retry_title(first, 2)

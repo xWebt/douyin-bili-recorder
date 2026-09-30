@@ -170,6 +170,27 @@ def _ensure_service_running(config: AppConfig, state_store: UIStateStore, contro
         controller.start()
 
 
+
+def _start_target(
+    config: AppConfig,
+    state_store: UIStateStore,
+    controller: ServiceController,
+    target_name: str,
+) -> dict[str, Any]:
+    state = state_store.load()
+    target = next((item for item in state.get("targets", []) if item.get("name") == target_name), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="target not found")
+    target["enabled"] = True
+    state_store.save(state)
+    state_store.render_runtime_config(state)
+    request_path = config.data_dir / "ui" / "manual" / f"{target_key(target_name)}.request"
+    request_path.parent.mkdir(parents=True, exist_ok=True)
+    request_path.write_text("1", encoding="utf-8")
+    _ensure_service_running(config, state_store, controller)
+    return {"ok": True, "target": target_name, "enabled": True}
+
+
 def create_app(config: AppConfig) -> FastAPI:
     state_store = UIStateStore(config)
     auth = BilibiliAuth(config.cookie_file)
@@ -343,17 +364,7 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.post("/api/targets/{target_name}/manual-start")
     async def manual_start_target(target_name: str) -> dict[str, Any]:
-        state = state_store.load()
-        target = next((item for item in state.get("targets", []) if item.get("name") == target_name), None)
-        if target is None:
-            raise HTTPException(status_code=404, detail="target not found")
-        status = controller.status(int(state.get("max_cache_gb", config.max_cache_gb)))
-        if not status.get("running"):
-            controller.start()
-        request_path = config.data_dir / "ui" / "manual" / f"{target_key(target_name)}.request"
-        request_path.parent.mkdir(parents=True, exist_ok=True)
-        request_path.write_text("1", encoding="utf-8")
-        return {"ok": True, "target": target_name}
+        return _start_target(config, state_store, controller, target_name)
 
     @app.get("/api/videos")
     async def video_library() -> dict[str, Any]:
