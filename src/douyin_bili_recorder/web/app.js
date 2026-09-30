@@ -34,6 +34,7 @@ const els = {
   deleteAfterUpload: document.querySelector("#deleteAfterUpload"),
   defaultVisibility: document.querySelector("#defaultVisibility"),
   videoDir: document.querySelector("#videoDir"),
+  cloudRcloneBin: document.querySelector("#cloudRcloneBin"),
   lateThreshold: document.querySelector("#lateThreshold"),
   reconnectGrace: document.querySelector("#reconnectGrace"),
   pollInterval: document.querySelector("#pollInterval"),
@@ -68,6 +69,7 @@ const els = {
   stopModal: document.querySelector("#stopModal"),
   pauseUploadButton: document.querySelector("#pauseUploadButton"),
   pauseKeepButton: document.querySelector("#pauseKeepButton"),
+  discardButton: document.querySelector("#discardButton"),
   pauseCancelButton: document.querySelector("#pauseCancelButton"),
   videoLibraryButton: document.querySelector("#videoLibraryButton"),
   videoLibraryModal: document.querySelector("#videoLibraryModal"),
@@ -351,6 +353,7 @@ function renderSettings() {
   els.maxCacheGb.value = state.config.max_cache_gb ?? 10;
   els.cacheSettingHint.textContent = `已保存分配 ${state.config.max_cache_gb ?? 10} GB`;
   els.videoDir.value = state.config.video_dir || "~/Movies/DouyinBiliRecorder";
+  els.cloudRcloneBin.value = state.config.cloud_rclone_bin || "rclone";
   els.lateThreshold.value = state.config.late_threshold_minutes ?? 5;
   els.reconnectGrace.value = state.config.reconnect_grace_minutes ?? 15;
   els.pollInterval.value = state.config.poll_interval_seconds ?? 30;
@@ -443,6 +446,11 @@ function updateTargetRuntime() {
       upload.textContent = runtime.uploadDetail;
       upload.hidden = !runtime.uploadDetail;
     }
+    const cloud = row.querySelector(".target-cloud-progress");
+    if (cloud) {
+      cloud.textContent = runtime.cloudDetail;
+      cloud.hidden = !runtime.cloudDetail;
+    }
     const usage = row.querySelector(".target-usage");
     if (usage) usage.textContent = `空间占用 ${formatBytes(usageByTarget[target.name] || 0)}`;
   }
@@ -486,7 +494,17 @@ function resolveTargetRuntime(target, latest, runtimeStatus, activeUpload, isRec
   const uploadDetail = activeUpload
     ? `上传进度：P${String(activeUpload.part || 1).padStart(2, "0")} · ${Math.max(0, Math.min(100, Number(activeUpload.percent || 0))).toFixed(1)}%${activeUpload.eta_seconds != null ? ` · 剩余 ${formatDuration(activeUpload.eta_seconds)}` : ""}`
     : "";
-  return { meta, detail, uploadDetail, isRecording };
+  const cloudState = String(runtime.cloud_state || latest?.cloud_status || "").toLowerCase();
+  const cloudMessage = String(runtime.cloud_message || "");
+  let cloudDetail = "";
+  if (target.cloud_backup) {
+    if (cloudMessage) cloudDetail = cloudMessage;
+    else if (cloudState === "uploaded") cloudDetail = "网盘备份已完成";
+    else if (cloudState === "failed") cloudDetail = "网盘备份失败，本地文件已保留";
+    else if (cloudState === "pending" || cloudState === "uploading") cloudDetail = "网盘备份排队中";
+    else if (Number(latest?.cloud_pending_parts || 0) > 0) cloudDetail = `网盘待备份 ${latest.cloud_pending_parts} 个分段`;
+  }
+  return { meta, detail, uploadDetail, cloudDetail, isRecording };
 }
 
 function formatClock(epochSeconds) {
@@ -525,7 +543,11 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   uploadMessage.className = "target-upload-progress";
   uploadMessage.textContent = runtime.uploadDetail;
   uploadMessage.hidden = !runtime.uploadDetail;
-  identity.append(status, name, url, runtimeMessage, uploadMessage, usage);
+  const cloudMessage = document.createElement("small");
+  cloudMessage.className = "target-cloud-progress";
+  cloudMessage.textContent = runtime.cloudDetail;
+  cloudMessage.hidden = !runtime.cloudDetail;
+  identity.append(status, name, url, runtimeMessage, uploadMessage, cloudMessage, usage);
 
   const actions = document.createElement("div");
   actions.className = "target-actions";
@@ -535,6 +557,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   actions.append(
     enabled,
     actionButton("play-circle", "单独开始", () => manualStartTarget(target.name)),
+    actionButton("pause", "单独暂停", () => pauseTarget(target)),
     actionButton("file-text", "生成报告", () => openReportDialog(target.name)),
     actionButton("bar-chart-3", "数据详情", () => openAnalytics(target.name)),
     actionButton("folder-open", "打开目录", () => openFolder("anchor", target.name)),
@@ -593,6 +616,52 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   collection.append(collectionLabel, collectionInput, collectionHint);
   controls.append(collection);
 
+  const cloud = document.createElement("div");
+  cloud.className = "cloud-state";
+  const cloudTitle = document.createElement("span");
+  cloudTitle.textContent = "网盘备份";
+  const cloudToggle = segmentedControl("备份方式", target.cloud_backup ? "on" : "off", [
+    ["off", "不备份"], ["on", "独立备份"],
+  ], (value) => {
+    target.cloud_backup = value === "on";
+    if (target.cloud_backup && !target.cloud_remote) {
+      target.cloud_remote = cloudProviderDefault(target.cloud_provider || "baidu");
+    }
+  }, "cloud_backup");
+  const provider = document.createElement("select");
+  provider.className = "cloud-provider";
+  provider.dataset.field = "cloud_provider";
+  for (const [value, label] of [["baidu", "百度网盘（OpenList）"], ["quark", "夸克网盘（OpenList）"], ["custom", "其他 rclone remote"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    provider.append(option);
+  }
+  provider.value = target.cloud_provider || "baidu";
+  const remote = document.createElement("input");
+  remote.type = "text";
+  remote.dataset.field = "cloud_remote";
+  remote.value = target.cloud_remote || "";
+  remote.placeholder = "baidu:/DouyinBiliRecorder";
+  provider.addEventListener("change", () => {
+    const previousDefault = cloudProviderDefault(target.cloud_provider);
+    target.cloud_provider = provider.value;
+    if (!target.cloud_remote || target.cloud_remote === previousDefault) {
+      remote.value = cloudProviderDefault(provider.value);
+      target.cloud_remote = remote.value;
+    }
+  });
+  remote.addEventListener("input", () => { target.cloud_remote = remote.value.trim(); });
+  const cloudHint = document.createElement("small");
+  cloudHint.textContent = "先在本机配置 rclone remote。百度/夸克通过 OpenList WebDAV 接入；路径以主播/日期/P编号自动归档。";
+  const testButton = document.createElement("button");
+  testButton.type = "button";
+  testButton.className = "secondary-button compact-action";
+  testButton.append(icon("cloud-upload"), document.createTextNode("测试网盘"));
+  testButton.addEventListener("click", () => testCloudTarget(target));
+  cloud.append(cloudTitle, cloudToggle, provider, remote, testButton, cloudHint);
+  controls.append(cloud);
+
   const saveBar = document.createElement("div");
   saveBar.className = "target-save-bar";
   const saveTarget = document.createElement("button");
@@ -619,14 +688,25 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   }
   const saveHint = document.createElement("small");
   saveHint.textContent = target.watch_mode === "scheduled"
-    ? "排班、权限、合集、监控模式和弹幕会一起保存"
-    : "监控方式、权限、合集和弹幕会一起保存";
+    ? "排班、权限、合集、监控模式、弹幕和网盘设置会一起保存"
+    : "监控方式、权限、合集、弹幕和网盘设置会一起保存";
   saveBar.append(saveTarget, saveHint);
   row.append(header, main, controls, modePanel, saveBar);
   return row;
 }
 
 async function manualStartTarget(name) {
+async function pauseTarget(target) {
+  try {
+    await api(`/api/targets/${encodeURIComponent(target.name)}/pause`, { method: "POST" });
+    await loadState(true);
+    toast(`${target.name} 已单独暂停`);
+    window.setTimeout(refreshLogs, 800);
+  } catch (error) {
+    toast(`暂停失败：${error.message}`, "error");
+  }
+}
+
   try {
     await api(`/api/targets/${encodeURIComponent(name)}/manual-start`, { method: "POST" });
     toast(`${name} 已单独启动`);
@@ -634,6 +714,26 @@ async function manualStartTarget(name) {
     window.setTimeout(refreshLogs, 800);
   } catch (error) {
     toast(`手动开始失败：${error.message}`, "error");
+  }
+}
+
+function cloudProviderDefault(provider) {
+  if (provider === "quark") return "quark:/DouyinBiliRecorder";
+  if (provider === "custom") return "openlist:/DouyinBiliRecorder";
+  return "baidu:/DouyinBiliRecorder";
+}
+
+async function testCloudTarget(target) {
+  const remote = String(target.cloud_remote || "").trim();
+  if (!remote) return toast("先填写网盘远端路径", "error");
+  try {
+    const result = await api("/api/cloud/test", {
+      method: "POST",
+      body: JSON.stringify({ remote }),
+    });
+    toast(result.message || "网盘远端可访问");
+  } catch (error) {
+    toast(`网盘测试失败：${error.message}`, "error");
   }
 }
 
@@ -779,12 +879,16 @@ function syncStateFromDom() {
     for (const input of row.querySelectorAll("input[data-field]")) {
       target[input.dataset.field] = input.value;
     }
+    for (const select of row.querySelectorAll("select[data-field]")) {
+      target[select.dataset.field] = select.value;
+    }
     for (const group of row.querySelectorAll("[data-segmented-field]")) {
       const active = group.querySelector("button.active");
       if (!active) continue;
       const field = group.dataset.segmentedField;
       if (field === "public") target[field] = active.dataset.value === "public";
       else if (field === "record_danmaku") target[field] = active.dataset.value === "on";
+      else if (field === "cloud_backup") target[field] = active.dataset.value === "on";
       else target[field] = active.dataset.value;
     }
     const scheduleRows = [...row.querySelectorAll(".schedule-row[data-slot-index]")];
@@ -809,6 +913,7 @@ function syncStateFromDom() {
   }
   state.config.quality = els.quality.value || "origin";
   state.config.frame_rate = els.frameRate.value || "source";
+  state.config.cloud_rclone_bin = els.cloudRcloneBin.value.trim() || "rclone";
 }
 
 async function serviceAction(action, mode = "upload") {
@@ -816,7 +921,12 @@ async function serviceAction(action, mode = "upload") {
     state.service = await api(`/api/service/${action}?mode=${encodeURIComponent(mode)}`, { method: "POST" });
     renderService();
     closeStopDialog();
-    toast(action === "start" ? "录制服务已启动" : action === "stop" ? (mode === "upload" ? "正在收尾并上传当前内容" : "已暂停并保留本地内容") : "录制服务已重启");
+    const stopMessage = mode === "upload"
+      ? "正在收尾并上传当前内容"
+      : mode === "discard"
+        ? "已停止全部任务，正在删除当前录像"
+        : "已暂停并保留本地内容";
+    toast(action === "start" ? "录制服务已启动" : action === "stop" ? stopMessage : "录制服务已重启");
     window.setTimeout(refreshLogs, 800);
   } catch (error) {
     toast(`操作失败：${error.message}`, "error");
@@ -847,6 +957,9 @@ async function resolveTargetUrl() {
         watch_mode: "manual",
         collection_name: resolvedName,
         collection_id: "",
+        cloud_backup: false,
+        cloud_provider: "baidu",
+        cloud_remote: "",
         title_template: "{name}｜{start_date} {start_time} 开播｜{room_title}",
         tags: ["直播录像", "抖音"],
         tid: 171,
@@ -1101,6 +1214,7 @@ els.startButton.addEventListener("click", () => serviceAction("start"));
 els.stopButton.addEventListener("click", openStopDialog);
 els.pauseUploadButton.addEventListener("click", () => serviceAction("stop", "upload"));
 els.pauseKeepButton.addEventListener("click", () => serviceAction("stop", "keep"));
+els.discardButton.addEventListener("click", () => serviceAction("stop", "discard"));
 els.pauseCancelButton.addEventListener("click", closeStopDialog);
 els.restartButton.addEventListener("click", () => serviceAction("restart"));
 els.saveButton.addEventListener("click", saveState);
@@ -1130,6 +1244,9 @@ els.targetForm.addEventListener("submit", (event) => {
     public: Boolean(state.config.public), record_mode: "record", collection_name: name, collection_id: "",
     record_danmaku: false,
     watch_mode: "manual",
+    cloud_backup: false,
+    cloud_provider: "baidu",
+    cloud_remote: "",
     title_template: "{name}｜{start_date} {start_time} 开播｜{room_title}",
     tags: ["直播录像", "抖音"], tid: 171, copyright: 2, source: "",
     schedule: [{ days: [1, 3, 5], start: "20:00", end: "23:00", enabled: true }],

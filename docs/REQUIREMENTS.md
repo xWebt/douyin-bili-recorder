@@ -60,6 +60,8 @@ Per-anchor settings:
 
 - Pause or stop must open a confirmation UI instead of silently ending the recording.
 - The UI offers: continue recording, pause and upload current content, or pause and keep local media.
+- The UI also offers a global stop-and-delete action for the current recording.
+- Each anchor has an independent pause button and control request.
 - Pause-and-upload must let the active process finalize its `.part` file, remux it, then upload or append it.
 - Closing the application while recording uses the same confirmation flow.
 - A failed pause upload leaves local media and shows a pending-upload state.
@@ -129,6 +131,16 @@ Per-anchor settings:
 - Anchors may switch between monitor-only and recording modes without losing analytics.
 
 ## Cache display and hot reload
+
+## Cloud backup
+
+- Every anchor can enable or disable an independent cloud backup destination.
+- Baidu Netdisk and Quark are integrated through OpenList WebDAV and rclone remotes; see `docs/CLOUD_UPLOAD.md` for the documented setup.
+- Cloud uploads use a separate worker pool from Bilibili uploads.
+- Cloud backups archive media under `remote root / anchor / date / Pxx`.
+- A Bilibili rate limit or failure must not block or cancel the cloud backup.
+- When cloud backup is enabled, local files may be deleted only after the Bilibili BVID and the cloud files are both confirmed.
+- Pending or failed cloud backups are preserved by cache cleanup and retried after restart.
 
 - The cache display format is `current local usage / total allocation`, for example `0.26 GB / 30 GB`.
 - The total allocation comes from the saved global cache setting.

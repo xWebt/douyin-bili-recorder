@@ -40,6 +40,14 @@ def resolve_executable(name: str, config_dir: Path) -> str:
     if current_candidate.exists():
         return str(current_candidate)
 
+    for tool_dir in ("rclone", "bin"):
+        local_candidate = config_dir / ".tools" / tool_dir / name
+        if local_candidate.exists():
+            return str(local_candidate)
+        cwd_candidate = Path.cwd() / ".tools" / tool_dir / name
+        if cwd_candidate.exists():
+            return str(cwd_candidate)
+
     return shutil.which(name) or name
 
 
@@ -65,6 +73,9 @@ class TargetConfig:
     copyright: int = 2
     source: str = ""
     schedule: list[ScheduleSlot] = field(default_factory=list)
+    cloud_backup: bool = False
+    cloud_provider: str = "baidu"
+    cloud_remote: str = ""
 
 
 @dataclass(slots=True)
@@ -94,6 +105,8 @@ class AppConfig:
     delete_after_upload: bool
     upload_retry_count: int
     upload_retry_backoff_seconds: int
+    cloud_rclone_bin: str
+    cloud_upload_timeout_seconds: int
     launchd_label: str
     targets: list[TargetConfig]
     config_path: Path
@@ -117,6 +130,7 @@ def load_config(path: str | Path) -> AppConfig:
     storage = _table(raw, "storage", required=False)
     upload = _table(raw, "upload")
     launchd = _table(raw, "launchd", required=False)
+    cloud = _table(raw, "cloud", required=False)
     base = config_path.parent
 
     default_public = bool(upload.get("public", False))
@@ -164,6 +178,8 @@ def load_config(path: str | Path) -> AppConfig:
             int(upload.get("retry_count", AUTOMATIC_UPLOAD_RETRY_LIMIT)),
         ),
         upload_retry_backoff_seconds=int(upload.get("retry_backoff_seconds", 30)),
+        cloud_rclone_bin=resolve_executable(str(cloud.get("rclone_bin", "rclone")), base),
+        cloud_upload_timeout_seconds=int(cloud.get("upload_timeout_seconds", 6 * 60 * 60)),
         launchd_label=str(launchd.get("label", "com.webt.douyin-bili-recorder")),
         targets=targets,
         config_path=config_path,
@@ -206,6 +222,9 @@ def _target(raw: dict[str, Any], *, default_public: bool = False) -> TargetConfi
             for item in raw.get("schedule", [])
             if isinstance(item, dict)
         ],
+        cloud_backup=bool(raw.get("cloud_backup", False)),
+        cloud_provider=str(raw.get("cloud_provider", "baidu")),
+        cloud_remote=str(raw.get("cloud_remote", "")),
     )
 
 
@@ -230,8 +249,14 @@ def _validate(config: AppConfig) -> None:
         raise ConfigError("reconnect_grace_minutes cannot be negative")
     if config.upload_retry_count < 0:
         raise ConfigError("retry_count cannot be negative")
+    if config.cloud_upload_timeout_seconds < 60:
+        raise ConfigError("cloud upload_timeout_seconds must be at least 60")
     for target in config.targets:
         if target.record_mode not in {"record", "monitor"}:
             raise ConfigError(f"target {target.name} has invalid record_mode: {target.record_mode}")
         if target.watch_mode not in {"scheduled", "all_day", "manual"}:
             raise ConfigError(f"target {target.name} has invalid watch_mode: {target.watch_mode}")
+        if target.cloud_provider not in {"baidu", "quark", "custom"}:
+            raise ConfigError(f"target {target.name} has invalid cloud_provider: {target.cloud_provider}")
+        if target.cloud_backup and not target.cloud_remote.strip():
+            raise ConfigError(f"target {target.name} enables cloud backup without cloud_remote")

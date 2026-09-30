@@ -11,7 +11,7 @@ APP_NAME="DouyinBiliRecorder"
 DIST_APP="$ROOT_DIR/dist/$APP_NAME.app"
 RUNTIME_DIR="$ROOT_DIR/dist/$APP_NAME"
 ZIP="$ROOT_DIR/dist/${APP_NAME}-macos-arm64.zip"
-VERSION="${APP_VERSION:-2.2.33}"
+VERSION="${APP_VERSION:-2.2.35}"
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/DouyinBiliRecorder-build.XXXXXX")"
 APP="$BUILD_ROOT/$APP_NAME.app"
 
@@ -29,6 +29,10 @@ UV_CACHE_DIR="$ROOT_DIR/.uv-cache" "$ROOT_DIR/.tools/bin/uv" pip install \
   --python "$ROOT_DIR/.venv/bin/python" "${ROOT_DIR}[build]"
 
 rm -rf "$ROOT_DIR/build" "$RUNTIME_DIR" "$DIST_APP" "$ZIP"
+RCLONE_ARGS=()
+if [[ -x "$ROOT_DIR/.tools/rclone/rclone" ]]; then
+  RCLONE_ARGS=(--add-binary "$ROOT_DIR/.tools/rclone/rclone:bin")
+fi
 
 # Build a relocatable onedir runtime. A native launcher will place this
 # runtime inside a standard macOS app bundle instead of using PyInstaller's
@@ -45,6 +49,7 @@ rm -rf "$ROOT_DIR/build" "$RUNTIME_DIR" "$DIST_APP" "$ZIP"
   --add-data "$ROOT_DIR/src/douyin_bili_recorder/NotoEmoji-OFL.txt:douyin_bili_recorder" \
   --add-binary "$ROOT_DIR/.tools/ffmpeg/ffmpeg:bin" \
   --add-binary "$ROOT_DIR/.tools/ffmpeg/ffprobe:bin" \
+  "${RCLONE_ARGS[@]}" \
   --collect-all "biliup" \
   --collect-all "stream_gears" \
   --collect-submodules "uvicorn" \

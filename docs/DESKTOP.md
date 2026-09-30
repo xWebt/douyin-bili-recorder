@@ -9,9 +9,10 @@
 3. Add one or more Douyin live-room or profile URLs.
 4. For each anchor, choose `仅自己` or `公开`, recording or monitor-only mode, a collection name, and one or more weekly schedule rows.
 5. Choose whether uploaded local media should be deleted. This remains a global setting.
-6. Set the recording cache limit. The display shows current usage divided by the saved allocation.
-7. Open the video library to view the root and per-anchor folders.
-8. Click `一键开始`. Pause or stop asks whether the active segment should be uploaded or kept locally.
+6. Optionally enable per-anchor cloud backup and configure an rclone remote. Baidu and Quark are supported through OpenList WebDAV; see `docs/CLOUD_UPLOAD.md`.
+7. Set the recording cache limit. The display shows current usage divided by the saved allocation.
+8. Open the video library to view the root and per-anchor folders.
+9. Click `一键开始`. Pause or stop asks whether the active segment should be uploaded or kept locally.
 
 The application displays process PID, uptime, cache usage, current sessions, and live logs.
 
@@ -53,6 +54,7 @@ Bilibili QR login tries a direct connection first. If the direct network request
 - PyWebView desktop window
 - biliup CLI
 - FFmpeg and FFprobe
+- rclone is used for optional cloud backup when available; the build bundles `.tools/rclone/rclone` if that binary exists before packaging.
 
 User data is stored under:
 

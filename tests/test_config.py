@@ -34,6 +34,9 @@ record_mode = "monitor"
 record_danmaku = true
 watch_mode = "manual"
 collection_name = "anchor collection"
+cloud_backup = true
+cloud_provider = "quark"
+cloud_remote = "quark:/DouyinBiliRecorder"
 
 [[targets.schedule]]
 days = [1, 3, 5]
@@ -52,6 +55,9 @@ end = "23:00"
     assert config.targets[0].record_danmaku is True
     assert config.targets[0].watch_mode == "manual"
     assert config.targets[0].collection_name == "anchor collection"
+    assert config.targets[0].cloud_backup is True
+    assert config.targets[0].cloud_provider == "quark"
+    assert config.targets[0].cloud_remote == "quark:/DouyinBiliRecorder"
     assert config.targets[0].schedule[0].days == [1, 3, 5]
     assert config.quality == "origin"
     assert config.frame_rate == "source"

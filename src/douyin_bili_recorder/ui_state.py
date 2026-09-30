@@ -30,6 +30,7 @@ def _default_state(config: AppConfig) -> dict[str, Any]:
         "video_dir": str(config.video_dir),
         "late_threshold_minutes": config.late_threshold_minutes,
         "reconnect_grace_minutes": config.reconnect_grace_minutes,
+        "cloud_rclone_bin": config.cloud_rclone_bin,
         "targets": [
             {
                 "id": _target_id(),
@@ -47,6 +48,9 @@ def _default_state(config: AppConfig) -> dict[str, Any]:
                 "tid": target.tid,
                 "copyright": target.copyright,
                 "source": target.source,
+                "cloud_backup": target.cloud_backup,
+                "cloud_provider": target.cloud_provider,
+                "cloud_remote": target.cloud_remote,
                 "schedule": [slot.to_dict() for slot in target.schedule],
             }
             for target in config.targets
@@ -100,6 +104,10 @@ class UIStateStore:
         )
         ffmpeg_bin = resolve_executable(self.config.ffmpeg_bin, config_dir)
         ffprobe_bin = resolve_executable(self.config.ffprobe_bin, config_dir)
+        rclone_bin = resolve_executable(
+            str(state.get("cloud_rclone_bin", self.config.cloud_rclone_bin)),
+            config_dir,
+        )
         quality = str(state.get("quality", self.config.quality))
         frame_rate = str(state.get("frame_rate", self.config.frame_rate))
         lines = [
@@ -136,6 +144,10 @@ class UIStateStore:
             f"retry_count = {self.config.upload_retry_count}",
             f"retry_backoff_seconds = {self.config.upload_retry_backoff_seconds}",
             "",
+            "[cloud]",
+            f'rclone_bin = {json.dumps(rclone_bin)}',
+            f"upload_timeout_seconds = {self.config.cloud_upload_timeout_seconds}",
+            "",
             "[launchd]",
             f'label = {json.dumps(self.config.launchd_label)}',
         ]
@@ -158,6 +170,9 @@ class UIStateStore:
                     f"tid = {int(target.get('tid', 171))}",
                     f"copyright = {int(target.get('copyright', 2))}",
                     f'source = {json.dumps(str(target.get("source", "")), ensure_ascii=False)}',
+                    f"cloud_backup = {str(bool(target.get('cloud_backup', False))).lower()}",
+                    f"cloud_provider = {json.dumps(str(target.get('cloud_provider', 'baidu')))}",
+                    f"cloud_remote = {json.dumps(str(target.get('cloud_remote', '')), ensure_ascii=False)}",
                 ]
             )
             schedule = target.get("schedule") or []
@@ -246,6 +261,13 @@ class UIStateStore:
                     ),
                     "collection_name": str(item.get("collection_name", name)),
                     "collection_id": str(item.get("collection_id", "")),
+                    "cloud_backup": bool(item.get("cloud_backup", False)),
+                    "cloud_provider": (
+                        str(item.get("cloud_provider", "baidu"))
+                        if str(item.get("cloud_provider", "baidu")) in {"baidu", "quark", "custom"}
+                        else "baidu"
+                    ),
+                    "cloud_remote": str(item.get("cloud_remote", "")),
                     "title_template": str(
                         item.get("title_template")
                         or "{name}｜{start_date} {start_time} 开播｜{room_title}"
@@ -286,6 +308,9 @@ class UIStateStore:
             "reconnect_grace_minutes": max(
                 0,
                 int(state.get("reconnect_grace_minutes", self.config.reconnect_grace_minutes)),
+            ),
+            "cloud_rclone_bin": str(
+                state.get("cloud_rclone_bin", self.config.cloud_rclone_bin)
             ),
             "targets": targets,
         }

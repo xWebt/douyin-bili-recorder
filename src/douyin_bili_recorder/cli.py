@@ -48,6 +48,10 @@ delete_after_upload = false
 retry_count = 2
 retry_backoff_seconds = 30
 
+[cloud]
+rclone_bin = "rclone"
+upload_timeout_seconds = 21600
+
 [launchd]
 label = "com.webt.douyin-bili-recorder"
 
@@ -66,6 +70,9 @@ tags = ["直播录像", "抖音"]
 tid = 171
 copyright = 2
 source = ""
+cloud_backup = false
+cloud_provider = "baidu"
+cloud_remote = ""
 
 [[targets.schedule]]
 days = [1, 3, 5]
@@ -166,6 +173,8 @@ def command_doctor(config: AppConfig, logger: logging.Logger) -> int:
         "ffmpeg": config.ffmpeg_bin,
         "ffprobe": config.ffprobe_bin,
     }
+    if any(target.cloud_backup for target in config.targets):
+        checks["rclone"] = config.cloud_rclone_bin
     for label, executable in checks.items():
         resolved = shutil.which(executable)
         if resolved:

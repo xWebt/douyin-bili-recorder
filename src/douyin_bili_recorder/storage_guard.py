@@ -38,6 +38,7 @@ class StorageGuard:
             session
             for session in self.store.all()
             if session.status == SessionStatus.UPLOADED
+            and self._cloud_complete(session)
         ]
         uploaded.sort(key=lambda item: item.ended_epoch or item.created_epoch)
         for session in uploaded:
@@ -49,6 +50,12 @@ class StorageGuard:
             self.store.delete(session.session_id)
             usage = max(0, usage - size)
 
+    @staticmethod
+    def _cloud_complete(session) -> bool:
+        return all(
+            not part.cloud_status or part.cloud_status == "UPLOADED"
+            for part in session.parts
+        )
         if usage > limit:
             self.logger.warning(
                 "cache usage %.2f GB exceeds limit %s GB and no uploaded session can be removed",

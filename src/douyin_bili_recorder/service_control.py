@@ -97,11 +97,14 @@ class ServiceController:
         state["worker_running"] = False
         self.store.save(state)
         self.store.root.mkdir(parents=True, exist_ok=True)
-        self.stop_request_path.write_text(mode if mode in {"upload", "keep"} else "upload", encoding="utf-8")
+        self.stop_request_path.write_text(
+            mode if mode in {"upload", "keep", "discard"} else "upload",
+            encoding="utf-8",
+        )
         runtime = self.store.load_runtime_state()
         pid = int(runtime.get("pid", 0) or 0)
         if pid and self._pid_alive(pid):
-            if mode == "upload":
+            if mode in {"upload", "discard"}:
                 try:
                     os.killpg(pid, signal.SIGINT)
                 except (PermissionError, ProcessLookupError):
@@ -206,6 +209,15 @@ class ServiceController:
         )
 
     def _session_dict(self, session: SessionRecord) -> dict[str, Any]:
+        cloud_statuses = [part.cloud_status for part in session.parts if part.cloud_status]
+        if session.cloud_backup and cloud_statuses and all(item == "UPLOADED" for item in cloud_statuses):
+            cloud_status = "UPLOADED"
+        elif any(item == "FAILED" for item in cloud_statuses):
+            cloud_status = "FAILED"
+        elif any(item in {"PENDING", "UPLOADING"} for item in cloud_statuses):
+            cloud_status = "PENDING"
+        else:
+            cloud_status = ""
         return {
             "session_id": session.session_id,
             "target_name": session.target_name,
@@ -215,6 +227,10 @@ class ServiceController:
             "bvid": session.bvid,
             "parts": len(session.parts),
             "collection_status": session.collection_status,
+            "cloud_status": cloud_status,
+            "cloud_pending_parts": sum(
+                1 for part in session.parts if part.cloud_status in {"PENDING", "UPLOADING", "FAILED"}
+            ),
             "error": session.error,
         }
 

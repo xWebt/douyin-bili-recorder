@@ -77,6 +77,11 @@ class SessionPart:
     bvid: str | None = None
     uploaded_at: int | None = None
     error: str = ""
+    cloud_status: str = ""
+    cloud_error: str = ""
+    cloud_path: str = ""
+    cloud_uploaded_at: int | None = None
+    cloud_attempts: int = 0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SessionPart:
@@ -92,6 +97,11 @@ class SessionPart:
             bvid=data.get("bvid"),
             uploaded_at=data.get("uploaded_at"),
             error=str(data.get("error", "")),
+            cloud_status=str(data.get("cloud_status", "")),
+            cloud_error=str(data.get("cloud_error", "")),
+            cloud_path=str(data.get("cloud_path", "")),
+            cloud_uploaded_at=data.get("cloud_uploaded_at"),
+            cloud_attempts=int(data.get("cloud_attempts", 0)),
         )
 
 
@@ -121,6 +131,9 @@ class SessionRecord:
     reconnect_seconds: int = 0
     collection_id: str = ""
     collection_status: str = ""
+    cloud_backup: bool = False
+    cloud_provider: str = ""
+    cloud_remote: str = ""
 
     @property
     def directory_name(self) -> str:
@@ -159,6 +172,9 @@ class SessionRecord:
             reconnect_seconds=int(data.get("reconnect_seconds", 0)),
             collection_id=str(data.get("collection_id", "")),
             collection_status=str(data.get("collection_status", "")),
+            cloud_backup=bool(data.get("cloud_backup", False)),
+            cloud_provider=str(data.get("cloud_provider", "")),
+            cloud_remote=str(data.get("cloud_remote", "")),
         )
 
     def media_paths(self, root: Path) -> list[Path]:

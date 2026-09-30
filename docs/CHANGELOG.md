@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.2.35
+- Added a global `停止并删除当前录像` option to the pause/stop confirmation dialog.
+- Added a per-anchor `单独暂停` button. Pausing one anchor no longer requires disabling all recorder workers.
+- The global discard action cancels pending Bilibili and cloud uploads, removes the current segment files, and records the session as canceled.
+
+## v2.2.34
+- Added per-anchor cloud backup through rclone, with independent upload workers so a Bilibili rate limit cannot block the backup.
+- Baidu Netdisk and Quark are supported through OpenList WebDAV remotes; direct Baidu API and Quark API limitations are documented in `docs/CLOUD_UPLOAD.md`.
+- Cloud backups are archived as `anchor/date/Pxx`, including retained source media and danmaku XML.
+- When cloud backup is enabled, local deletion now requires both a verified BVID and a successful cloud upload. Cache cleanup and storage eviction also preserve pending cloud files.
+- Added an rclone remote test action and cloud status on each anchor card.
+
 ## v2.2.33
 - Each anchor now has an editable Bilibili collection ID. New submissions and appended parts pass this ID directly to Bilibili so every daily multi-P submission for that anchor lands in the same collection.
 - Collection binding no longer relies only on creating a new collection after upload. Existing collection IDs are reused and persisted per anchor.

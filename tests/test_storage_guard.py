@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from douyin_bili_recorder.models import MediaFile, SessionRecord, SessionStatus
+from douyin_bili_recorder.models import MediaFile, SessionPart, SessionRecord, SessionStatus
 from douyin_bili_recorder.state import SessionStore
 from douyin_bili_recorder.storage_guard import StorageGuard
 
@@ -41,3 +41,29 @@ def test_cache_limit_only_removes_uploaded_sessions(tmp_path) -> None:
     guard.enforce_limit(1)
     remaining = {session.session_id for session in store.all()}
     assert remaining == {"pending"}
+
+
+def test_cache_limit_keeps_uploaded_session_with_pending_cloud_backup(tmp_path) -> None:
+    sessions_dir = tmp_path / "sessions"
+    store = SessionStore(sessions_dir)
+    directory = store.session_dir("cloud-pending")
+    media = directory / "part-000.mp4"
+    _large_file(media, 600 * 1024 * 1024)
+    store.save(
+        SessionRecord(
+            session_id="cloud-pending",
+            target_name="anchor",
+            target_url="https://live.douyin.com/1",
+            status=SessionStatus.UPLOADED,
+            created_epoch=1,
+            ended_epoch=1,
+            detected_start_epoch=1,
+            detected_start_iso="2026-09-23T20:14:41+08:00",
+            files=[MediaFile(path="part-000.mp4", size=media.stat().st_size)],
+            parts=[SessionPart(index=1, status="UPLOADED", path=str(media), cloud_status="PENDING")],
+        )
+    )
+
+    guard = StorageGuard(sessions_dir, logging.getLogger("test"))
+    guard.enforce_limit(1)
+    assert {session.session_id for session in store.all()} == {"cloud-pending"}

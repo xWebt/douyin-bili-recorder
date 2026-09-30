@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from .auth import BilibiliAuth
 from .analytics import AnalyticsStore
 from .config import AppConfig
+from .config import resolve_executable
 from .douyin import DouyinResolver
 from .paths import anchor_dir, session_output_dir, target_key
 from .service_control import ServiceController
@@ -47,12 +48,21 @@ def _clear_target_cache(config: AppConfig, target_name: str) -> dict[str, Any]:
         for session in SessionStore(config.sessions_dir).all()
         if session.target_name == target_name
     ]
+    state = UIStateStore(config).load()
+    target_state = next(
+        (item for item in state.get("targets", []) if item.get("name") == target_name),
+        None,
+    )
+    cloud_backup = bool(target_state.get("cloud_backup", False) if target_state else False) or any(
+        session.cloud_backup for session in sessions
+    )
     roots = [config.sessions_dir.resolve(), config.video_dir.expanduser().resolve()]
     progress_store = UploadProgressStore(config.data_dir)
     safe_statuses = {"UPLOADED", "CANCELED", "DISCARDED"}
     deleted_files = 0
     freed_bytes = 0
     skipped_active_sessions = 0
+    skipped_cloud_pending = 0
 
     for session in sessions:
         if session.status in {SessionStatus.RECORDING, SessionStatus.STARTING}:
@@ -63,6 +73,9 @@ def _clear_target_cache(config: AppConfig, target_name: str) -> dict[str, Any]:
         for part in session.parts:
             if part.status not in safe_statuses:
                 continue
+            if cloud_backup and part.cloud_status != "UPLOADED":
+                skipped_cloud_pending += 1
+                continue
             for value in (part.path, part.source_path, part.danmaku_path):
                 if not value:
                     continue
@@ -71,6 +84,11 @@ def _clear_target_cache(config: AppConfig, target_name: str) -> dict[str, Any]:
                     deleted_files += 1
                     freed_bytes += freed
             progress_store.remove(f"{session.session_id}:{part.index}")
+        if cloud_backup and any(
+            part.status in safe_statuses and part.cloud_status != "UPLOADED"
+            for part in session.parts
+        ):
+            continue
         if all(part.status in safe_statuses for part in session.parts):
             session_dir = config.sessions_dir / session.session_id
             if session_dir.exists():
@@ -90,7 +108,37 @@ def _clear_target_cache(config: AppConfig, target_name: str) -> dict[str, Any]:
         "deleted_files": deleted_files,
         "freed_bytes": freed_bytes,
         "skipped_active_sessions": skipped_active_sessions,
+        "skipped_cloud_pending": skipped_cloud_pending,
     }
+
+
+def _test_cloud_remote(config: AppConfig, remote: str) -> dict[str, Any]:
+    value = remote.strip().rstrip("/")
+    if not value or ":" not in value:
+        raise HTTPException(status_code=400, detail="远端路径需使用 rclone 格式，例如 openlist:/DouyinBiliRecorder")
+    state = UIStateStore(config).load()
+    rclone_bin = resolve_executable(
+        str(state.get("cloud_rclone_bin", config.cloud_rclone_bin)),
+        config.config_path.parent,
+    )
+    try:
+        result = subprocess.run(
+            [rclone_bin, "lsf", value, "--max-depth", "1"],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=422, detail=f"rclone 不存在：{rclone_bin}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="网盘远端测试超时") from exc
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode != 0:
+        raise HTTPException(status_code=422, detail=output or f"rclone exited with {result.returncode}")
+    return {"ok": True, "remote": value, "message": output or "远端可访问"}
 
 
 def _request_upload_control(
@@ -189,6 +237,29 @@ def _start_target(
     request_path.write_text("1", encoding="utf-8")
     _ensure_service_running(config, state_store, controller)
     return {"ok": True, "target": target_name, "enabled": True}
+
+
+def _pause_target(
+    config: AppConfig,
+    state_store: UIStateStore,
+    controller: ServiceController,
+    target_name: str,
+) -> dict[str, Any]:
+    state = state_store.load()
+    target = next((item for item in state.get("targets", []) if item.get("name") == target_name), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="target not found")
+    target["enabled"] = False
+    state_store.save(state)
+    state_store.render_runtime_config(state)
+    request_dir = config.data_dir / "ui" / "target-control"
+    request_dir.mkdir(parents=True, exist_ok=True)
+    request_path = request_dir / f"{target_key(target_name)}.request"
+    request_path.write_text(
+        json.dumps({"name": target_name, "action": "pause"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return {"ok": True, "target": target_name, "enabled": False}
 
 
 def create_app(config: AppConfig) -> FastAPI:
@@ -329,6 +400,11 @@ def create_app(config: AppConfig) -> FastAPI:
             raise HTTPException(status_code=404, detail="target not found")
         return _clear_target_cache(config, target_name)
 
+    @app.post("/api/cloud/test")
+    async def test_cloud_remote(payload: dict[str, Any]) -> dict[str, Any]:
+        remote = str(payload.get("remote", "")).strip()
+        return _test_cloud_remote(config, remote)
+
     @app.get("/api/bilibili/submissions")
     async def bilibili_submissions() -> dict[str, Any]:
         sessions = SessionStore(config.sessions_dir).all()
@@ -365,6 +441,10 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.post("/api/targets/{target_name}/manual-start")
     async def manual_start_target(target_name: str) -> dict[str, Any]:
         return _start_target(config, state_store, controller, target_name)
+
+    @app.post("/api/targets/{target_name}/pause")
+    async def pause_target(target_name: str) -> dict[str, Any]:
+        return _pause_target(config, state_store, controller, target_name)
 
     @app.get("/api/videos")
     async def video_library() -> dict[str, Any]:

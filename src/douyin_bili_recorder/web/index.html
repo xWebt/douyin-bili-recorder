@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f7fb" />
     <title>DouyinBiliRecorder</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2.2.33" />
+    <link rel="stylesheet" href="/static/styles.css?v=2.2.35" />
   </head>
   <body>
     <div class="app-shell">
@@ -119,6 +119,10 @@
               <span><strong>视频根目录</strong><small>主播 / 日期 / 录像</small></span>
               <input id="videoDir" placeholder="~/Movies/DouyinBiliRecorder" />
             </label>
+            <label class="field-row">
+              <span><strong>rclone 可执行文件</strong><small>网盘备份使用，默认从 PATH 查找 rclone</small></span>
+              <input id="cloudRcloneBin" placeholder="rclone" />
+            </label>
             <div class="split-fields">
               <label><span>迟到阈值</span><input type="number" id="lateThreshold" min="0" max="120" /><small>分钟</small></label>
               <label><span>断流宽限</span><input type="number" id="reconnectGrace" min="0" max="180" /><small>分钟</small></label>
@@ -172,6 +176,7 @@
         <div class="dialog-actions">
           <button class="primary-button" id="pauseUploadButton" type="button"><i data-lucide="upload-cloud"></i><span>暂停并上传</span></button>
           <button class="secondary-button" id="pauseKeepButton" type="button"><i data-lucide="hard-drive-download"></i><span>暂停并保留本地</span></button>
+          <button class="danger-button" id="discardButton" type="button"><i data-lucide="trash-2"></i><span>停止并删除当前录像</span></button>
           <button class="ghost-button" id="pauseCancelButton" type="button"><i data-lucide="play"></i><span>继续录制</span></button>
         </div>
       </section>
@@ -224,6 +229,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="/static/vendor/lucide.min.js"></script>
-    <script src="/static/app.js?v=2.2.33"></script>
+    <script src="/static/app.js?v=2.2.35"></script>
   </body>
 </html>

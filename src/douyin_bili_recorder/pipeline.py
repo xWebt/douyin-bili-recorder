@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from .analytics import AnalyticsStore
 from .collection import BilibiliCollectionManager
+from .cloud_uploader import CloudUploadError, CloudUploadResult, RcloneCloudUploader
 from .config import AppConfig, TargetConfig, load_config
 from .douyin import DouyinResolver
 from .danmaku import DanmakuRenderer
@@ -54,6 +55,7 @@ class RecorderService:
         self.media = MediaProcessor(config, self.io_runner, logger)
         self.danmaku = DanmakuRenderer(config, self.io_runner, logger)
         self.uploader = BiliupUploader(config, self.io_runner, logger)
+        self.cloud_uploader = RcloneCloudUploader(config, self.io_runner, logger)
         self.storage = StorageGuard(config.sessions_dir, logger)
         self.analytics = AnalyticsStore(config.video_dir, config.timezone)
         self.resolver = DouyinResolver()
@@ -63,17 +65,24 @@ class RecorderService:
         self._last_live_epoch: dict[str, int] = {}
         self._target_workers: dict[str, threading.Thread] = {}
         self._removed_targets: set[str] = set()
+        self._paused_targets: set[str] = set()
+        self._target_control_lock = threading.Lock()
         self._cancelled_uploads: set[str] = set()
         self._paused_uploads: set[str] = set()
         self._upload_generations: dict[str, int] = {}
         self._upload_control_lock = threading.Lock()
         self.upload_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="upload")
         self._pending_uploads: dict[str, list[Future[bool]]] = {}
+        self.cloud_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cloud")
+        self._pending_cloud_uploads: dict[str, list[Future[bool]]] = {}
+        self._queued_cloud_parts: set[str] = set()
+        self._cloud_queue_lock = threading.Lock()
         self._parent_pid = int(os.environ.get("DOUYIN_RECORDER_PARENT_PID", "0") or 0)
 
     def run_forever(self) -> None:
         self._start_external_stop_watcher()
         self._start_upload_stop_watcher()
+        self._start_target_control_watcher()
         self._start_parent_watcher()
         self.config.sessions_dir.mkdir(parents=True, exist_ok=True)
         lock_path = self.config.data_dir / "recorder.lock"
@@ -102,12 +111,15 @@ class RecorderService:
         for session in self.store.all():
             target = self._target_by_name(session.target_name)
             if target is not None:
+                self._sync_session_cloud_policy(session, target)
                 self._recover_orphan_parts(session, target)
             if session.status == SessionStatus.RECORDING:
                 session.status = SessionStatus.RECORDED
                 session.ended_epoch = session.ended_epoch or int(time.time())
                 self.store.save(session)
                 self.analytics.upsert(session)
+            if target is not None and target.cloud_backup and session.record_mode != "monitor":
+                self._queue_pending_cloud_parts(session, target)
             if session.status in {SessionStatus.RECORDED, SessionStatus.UPLOADING, SessionStatus.UPLOAD_FAILED}:
                 future = self.upload_executor.submit(self._upload_with_retries, session)
                 self._pending_uploads.setdefault(session.session_id, []).append(future)
@@ -191,6 +203,7 @@ class RecorderService:
                     danmaku_path=str(danmaku_path if danmaku_path.exists() else ""),
                     size=media_path.stat().st_size,
                     duration_seconds=duration,
+                    cloud_status="PENDING" if target.cloud_backup else "",
                 )
             )
             known_stems.add(media_path.stem)
@@ -264,6 +277,9 @@ class RecorderService:
                 if target.name in self._removed_targets:
                     break
                 self._reload_runtime_settings(target)
+                with self._target_control_lock:
+                    if target.enabled:
+                        self._paused_targets.discard(target.name)
                 if not target.enabled:
                     self._set_target_status(target, "paused", "监控已暂停")
                     if self._wait_for_stop(max(10, self.config.poll_interval_seconds)):
@@ -334,6 +350,8 @@ class RecorderService:
             and not self.interrupt_event.is_set()
             and target.name not in self._removed_targets
         ):
+            if self._target_is_paused(target.name):
+                break
             self._reload_runtime_settings(target)
             if not self._wait_for_capacity(target):
                 final_status = SessionStatus.UPLOAD_FAILED
@@ -350,6 +368,8 @@ class RecorderService:
                 and not self.interrupt_event.is_set()
                 and target.name not in self._removed_targets
             ):
+                if self._target_is_paused(target.name):
+                    break
                 new_media = self._new_media_paths(
                     session_dir,
                     seen_sources,
@@ -391,6 +411,8 @@ class RecorderService:
                     upload_futures,
                 )
 
+            if self._target_is_paused(target.name):
+                break
             if self.interrupt_event.is_set():
                 break
             offline = self._process_reports_offline(process)
@@ -407,7 +429,14 @@ class RecorderService:
             self.shutdown_event.wait(0.25)
             continue
 
+        if self.pause_mode() == "discard":
+            self._discard_current_session(target, session, upload_futures)
+            return False
         self._wait_for_uploads(session.session_id, upload_futures)
+        self._wait_for_cloud_uploads(session.session_id)
+        latest = self.store.load(session.session_id)
+        self._sync_session_cloud_policy(latest, target)
+        session = latest
         if session.parts and all(part.status == "UPLOADED" for part in session.parts):
             final_status = SessionStatus.UPLOADED
         session.status = final_status
@@ -587,6 +616,7 @@ class RecorderService:
                 )
                 upload_futures.append(future)
                 self._pending_uploads.setdefault(session.session_id, []).append(future)
+                self._queue_cloud_part(session, target, part)
             part_index += 1
         return part_index
 
@@ -595,6 +625,48 @@ class RecorderService:
         for value in (part.path, part.source_path, part.danmaku_path):
             if value:
                 Path(value).unlink(missing_ok=True)
+
+    def _discard_current_session(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        upload_futures: list[Future[bool]],
+    ) -> None:
+        for part in session.parts:
+            key = f"{session.session_id}:{part.index}"
+            with self._upload_control_lock:
+                self._cancelled_uploads.add(key)
+                self._paused_uploads.discard(key)
+                self._upload_generations[key] = self._upload_generations.get(key, 0) + 1
+            self.uploader.cancel(key)
+            self.cloud_uploader.cancel(key)
+        if upload_futures:
+            wait(upload_futures)
+        cloud_futures = list(self._pending_cloud_uploads.pop(session.session_id, []))
+        if cloud_futures:
+            wait(cloud_futures)
+        for part in session.parts:
+            if part.status != "UPLOADED":
+                part.status = "CANCELED"
+                part.error = "用户停止全部任务并删除当前录像"
+            for value in (part.path, part.source_path, part.danmaku_path):
+                if value:
+                    Path(value).unlink(missing_ok=True)
+            part.path = ""
+            part.source_path = ""
+            part.danmaku_path = ""
+        session.status = "CANCELED"
+        session.ended_epoch = int(time.time())
+        session.error = "用户停止全部任务并删除当前录像"
+        self.store.save(session)
+        self.analytics.upsert(session)
+        self._set_target_status(
+            target,
+            "canceled",
+            "已停止全部任务并删除当前录像",
+            session_id=session.session_id,
+        )
+        self.logger.info("discarded current session %s", session.session_id)
 
     def _final_media_paths(
         self,
@@ -777,6 +849,7 @@ class RecorderService:
             danmaku_path=str(danmaku_final or ""),
             size=final_media.stat().st_size,
             duration_seconds=media.duration_seconds,
+            cloud_status="PENDING" if target.cloud_backup else "",
         )
         session.parts.append(part)
         if not session.title:
@@ -849,6 +922,7 @@ class RecorderService:
             danmaku_path=str(danmaku_final),
             size=burned.stat().st_size,
             duration_seconds=self.media.probe_duration(burned),
+            cloud_status="PENDING" if target.cloud_backup else "",
         )
         session.parts.append(part)
         if not session.title:
@@ -874,8 +948,6 @@ class RecorderService:
         session: SessionRecord,
         part: SessionPart,
     ) -> bool:
-        final_media = Path(part.path)
-        original_final = Path(part.source_path) if part.source_path else None
         upload_state = "recording_uploading" if session.status == SessionStatus.RECORDING else "uploading"
         upload_message = (
             f"正在录制，P{part.index:02d} 同时上传"
@@ -890,7 +962,7 @@ class RecorderService:
             part=part.index,
         )
         generation = self._upload_generation(session.session_id, part.index)
-        result = self._upload_part_with_retries(target, session, final_media, part)
+        result = self._upload_part_with_retries(target, session, Path(part.path), part)
         if result.verified and result.bvid:
             session.bvid = result.bvid
             part.bvid = result.bvid
@@ -916,10 +988,7 @@ class RecorderService:
                 )
             self._bind_collection(target, session)
             if self.config.delete_after_upload:
-                danmaku_final = Path(part.danmaku_path) if part.danmaku_path else None
-                for path in (final_media, original_final, danmaku_final):
-                    if path is not None and path.exists():
-                        path.unlink(missing_ok=True)
+                self._cleanup_part_if_ready(target, session, part)
             return True
         if generation != self._upload_generation(session.session_id, part.index):
             return False
@@ -942,8 +1011,136 @@ class RecorderService:
         )
         return False
 
+    def _queue_pending_cloud_parts(self, session: SessionRecord, target: TargetConfig) -> None:
+        for part in session.parts:
+            if part.status in {"LOCAL_ONLY", "DISCARDED"}:
+                continue
+            if part.cloud_status == "UPLOADED":
+                continue
+            self._queue_cloud_part(session, target, part)
+
+    def _queue_cloud_part(
+        self,
+        session: SessionRecord,
+        target: TargetConfig,
+        part: SessionPart,
+    ) -> Future[bool] | None:
+        if not target.cloud_backup or not target.cloud_remote.strip() or part.status == "LOCAL_ONLY":
+            return None
+        if not part.path or not Path(part.path).exists() or part.cloud_status == "UPLOADED":
+            return None
+        key = f"{session.session_id}:{part.index}"
+        with self._cloud_queue_lock:
+            if key in self._queued_cloud_parts:
+                return None
+            self._queued_cloud_parts.add(key)
+            part.cloud_status = "PENDING"
+            part.cloud_error = ""
+            self._sync_session_cloud_policy(session, target)
+            self.store.save(session)
+            future = self.cloud_executor.submit(self._cloud_backup_job, target, session, part)
+            self._pending_cloud_uploads.setdefault(session.session_id, []).append(future)
+        future.add_done_callback(lambda _future, item=key: self._cloud_done(item))
+        return future
+
+    def _cloud_done(self, key: str) -> None:
+        with self._cloud_queue_lock:
+            self._queued_cloud_parts.discard(key)
+
+    def _cloud_backup_job(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        part: SessionPart,
+    ) -> bool:
+        part.cloud_status = "UPLOADING"
+        part.cloud_error = ""
+        self.store.save(session)
+        self._set_cloud_status(target, "uploading", f"P{part.index:02d} 正在备份到网盘")
+        try:
+            result = self._cloud_backup_with_retries(target, session, part)
+        except Exception as exc:  # noqa: BLE001
+            part.cloud_status = "FAILED"
+            part.cloud_error = str(exc)
+            self.store.save(session)
+            self.analytics.upsert(session)
+            self._set_cloud_status(target, "failed", f"P{part.index:02d} 网盘备份失败：{exc}")
+            self.logger.warning("cloud backup failed for %s P%02d: %s", target.name, part.index, exc)
+            return False
+        part.cloud_status = "UPLOADED"
+        part.cloud_error = ""
+        part.cloud_path = result.remote_paths[-1] if result.remote_paths else ""
+        part.cloud_uploaded_at = int(time.time())
+        self.store.save(session)
+        self.analytics.upsert(session)
+        self._set_cloud_status(target, "uploaded", f"P{part.index:02d} 已备份到网盘")
+        if self.config.delete_after_upload:
+            self._cleanup_part_if_ready(target, session, part)
+        return True
+
+    def _cloud_backup_with_retries(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        part: SessionPart,
+    ) -> CloudUploadResult:
+        last_error: Exception | None = None
+        for attempt in range(self.config.upload_retry_count + 1):
+            part.cloud_attempts += 1
+            self.store.save(session)
+            try:
+                return self.cloud_uploader.upload_part(target, session, part)
+            except (CloudUploadError, OSError) as exc:
+                last_error = exc
+                if attempt < self.config.upload_retry_count:
+                    self.shutdown_event.wait(self.config.upload_retry_backoff_seconds * (attempt + 1))
+        raise CloudUploadError(str(last_error or "网盘备份失败"))
+
+    def _set_cloud_status(self, target: TargetConfig, state: str, message: str) -> None:
+        current = self.target_status.load_all().get(target.name, {})
+        runtime_state = str(current.get("state") or "checking")
+        runtime_message = str(current.get("message") or "")
+        self._set_target_status(
+            target,
+            runtime_state,
+            runtime_message,
+            cloud_state=state,
+            cloud_message=message,
+            cloud_updated_at=int(time.time()),
+        )
+
+    @staticmethod
+    def _sync_session_cloud_policy(session: SessionRecord, target: TargetConfig) -> None:
+        session.cloud_backup = bool(target.cloud_backup)
+        session.cloud_provider = str(target.cloud_provider)
+        session.cloud_remote = str(target.cloud_remote)
+
+    @staticmethod
+    def _part_cloud_complete(session: SessionRecord, part: SessionPart) -> bool:
+        return not session.cloud_backup or part.cloud_status == "UPLOADED"
+
+    def _cleanup_part_if_ready(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        part: SessionPart,
+    ) -> None:
+        if part.status != "UPLOADED" or not self._part_cloud_complete(session, part):
+            return
+        for value in (part.path, part.source_path, part.danmaku_path):
+            if value:
+                Path(value).unlink(missing_ok=True)
+        if session.parts and all(
+            item.status == "UPLOADED" and self._part_cloud_complete(session, item)
+            for item in session.parts
+        ):
+            self._cleanup_uploaded_artifacts(session)
+
     def _cleanup_uploaded_artifacts(self, session: SessionRecord) -> None:
         if not session.parts or not all(part.status == "UPLOADED" for part in session.parts):
+            return
+        if not all(self._part_cloud_complete(session, part) for part in session.parts):
+            self.logger.info("local cleanup deferred until cloud backup completes for %s", session.session_id)
             return
         session_dir = self.config.sessions_dir / session.session_id
         for part in session.parts:
@@ -966,6 +1163,12 @@ class RecorderService:
         if futures:
             wait(futures)
         self._pending_uploads.pop(session_id, None)
+
+    def _wait_for_cloud_uploads(self, session_id: str) -> None:
+        futures = list(self._pending_cloud_uploads.get(session_id, []))
+        if futures:
+            wait(futures)
+        self._pending_cloud_uploads.pop(session_id, None)
 
     def _bind_collection(self, target: TargetConfig, session: SessionRecord) -> None:
         if (
@@ -1217,6 +1420,8 @@ class RecorderService:
             "delete_after_upload",
             "upload_retry_count",
             "upload_retry_backoff_seconds",
+            "cloud_rclone_bin",
+            "cloud_upload_timeout_seconds",
             "targets",
         ):
             setattr(self.config, field, getattr(current, field))
@@ -1236,6 +1441,9 @@ class RecorderService:
                 "tid",
                 "copyright",
                 "source",
+                "cloud_backup",
+                "cloud_provider",
+                "cloud_remote",
                 "schedule",
             ):
                 setattr(target, field, getattr(fresh_target, field))
@@ -1287,18 +1495,16 @@ class RecorderService:
         self.store.save(session)
         if session.parts:
             for part in session.parts:
-                if part.status == "UPLOADED":
-                    continue
-                if part.status == "CANCELED":
-                    continue
-                if part.status == "PAUSED":
-                    continue
                 if (
                     part.duration_seconds is not None
                     and part.duration_seconds < self.config.min_upload_duration_seconds
                 ):
                     part.status = "DISCARDED"
                     self._discard_short_part(session, part)
+                    continue
+                if target.cloud_backup and part.path and Path(part.path).exists():
+                    self._queue_cloud_part(session, target, part)
+                if part.status in {"UPLOADED", "CANCELED", "PAUSED"}:
                     continue
                 if not part.title:
                     part.title = f"{resolved_title}｜P{part.index:02d}"
@@ -1330,6 +1536,8 @@ class RecorderService:
             self.store.save(latest)
             self._bind_collection(target, latest)
             self.analytics.upsert(latest)
+            if self.config.delete_after_upload:
+                self._cleanup_uploaded_artifacts(latest)
             if latest.status == SessionStatus.UPLOADED:
                 self._set_target_status(target, "uploaded", "待恢复录像已上传", session_id=latest.session_id, bvid=latest.bvid)
             elif any(part.status == "PAUSED" for part in latest.parts):
@@ -1364,6 +1572,9 @@ class RecorderService:
             detected_start_iso=None,
             title="",
             record_mode=target.record_mode,
+            cloud_backup=bool(target.cloud_backup),
+            cloud_provider=str(target.cloud_provider),
+            cloud_remote=str(target.cloud_remote),
         )
 
     def _target_by_name(self, name: str) -> TargetConfig | None:
@@ -1418,6 +1629,10 @@ class RecorderService:
         with self._state_lock:
             return self._pause_mode
 
+    def _target_is_paused(self, name: str) -> bool:
+        with self._target_control_lock:
+            return name in self._paused_targets
+
     def _start_external_stop_watcher(self) -> None:
         stop_path = os.environ.get("DOUYIN_RECORDER_STOP_FILE", "").strip()
         if not stop_path:
@@ -1436,6 +1651,36 @@ class RecorderService:
 
         threading.Thread(target=watch, name="external-stop-watcher", daemon=True).start()
 
+    def _start_target_control_watcher(self) -> None:
+        control_dir = self.config.data_dir / "ui" / "target-control"
+        control_dir.mkdir(parents=True, exist_ok=True)
+
+        def watch() -> None:
+            while not self.shutdown_event.wait(1):
+                for path in control_dir.glob("*.request"):
+                    try:
+                        payload = json.loads(path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        payload = {}
+                    finally:
+                        path.unlink(missing_ok=True)
+                    name = str(payload.get("name", "")).strip()
+                    action = str(payload.get("action", "pause")).strip()
+                    if not name:
+                        continue
+                    if action == "resume":
+                        with self._target_control_lock:
+                            self._paused_targets.discard(name)
+                    else:
+                        with self._target_control_lock:
+                            self._paused_targets.add(name)
+                        target = self._target_by_name(name)
+                        if target is not None:
+                            target.enabled = False
+                            self._set_target_status(target, "paused", "该主播已单独暂停")
+                    self.logger.info("target control request: %s %s", action, name)
+
+        threading.Thread(target=watch, name="target-control-watcher", daemon=True).start()
     def _start_upload_stop_watcher(self) -> None:
         control_dirs = (
             self.config.data_dir / "ui" / "upload-control",

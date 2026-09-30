@@ -1215,6 +1215,37 @@ input::placeholder {
   background: #f8fafc;
 }
 
+.cloud-state {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.cloud-state > span {
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.cloud-state input,
+.cloud-state select {
+  min-height: 36px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.cloud-state small {
+  color: var(--ink-dim);
+  font-size: 10px;
+}
+
+.target-cloud-progress {
+  color: #2563eb !important;
+}
+
 .collection-state input {
   min-height: 36px;
   font-family: var(--mono);
