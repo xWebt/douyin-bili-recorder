@@ -119,7 +119,6 @@ class RecorderService:
                 self.store.save(session)
                 self.analytics.upsert(session)
             if target is not None and target.cloud_backup and session.record_mode != "monitor":
-                self._ensure_cloud_anchor_dir(target)
                 self._queue_pending_cloud_parts(session, target)
             if session.status in {SessionStatus.RECORDED, SessionStatus.UPLOADING, SessionStatus.UPLOAD_FAILED}:
                 future = self.upload_executor.submit(self._upload_with_retries, session)
@@ -1025,8 +1024,10 @@ class RecorderService:
         return False
 
     def _queue_pending_cloud_parts(self, session: SessionRecord, target: TargetConfig) -> None:
+        if session.status in {"CANCELED", "DISCARDED"}:
+            return
         for part in session.parts:
-            if part.status in {"LOCAL_ONLY", "DISCARDED"}:
+            if part.status in {"LOCAL_ONLY", "CANCELED", "DISCARDED"}:
                 continue
             if part.cloud_status == "UPLOADED":
                 continue
@@ -1038,7 +1039,11 @@ class RecorderService:
         target: TargetConfig,
         part: SessionPart,
     ) -> Future[bool] | None:
-        if not target.cloud_backup or not target.cloud_remote.strip() or part.status == "LOCAL_ONLY":
+        if (
+            not target.cloud_backup
+            or not target.cloud_remote.strip()
+            or part.status in {"LOCAL_ONLY", "CANCELED", "DISCARDED"}
+        ):
             return None
         if not part.path or not Path(part.path).exists() or part.cloud_status == "UPLOADED":
             return None
@@ -1130,6 +1135,8 @@ class RecorderService:
 
     @staticmethod
     def _part_cloud_complete(session: SessionRecord, part: SessionPart) -> bool:
+        if part.status in {"CANCELED", "DISCARDED"}:
+            return True
         return not session.cloud_backup or part.cloud_status == "UPLOADED"
 
     def _cleanup_part_if_ready(

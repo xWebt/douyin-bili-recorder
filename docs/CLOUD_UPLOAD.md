@@ -51,7 +51,7 @@ pass: <rclone 加密后的密码>
 7. 在主播卡片中选择百度/夸克并填写 remote 根路径；是否开启 `网盘备份` 不影响主播目录创建。
 8. 点击 `测试网盘` 验证远端可访问。
 9. 保存主播设置。
-10. 保存时会立即在网盘根目录下创建 `主播名/` 文件夹；每次开播前也会再次确保目录存在。例如填写 `openlist:/quark/DouyinBiliRecorder` 后，“凡晨”会创建 `openlist:/quark/DouyinBiliRecorder/凡晨/`。
+10. 保存和开播前会先检查 `主播名/` 是否存在；只有不存在时才创建。例如填写 `openlist:/quark/DouyinBiliRecorder` 后，“凡晨”目录缺失时才会创建 `openlist:/quark/DouyinBiliRecorder/凡晨/`。
 
 ## 归档规则
 

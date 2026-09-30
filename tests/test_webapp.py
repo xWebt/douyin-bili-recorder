@@ -104,7 +104,7 @@ def test_sync_cloud_anchor_folders_creates_configured_anchor(tmp_path: Path, mon
 
     assert warnings == []
     assert folders == ["quark:/DouyinBiliRecorder/凡晨"]
-    assert calls[0][-1] == "quark:/DouyinBiliRecorder/凡晨"
+    assert calls[-1][-1] == "quark:/DouyinBiliRecorder/凡晨"
 
 
 def test_sync_cloud_anchor_folders_skips_anchor_without_remote(tmp_path: Path, monkeypatch) -> None:

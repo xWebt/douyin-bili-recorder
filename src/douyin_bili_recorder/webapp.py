@@ -125,6 +125,18 @@ def _ensure_cloud_anchor_folder(config: AppConfig, state: dict[str, Any], target
         config.config_path.parent,
     )
     try:
+        listed = subprocess.run(
+            [rclone_bin, "lsf", remote, "--max-depth", "1", "--dirs-only"],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+        entries = {line.strip().rstrip("/") for line in (listed.stdout or "").splitlines() if line.strip()}
+        if listed.returncode == 0 and anchor_name in entries:
+            return remote_path
         result = subprocess.run(
             [rclone_bin, "mkdir", remote_path],
             check=False,

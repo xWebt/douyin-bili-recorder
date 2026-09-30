@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.40
+- Cloud folder synchronization now lists the remote first and skips creation when the anchor folder already exists.
+- Startup recovery no longer creates cloud folders for every historical session.
+- Canceled and discarded parts are excluded from cloud backup recovery queues.
+
 ## v2.2.39
 - Unsaved target and global-setting changes are now protected from the three-second service refresh, so toggles such as `录制并烧录` no longer flicker back to the saved value.
 - Saving the anchor settings clears the dirty state and applies the server-returned configuration.

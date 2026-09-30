@@ -112,6 +112,7 @@ def test_cloud_uploader_rejects_missing_remote(tmp_path: Path) -> None:
 def test_cloud_uploader_creates_anchor_directory(tmp_path: Path) -> None:
     config = _config(tmp_path)
     runner = FakeRunner()
+    runner.results = [ProcessResult(1, ["object not found"]), ProcessResult(0, ["ok"])]
     uploader = RcloneCloudUploader(config, runner, logging.getLogger("test"))  # type: ignore[arg-type]
 
     remote_path = uploader.ensure_anchor_dir(
@@ -121,4 +122,21 @@ def test_cloud_uploader_creates_anchor_directory(tmp_path: Path) -> None:
     )
 
     assert remote_path == "quark:/DouyinBiliRecorder/卢某某"
-    assert runner.commands == [["rclone", "mkdir", remote_path]]
+    assert runner.commands[0][:2] == ["rclone", "lsf"]
+    assert runner.commands[1] == ["rclone", "mkdir", remote_path]
+
+
+def test_cloud_uploader_skips_existing_anchor_directory(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    runner = FakeRunner()
+    runner.results = [ProcessResult(0, ["卢某某/", "其他主播/"])]
+    uploader = RcloneCloudUploader(config, runner, logging.getLogger("test"))  # type: ignore[arg-type]
+
+    remote_path = uploader.ensure_anchor_dir(
+        "卢某某",
+        "quark:/DouyinBiliRecorder",
+        rclone_bin="rclone",
+    )
+
+    assert remote_path == "quark:/DouyinBiliRecorder/卢某某"
+    assert runner.commands == [["rclone", "lsf", "quark:/DouyinBiliRecorder", "--max-depth", "1", "--dirs-only"]]

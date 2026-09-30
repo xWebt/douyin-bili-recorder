@@ -1253,3 +1253,38 @@ cloud_remote = "quark:/quark/DouyinBiliRecorder"
 
     assert service.record_and_upload(config.targets[0]) is False
     assert calls == [("anchor", "quark:/quark/DouyinBiliRecorder")]
+
+
+def test_canceled_parts_are_not_queued_for_cloud_backup(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[storage]
+video_dir = "videos"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+cloud_backup = true
+cloud_remote = "quark:/quark/DouyinBiliRecorder"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    media = tmp_path / "canceled.flv"
+    media.write_bytes(b"video")
+    session = SessionRecord(
+        session_id="canceled",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        status="CANCELED",
+        parts=[SessionPart(index=1, status="CANCELED", path=str(media))],
+    )
+
+    service._queue_pending_cloud_parts(session, config.targets[0])
+
+    assert service._pending_cloud_uploads == {}
