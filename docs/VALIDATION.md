@@ -1,8 +1,16 @@
 # Local validation report
 
-Date: 2026-09-23
+Date: 2026-10-01
 
-## Environment
+## v2.2.49 Douyin-to-Bilibili current-state validation
+
+- A public live room (`https://live.douyin.com/327014106755`) was recorded through the packaged biliup runtime.
+- The danmaku server produced XML with messages, and the validation runner burned them into an 11.27-second, 3.1 MB MP4.
+- The Bilibili submission attempt reached the API but was rejected with `21566 投稿过于频繁`; no validation submission was created during this attempt.
+- The generated clip is retained at `/private/tmp/dbr-danmaku-e2e-_ke4gi8b/data/sessions/20261001-101511-danmaku-e2e/danmaku-burned.mp4` for one delayed retry without re-recording.
+- The validation helper now selects a media segment whose matching XML is non-empty instead of blindly choosing the largest segment.
+
+## 2026-09-23 environment
 
 - macOS 26.6.2, arm64
 - FFmpeg 9.0.2

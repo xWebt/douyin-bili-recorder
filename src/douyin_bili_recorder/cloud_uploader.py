@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 
 from .config import AppConfig, TargetConfig
 from .models import SessionPart, SessionRecord
+from .openlist_api import OpenListApiClient, OpenListApiError
 from .paths import safe_path_name
 from .process import ProcessRunner
 
@@ -30,6 +31,7 @@ class RcloneCloudUploader:
         self._cancel_lock = threading.Lock()
         self._cancel_events: dict[str, threading.Event] = {}
         self._upload_lock = threading.Lock()
+        self._api_clients: dict[str, OpenListApiClient | None] = {}
 
     def upload_part(
         self,
@@ -57,10 +59,18 @@ class RcloneCloudUploader:
         remote_dir = self.part_remote_dir(target, session, part, remote_root)
         uploaded_paths: list[str] = []
         messages: list[str] = []
+        api_client = self._openlist_api_client(remote_root)
         for local_path in files:
             if cancel_event.is_set():
                 raise CloudUploadError("网盘备份已停止")
             remote_path = f"{remote_dir}/{local_path.name}"
+            if api_client is not None:
+                try:
+                    api_client.upload(local_path, remote_path, cancel_event)
+                except OpenListApiError as exc:
+                    raise CloudUploadError(str(exc)) from exc
+                uploaded_paths.append(remote_path)
+                continue
             command = [
                 self.config.cloud_rclone_bin,
                 "copyto",
@@ -113,6 +123,15 @@ class RcloneCloudUploader:
     def reset_cancel(self, key: str) -> None:
         with self._cancel_lock:
             self._cancel_events.pop(key, None)
+
+    def _openlist_api_client(self, remote: str) -> OpenListApiClient | None:
+        if remote not in self._api_clients:
+            self._api_clients[remote] = OpenListApiClient.from_rclone_remote(
+                remote,
+                rclone_bin=self.config.cloud_rclone_bin,
+                timeout_seconds=self.config.cloud_upload_timeout_seconds,
+            )
+        return self._api_clients[remote]
 
     def _cancel_event(self, key: str) -> threading.Event:
         with self._cancel_lock:

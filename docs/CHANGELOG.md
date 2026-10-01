@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.49
+- OpenList-backed cloud remotes now upload through the native `PUT /api/fs/put` API instead of WebDAV, avoiding the OpenList/Quark large-file `405 Method Not Allowed` bug.
+- Local rclone WebDAV credentials are revealed only in memory and used to obtain an OpenList API token; credentials and tokens are never logged.
+- Other cloud remotes continue to use the existing rclone WebDAV path.
+- The danmaku end-to-end validation helper now selects a media segment whose matching XML contains messages, and applies the same timestamp-normalization flags used by production rendering.
+
 ## v2.2.48
 - Cloud-only retry now loads the UI runtime configuration instead of the packaged example configuration, so saved anchors and cloud remotes are included.
 

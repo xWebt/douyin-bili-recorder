@@ -22,6 +22,14 @@ class FakeRunner:
         return ProcessResult(0, ["ok"])
 
 
+class FakeOpenListClient:
+    def __init__(self) -> None:
+        self.uploads: list[tuple[Path, str]] = []
+
+    def upload(self, local_path: Path, remote_path: str, _cancel_event) -> None:
+        self.uploads.append((local_path, remote_path))
+
+
 def _config(tmp_path: Path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(
@@ -83,6 +91,34 @@ def test_cloud_uploader_uses_independent_remote_path(tmp_path: Path) -> None:
     assert all(command[:2] == ["rclone", "copyto"] for command in runner.commands)
     assert "--timeout" in runner.commands[0]
     assert "60m" in runner.commands[0]
+
+
+def test_cloud_uploader_prefers_native_openlist_api(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    media = tmp_path / "part.mp4"
+    media.write_bytes(b"video")
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        detected_start_iso="2026-09-30T20:15:00+08:00",
+    )
+    part = SessionPart(index=1, path=str(media))
+    runner = FakeRunner()
+    client = FakeOpenListClient()
+    uploader = RcloneCloudUploader(config, runner, logging.getLogger("test"))  # type: ignore[arg-type]
+    uploader._openlist_api_client = lambda _remote: client  # type: ignore[method-assign]
+
+    result = uploader.upload_part(config.targets[0], session, part)
+
+    assert result.uploaded is True
+    assert client.uploads == [
+        (
+            media,
+            "quark:/DouyinBiliRecorder/anchor/2026-09-30/part.mp4",
+        )
+    ]
+    assert runner.commands == []
 
 
 def test_cloud_uploader_rejects_missing_remote(tmp_path: Path) -> None:

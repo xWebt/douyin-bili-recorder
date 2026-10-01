@@ -63,9 +63,17 @@ def probe_size(ffprobe: Path, media: Path) -> tuple[int, int]:
         return 1920, 1080
 
 
+def xml_message_count(xml_path: Path) -> int:
+    try:
+        root = ET.parse(xml_path).getroot()
+    except (ET.ParseError, OSError):
+        return 0
+    return sum(1 for node in root.findall("d") if (node.text or "").strip())
+
+
 def build_ass(xml_path: Path, ass_path: Path, width: int, height: int) -> int:
-    root = ET.parse(xml_path).getroot()
     events: list[tuple[float, str]] = []
+    root = ET.parse(xml_path).getroot()
     for node in root.findall("d"):
         raw = node.attrib.get("p", "")
         parts = raw.split(",", 1)
@@ -79,7 +87,6 @@ def build_ass(xml_path: Path, ass_path: Path, width: int, height: int) -> int:
         if text:
             events.append((start, text))
     events.sort(key=lambda item: item[0])
-
     tracks = 10
     line_height = max(38, int(height * 0.052))
     font_size = max(24, int(height * 0.036))
@@ -197,7 +204,15 @@ copyright = 2
     )
     if not media_files:
         raise RuntimeError("no complete media file was produced")
-    media = media_files[0]
+    media = next(
+        (
+            path
+            for path in media_files
+            if path.with_suffix(".xml").is_file()
+            and xml_message_count(path.with_suffix(".xml")) > 0
+        ),
+        media_files[0],
+    )
     xml_path = media.with_suffix(".xml")
     if not xml_path.exists():
         candidates = sorted(runtime.glob("*.xml"), key=lambda path: path.stat().st_mtime, reverse=True)
@@ -218,6 +233,8 @@ copyright = 2
         "-loglevel",
         "error",
         "-y",
+        "-fflags",
+        "+genpts+igndts",
         "-i",
         str(media),
         "-vf",

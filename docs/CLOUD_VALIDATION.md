@@ -1,8 +1,16 @@
 # Validation
 
+## v2.2.49 native OpenList upload validation
+
+- Full Python test suite: `108 passed`.
+- Tests verify rclone-obscured credential reveal and local OpenList WebDAV detection.
+- The OpenList native uploader uses a cancellable file reader and the documented `File-Path` header.
+- A real local OpenList/Quark upload through `PUT /api/fs/put` succeeded with a 256 KiB validation file; the remote validation object was removed afterward.
+- Cloud uploader coverage confirms the native OpenList path is selected before the rclone WebDAV fallback.
+
 ## v2.2.48 cloud retry config validation
 
-- Full Python test suite: `105 passed`.
+- Full Python test suite: `107 passed`.
 - A regression test verifies cloud-only retry loads `data/ui/runtime-config.toml` and sees saved anchors rather than the packaged example target.
 
 ## v2.2.47 cloud-only retry validation
