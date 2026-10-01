@@ -1,5 +1,10 @@
 # Validation
 
+## v2.2.46 BVID lookup validation
+
+- Full Python test suite: `103 passed`.
+- The lookup test verifies two title checks issue only one Bilibili list command while the cache is fresh.
+
 ## v2.2.45 upload throughput and recovery validation
 
 - Full Python test suite: `102 passed`.

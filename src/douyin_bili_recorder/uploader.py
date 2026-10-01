@@ -45,6 +45,9 @@ class BiliupUploader:
         self._cancel_events: dict[str, threading.Event] = {}
         self._submit_lock = threading.Lock()
         self._next_submit_at = 0.0
+        self._bvid_cache_lock = threading.Lock()
+        self._bvid_cache: dict[str, str] = {}
+        self._bvid_cache_at = 0.0
 
     def upload_session(
         self,
@@ -324,6 +327,7 @@ class BiliupUploader:
             else:
                 message = "上传完成" if existing_bvid else "等待 BVID"
             progress.stop(message=message, bvid=existing_bvid)
+        self.invalidate_bvid_cache()
         return result
 
     @contextmanager
@@ -388,17 +392,28 @@ class BiliupUploader:
         self.progress_store.upsert(progress_key, payload)
 
     def find_bvid_by_title(self, title: str) -> str | None:
-        filters = (["--is-pubing"], ["--not-pubed"], ["--pubed"])
-        for extra in filters:
-            command = [self.config.biliup_bin, "-u", str(self.config.cookie_file), "list", *extra]
-            completed = self.runner.run(command)
-            for line in completed.lines:
-                clean = ANSI_RE.sub("", line)
-                if title in clean:
-                    match = BVID_RE.search(clean)
-                    if match:
-                        return match.group(0)
-        return None
+        with self._bvid_cache_lock:
+            if time.monotonic() - self._bvid_cache_at < 15:
+                return self._bvid_cache.get(title)
+        command = [self.config.biliup_bin, "-u", str(self.config.cookie_file), "list"]
+        completed = self.runner.run(command)
+        discovered: dict[str, str] = {}
+        for line in completed.lines:
+            clean = ANSI_RE.sub("", line)
+            match = BVID_RE.search(clean)
+            if match:
+                fields = clean.split("\t")
+                if len(fields) >= 2:
+                    discovered[fields[1].strip()] = match.group(0)
+        with self._bvid_cache_lock:
+            self._bvid_cache = discovered
+            self._bvid_cache_at = time.monotonic()
+            return discovered.get(title)
+
+    def invalidate_bvid_cache(self) -> None:
+        with self._bvid_cache_lock:
+            self._bvid_cache = {}
+            self._bvid_cache_at = 0.0
 
     def _wait_for_bvid(self, title: str) -> str | None:
         attempts = 10

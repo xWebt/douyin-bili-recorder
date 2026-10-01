@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.46
+- Bilibili duplicate-title checks now use one list request instead of three status-specific requests, with a 15 second cache shared by queued parts.
+- The BVID cache is invalidated after each submission or append, so newly created submissions are still detected.
+
 ## v2.2.45
 - Bilibili submissions are globally serialized with a 180 second minimum interval, preventing multi-anchor and multi-part bursts from triggering error `21566`.
 - Cloud backups are serialized to avoid concurrent OpenList/WebDAV uploads, with longer rclone timeout and retry settings for large files.

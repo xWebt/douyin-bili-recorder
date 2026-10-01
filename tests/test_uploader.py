@@ -139,6 +139,42 @@ def test_upload_rate_limit_detection_includes_bilibili_601() -> None:
     ])
 
 
+def test_find_bvid_by_title_uses_single_cached_listing(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    (tmp_path / "cookies.json").write_text("{}", encoding="utf-8")
+
+    class ListingRunner:
+        def __init__(self) -> None:
+            self.commands: list[list[str]] = []
+
+        def run(self, args, **_kwargs) -> ProcessResult:
+            command = [str(item) for item in args]
+            self.commands.append(command)
+            return ProcessResult(0, ["BV0000000001\tanchor title\t开放浏览"])
+
+    runner = ListingRunner()
+    uploader = BiliupUploader(config, runner, logging.getLogger("test"))  # type: ignore[arg-type]
+
+    assert uploader.find_bvid_by_title("anchor title") == "BV0000000001"
+    assert uploader.find_bvid_by_title("anchor title") == "BV0000000001"
+    assert len(runner.commands) == 1
+
+
 def test_upload_part_checks_existing_title_before_append(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(
