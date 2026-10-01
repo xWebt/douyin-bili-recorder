@@ -152,6 +152,7 @@ public = false
 delete_after_upload = false
 retry_count = 0
 retry_backoff_seconds = 1
+submit_interval_seconds = 0
 
 [[targets]]
 name = {args.name!r}

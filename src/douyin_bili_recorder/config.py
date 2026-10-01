@@ -105,6 +105,7 @@ class AppConfig:
     delete_after_upload: bool
     upload_retry_count: int
     upload_retry_backoff_seconds: int
+    upload_submit_interval_seconds: int
     cloud_rclone_bin: str
     cloud_upload_timeout_seconds: int
     launchd_label: str
@@ -178,6 +179,7 @@ def load_config(path: str | Path) -> AppConfig:
             int(upload.get("retry_count", AUTOMATIC_UPLOAD_RETRY_LIMIT)),
         ),
         upload_retry_backoff_seconds=int(upload.get("retry_backoff_seconds", 30)),
+        upload_submit_interval_seconds=max(0, int(upload.get("submit_interval_seconds", 180))),
         cloud_rclone_bin=resolve_executable(str(cloud.get("rclone_bin", "rclone")), base),
         cloud_upload_timeout_seconds=int(cloud.get("upload_timeout_seconds", 6 * 60 * 60)),
         launchd_label=str(launchd.get("label", "com.webt.douyin-bili-recorder")),
@@ -249,6 +251,8 @@ def _validate(config: AppConfig) -> None:
         raise ConfigError("reconnect_grace_minutes cannot be negative")
     if config.upload_retry_count < 0:
         raise ConfigError("retry_count cannot be negative")
+    if config.upload_submit_interval_seconds < 0:
+        raise ConfigError("submit_interval_seconds cannot be negative")
     if config.cloud_upload_timeout_seconds < 60:
         raise ConfigError("cloud upload_timeout_seconds must be at least 60")
     for target in config.targets:

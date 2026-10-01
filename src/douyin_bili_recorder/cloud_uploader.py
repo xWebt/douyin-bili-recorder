@@ -29,8 +29,18 @@ class RcloneCloudUploader:
         self.logger = logger
         self._cancel_lock = threading.Lock()
         self._cancel_events: dict[str, threading.Event] = {}
+        self._upload_lock = threading.Lock()
 
     def upload_part(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        part: SessionPart,
+    ) -> CloudUploadResult:
+        with self._upload_lock:
+            return self._upload_part_unlocked(target, session, part)
+
+    def _upload_part_unlocked(
         self,
         target: TargetConfig,
         session: SessionRecord,
@@ -60,11 +70,19 @@ class RcloneCloudUploader:
                 "1s",
                 "--stats-one-line",
                 "--retries",
-                "2",
-                "--low-level-retries",
                 "3",
+                "--low-level-retries",
+                "5",
+                "--retries-sleep",
+                "15s",
+                "--timeout",
+                "60m",
                 "--contimeout",
-                "30s",
+                "1m",
+                "--transfers",
+                "1",
+                "--checkers",
+                "1",
             ]
             try:
                 result = self.runner.run(
@@ -178,7 +196,7 @@ class RcloneCloudUploader:
         anchor = safe_path_name(target.name, "未命名主播")
         date = session.detected_start_iso or ""
         date_part = date[:10] if len(date) >= 10 else "unknown-date"
-        return f"{root}/{anchor}/{date_part}/P{part.index:02d}"
+        return f"{root}/{anchor}/{date_part}"
 
     @staticmethod
     def _part_files(part: SessionPart) -> list[Path]:

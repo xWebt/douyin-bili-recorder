@@ -6,6 +6,7 @@ import logging
 import re
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,6 +43,8 @@ class BiliupUploader:
         self.progress_store = UploadProgressStore(config.data_dir)
         self._cancel_lock = threading.Lock()
         self._cancel_events: dict[str, threading.Event] = {}
+        self._submit_lock = threading.Lock()
+        self._next_submit_at = 0.0
 
     def upload_session(
         self,
@@ -280,6 +283,28 @@ class BiliupUploader:
         title: str,
         existing_bvid: str | None = None,
     ):
+        with self._submission_slot():
+            return self._run_upload_command_unlocked(
+                command,
+                media_path=media_path,
+                target=target,
+                session_id=session_id,
+                part_index=part_index,
+                title=title,
+                existing_bvid=existing_bvid,
+            )
+
+    def _run_upload_command_unlocked(
+        self,
+        command: list[str],
+        *,
+        media_path: Path,
+        target: TargetConfig,
+        session_id: str,
+        part_index: int,
+        title: str,
+        existing_bvid: str | None = None,
+    ):
         progress_key = f"{session_id}:{part_index}"
         progress = UploadProgressSampler(self.progress_store, self.logger, progress_key)
         progress.start(
@@ -300,6 +325,25 @@ class BiliupUploader:
                 message = "上传完成" if existing_bvid else "等待 BVID"
             progress.stop(message=message, bvid=existing_bvid)
         return result
+
+    @contextmanager
+    def _submission_slot(self):
+        with self._submit_lock:
+            interval = max(0, self.config.upload_submit_interval_seconds)
+            while interval:
+                wait = self._next_submit_at - time.monotonic()
+                if wait <= 0:
+                    break
+                shutdown = getattr(self.runner, "shutdown_event", None)
+                if shutdown is not None:
+                    if shutdown.wait(min(wait, 1.0)):
+                        raise UploadCancelled("上传已停止")
+                else:
+                    time.sleep(min(wait, 1.0))
+            try:
+                yield
+            finally:
+                self._next_submit_at = time.monotonic() + interval
 
     @staticmethod
     def _is_rate_limited(lines: list[str]) -> bool:

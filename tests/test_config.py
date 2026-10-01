@@ -80,6 +80,24 @@ url = "https://live.douyin.com/1"
     config = load_config(config_path)
 
     assert config.upload_retry_count == 2
+    assert config.upload_submit_interval_seconds == 180
+
+
+def test_upload_submit_interval_can_be_disabled(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[upload]
+submit_interval_seconds = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert load_config(config_path).upload_submit_interval_seconds == 0
 
 
 def test_load_config_rejects_duplicate_names(tmp_path: Path) -> None:

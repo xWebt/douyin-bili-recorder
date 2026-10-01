@@ -17,6 +17,42 @@ from douyin_bili_recorder.uploader import UploadResult
 from douyin_bili_recorder.webapp import _clear_target_cache
 
 
+def test_part_below_minimum_checks_size_and_duration(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[recording]
+min_file_size_mb = 1
+min_upload_duration_seconds = 60
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    service = RecorderService(load_config(config_path), logging.getLogger("test"))
+    media = tmp_path / "small.mp4"
+    media.write_bytes(b"x")
+    part = SessionPart(index=1, path=str(media), size=0)
+    monkeypatch.setattr(service.media, "probe_duration", lambda _path: 120.0)
+
+    assert service._part_below_minimum(part) is True
+    assert part.size == 1
+
+    media.write_bytes(b"x" * (1024 * 1024))
+    part.size = 0
+    part.duration_seconds = None
+    monkeypatch.setattr(service.media, "probe_duration", lambda _path: 5.0)
+    assert service._part_below_minimum(part) is True
+
+    part.duration_seconds = 90.0
+    assert service._part_below_minimum(part) is False
+
+
 class FakeRunningProcess:
     def __init__(self, lines: list[str], returncode: int) -> None:
         self._lines = lines
@@ -682,6 +718,9 @@ def test_running_service_starts_workers_for_new_targets(tmp_path: Path, monkeypa
 [app]
 data_dir = "data"
 
+[recording]
+min_file_size_mb = 0
+
 [storage]
 video_dir = "videos"
 
@@ -955,6 +994,9 @@ def test_recover_pending_uploads_sessions_in_parallel(tmp_path: Path) -> None:
         """
 [app]
 data_dir = "data"
+
+[recording]
+min_file_size_mb = 0
 
 [storage]
 video_dir = "videos"

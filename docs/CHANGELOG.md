@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.45
+- Bilibili submissions are globally serialized with a 180 second minimum interval, preventing multi-anchor and multi-part bursts from triggering error `21566`.
+- Cloud backups are serialized to avoid concurrent OpenList/WebDAV uploads, with longer rclone timeout and retry settings for large files.
+- Cloud backup paths now use `anchor/date/file` instead of creating one `P01/P02/...` directory per part.
+- Too-small or too-short segments are filtered before Bilibili upload, cloud backup, and startup recovery, including unknown-duration files that are re-probed.
+- Origin-quality danmaku rendering now converts the probed bitrate from bit/s to kbit/s before passing it to FFmpeg, preventing oversized `maxrate` failures.
+
 ## v2.2.44
 - Deleting an upload now removes its upload-progress record completely, so a deleted item cannot reappear as a phantom upload.
 - Legacy deleted or unavailable upload-progress entries are purged when service status is read.

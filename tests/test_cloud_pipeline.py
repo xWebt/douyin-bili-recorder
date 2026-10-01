@@ -73,7 +73,7 @@ def test_cloud_backup_job_marks_uploaded_without_blocking_bilibili(tmp_path: Pat
         def upload_part(self, _target, _session, _part):
             return CloudUploadResult(
                 True,
-                ["openlist:/DouyinBiliRecorder/anchor/2026-09-30/P01/part.mp4"],
+                ["openlist:/DouyinBiliRecorder/anchor/2026-09-30/part.mp4"],
                 ["ok"],
             )
 

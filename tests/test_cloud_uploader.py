@@ -78,9 +78,11 @@ def test_cloud_uploader_uses_independent_remote_path(tmp_path: Path) -> None:
     assert result.uploaded is True
     assert len(result.remote_paths) == 3
     assert result.remote_paths[0] == (
-        "quark:/DouyinBiliRecorder/anchor/2026-09-30/P02/hour-01.mp4"
+        "quark:/DouyinBiliRecorder/anchor/2026-09-30/hour-01.mp4"
     )
     assert all(command[:2] == ["rclone", "copyto"] for command in runner.commands)
+    assert "--timeout" in runner.commands[0]
+    assert "60m" in runner.commands[0]
 
 
 def test_cloud_uploader_rejects_missing_remote(tmp_path: Path) -> None:

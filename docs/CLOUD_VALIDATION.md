@@ -1,5 +1,14 @@
 # Validation
 
+## v2.2.45 upload throughput and recovery validation
+
+- Full Python test suite: `102 passed`.
+- Cloud path tests verify files are written as `anchor/date/file` with no per-part directory.
+- Minimum-size and duration tests verify small files are rejected before upload or cloud queuing.
+- rclone command tests verify the longer 60 minute timeout and increased retry settings.
+- Danmaku tests verify origin bitrate values are converted from bit/s to kbit/s before FFmpeg arguments are built.
+- Bilibili submission interval defaults to 180 seconds and can be explicitly disabled with `submit_interval_seconds = 0`.
+
 ## v2.2.44 upload-state validation
 
 - Full Python test suite: `100 passed`.

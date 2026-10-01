@@ -143,6 +143,7 @@ class UIStateStore:
             f"delete_after_upload = {str(bool(state.get('delete_after_upload', self.config.delete_after_upload))).lower()}",
             f"retry_count = {self.config.upload_retry_count}",
             f"retry_backoff_seconds = {self.config.upload_retry_backoff_seconds}",
+            f"submit_interval_seconds = {self.config.upload_submit_interval_seconds}",
             "",
             "[cloud]",
             f'rclone_bin = {json.dumps(rclone_bin)}',

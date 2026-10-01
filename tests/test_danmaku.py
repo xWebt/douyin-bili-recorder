@@ -101,7 +101,8 @@ record_danmaku = true
     assert output.read_bytes() == b"burned"
     assert not output.with_suffix(".ass").exists()
     assert any("ass=" in item for item in runner.commands[0])
-    assert "20480000k" in runner.commands[0]
+    assert "20480k" in runner.commands[0]
+    assert "24576k" in runner.commands[0]
     assert "medium" in runner.commands[0]
     assert any("fontsdir=" in item and "douyin_bili_recorder/fonts" in item for item in runner.commands[0])
 

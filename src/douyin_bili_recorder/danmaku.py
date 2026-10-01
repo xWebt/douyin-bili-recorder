@@ -163,7 +163,7 @@ class DanmakuRenderer:
         command.extend(["-vf", ",".join(filters)])
         bitrate = video_bitrate_kbps(quality, frame_rate)
         if quality == "origin" and not bitrate:
-            bitrate = self.probe_video_bitrate(source)
+            bitrate = max(0, self.probe_video_bitrate(source) // 1000)
         if bitrate:
             command.extend(
                 [

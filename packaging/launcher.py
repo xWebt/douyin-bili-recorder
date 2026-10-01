@@ -87,6 +87,7 @@ public = false
 delete_after_upload = false
 retry_count = 5
 retry_backoff_seconds = 30
+submit_interval_seconds = 180
 
 [launchd]
 label = "com.webt.douyin-bili-recorder"

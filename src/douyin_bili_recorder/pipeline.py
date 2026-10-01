@@ -622,10 +622,7 @@ class RecorderService:
                 session.error = f"failed to prepare part {part_index}"
                 self.store.save(session)
                 continue
-            if (
-                part.duration_seconds is not None
-                and part.duration_seconds < self.config.min_upload_duration_seconds
-            ):
+            if self._part_below_minimum(part):
                 self._discard_short_part(session, part)
                 if part in session.parts:
                     session.parts.remove(part)
@@ -642,6 +639,24 @@ class RecorderService:
                 self._queue_cloud_part(session, target, part)
             part_index += 1
         return part_index
+
+    def _part_below_minimum(self, part: SessionPart) -> bool:
+        path = Path(part.path) if part.path else None
+        if path is not None and path.exists():
+            if not part.size:
+                try:
+                    part.size = path.stat().st_size
+                except OSError:
+                    pass
+            if part.duration_seconds is None:
+                part.duration_seconds = self.media.probe_duration(path)
+        minimum_bytes = max(0, self.config.min_file_size_mb) * 1024 * 1024
+        if part.size and minimum_bytes and part.size < minimum_bytes:
+            return True
+        return bool(
+            part.duration_seconds is not None
+            and part.duration_seconds < self.config.min_upload_duration_seconds
+        )
 
     @staticmethod
     def _discard_short_part(session: SessionRecord, part: SessionPart) -> None:
@@ -1064,6 +1079,8 @@ class RecorderService:
             or part.status in {"LOCAL_ONLY", "CANCELED", "DISCARDED"}
         ):
             return None
+        if self._part_below_minimum(part):
+            return None
         if not part.path or not Path(part.path).exists() or part.cloud_status == "UPLOADED":
             return None
         key = f"{session.session_id}:{part.index}"
@@ -1459,6 +1476,7 @@ class RecorderService:
             "delete_after_upload",
             "upload_retry_count",
             "upload_retry_backoff_seconds",
+            "upload_submit_interval_seconds",
             "cloud_rclone_bin",
             "cloud_upload_timeout_seconds",
             "targets",
@@ -1534,10 +1552,7 @@ class RecorderService:
         self.store.save(session)
         if session.parts:
             for part in session.parts:
-                if (
-                    part.duration_seconds is not None
-                    and part.duration_seconds < self.config.min_upload_duration_seconds
-                ):
+                if self._part_below_minimum(part):
                     part.status = "DISCARDED"
                     self._discard_short_part(session, part)
                     continue
