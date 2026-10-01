@@ -6,6 +6,7 @@
 - Tests verify rclone-obscured credential reveal and local OpenList WebDAV detection.
 - The OpenList native uploader uses a cancellable file reader and the documented `File-Path` header.
 - A real local OpenList/Quark upload through `PUT /api/fs/put` succeeded with a 256 KiB validation file; the remote validation object was removed afterward.
+- The application uploader also completed a real 700 MiB upload to the isolated Quark validation directory. The remote object size was verified as exactly `734003200` bytes, then the remote and local validation objects were removed.
 - Cloud uploader coverage confirms the native OpenList path is selected before the rclone WebDAV fallback.
 
 ## v2.2.48 cloud retry config validation
