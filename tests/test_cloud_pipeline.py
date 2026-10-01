@@ -83,3 +83,49 @@ def test_cloud_backup_job_marks_uploaded_without_blocking_bilibili(tmp_path: Pat
     assert ok is True
     assert session.parts[0].cloud_status == "UPLOADED"
     assert media.exists()
+
+
+def test_retry_cloud_only_does_not_call_bilibili_uploader(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config.min_file_size_mb = 0
+    service = RecorderService(config, logging.getLogger("test"))
+    media = tmp_path / "part.mp4"
+    media.write_bytes(b"video")
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        status="RECORDED",
+        cloud_backup=True,
+        cloud_remote="openlist:/DouyinBiliRecorder",
+        parts=[
+            SessionPart(
+                index=1,
+                status="UPLOAD_FAILED",
+                cloud_status="FAILED",
+                path=str(media),
+            )
+        ],
+    )
+    service.store.save(session)
+
+    class CloudStub:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def upload_part(self, _target, _session, _part):
+            self.calls += 1
+            return CloudUploadResult(True, ["openlist:/anchor/date/part.mp4"], ["ok"])
+
+    class BilibiliStub:
+        def upload_part(self, *_args, **_kwargs):
+            raise AssertionError("Bilibili uploader must not run")
+
+    cloud = CloudStub()
+    service.cloud_uploader = cloud  # type: ignore[assignment]
+    service.uploader = BilibiliStub()  # type: ignore[assignment]
+
+    result = service.retry_cloud_only("anchor")
+
+    assert result == {"processed": 1, "uploaded": 1, "failed": 0, "skipped": 0}
+    assert cloud.calls == 1

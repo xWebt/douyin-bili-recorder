@@ -18,6 +18,7 @@ from .auth import BilibiliAuth
 from .analytics import AnalyticsStore
 from .config import AppConfig
 from .config import resolve_executable
+from .cloud_retry import CloudRetryManager
 from .douyin import DouyinResolver
 from .paths import anchor_dir, safe_path_name, session_output_dir, target_key
 from .service_control import ServiceController
@@ -360,6 +361,7 @@ def create_app(config: AppConfig) -> FastAPI:
     auth = BilibiliAuth(config.cookie_file)
     controller = ServiceController(config, state_store)
     openlist = OpenListManager(config.config_path.parent, logging.getLogger(__name__))
+    cloud_retry = CloudRetryManager(config, logging.getLogger(__name__))
     analytics = AnalyticsStore(config.video_dir, config.timezone)
     resolver = DouyinResolver()
     cleanup_done = False
@@ -370,6 +372,7 @@ def create_app(config: AppConfig) -> FastAPI:
             return
         logger = logging.getLogger(__name__)
         for label, action in (
+            ("cloud retry", cloud_retry.stop),
             ("OpenList", openlist.stop),
             ("service supervisor", controller.stop_supervisor),
             ("recorder worker", lambda: controller.stop("keep")),
@@ -415,6 +418,7 @@ def create_app(config: AppConfig) -> FastAPI:
             "authenticated": config.cookie_file.exists(),
             "config": ui_state,
             "service": controller.status(int(ui_state.get("max_cache_gb", config.max_cache_gb))),
+            "cloud_retry": cloud_retry.status(),
             "config_path": str(config.config_path),
         }
 
@@ -536,6 +540,20 @@ def create_app(config: AppConfig) -> FastAPI:
     async def test_cloud_remote(payload: dict[str, Any]) -> dict[str, Any]:
         remote = str(payload.get("remote", "")).strip()
         return _test_cloud_remote(config, remote)
+
+    @app.post("/api/cloud/retry")
+    async def retry_cloud(target: str | None = None) -> dict[str, Any]:
+        state = state_store.load()
+        if controller.status(int(state.get("max_cache_gb", config.max_cache_gb))).get("running"):
+            raise HTTPException(status_code=409, detail="请先停止录制服务，再单独补传网盘")
+        try:
+            return cloud_retry.start(target)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/cloud/retry/stop")
+    async def stop_cloud_retry() -> dict[str, Any]:
+        return cloud_retry.stop()
 
     @app.get("/api/bilibili/submissions")
     async def bilibili_submissions() -> dict[str, Any]:

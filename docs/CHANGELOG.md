@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.2.48
+- Cloud-only retry now loads the UI runtime configuration instead of the packaged example configuration, so saved anchors and cloud remotes are included.
+
+## v2.2.47
+- Added a cloud-only retry task that processes only failed or pending cloud backups without creating any Bilibili upload task.
+- Added per-anchor `补传网盘` and `停止网盘补传` controls.
+- Cloud-only retry is blocked while the normal recorder service is running, preventing duplicate backup jobs.
+
 ## v2.2.46
 - Bilibili duplicate-title checks now use one list request instead of three status-specific requests, with a 15 second cache shared by queued parts.
 - The BVID cache is invalidated after each submission or append, so newly created submissions are still detected.

@@ -1,6 +1,7 @@
 const state = {
   config: null,
   service: null,
+  cloudRetry: null,
   authenticated: false,
   authSessionId: null,
   authTimer: null,
@@ -140,6 +141,7 @@ async function loadState(showErrors = false) {
     const payload = await api("/api/state");
     if (!state.dirty) state.config = payload.config;
     state.service = payload.service;
+    state.cloudRetry = payload.cloud_retry;
     state.authenticated = payload.authenticated;
     render();
   } catch (error) {
@@ -153,6 +155,7 @@ async function refreshService() {
   try {
     const payload = await api("/api/state");
     state.service = payload.service;
+    state.cloudRetry = payload.cloud_retry;
     state.authenticated = payload.authenticated;
     renderService();
     updateTargetRuntime();
@@ -390,6 +393,36 @@ function stopUpload(key) {
 function deleteUpload(key) {
   if (!window.confirm("停止这个上传任务，并删除对应的本地录像文件？")) return;
   return uploadControl("delete", key, "已删除上传任务和本地录像", "删除上传任务失败");
+}
+
+function cloudRetryButton(name) {
+  const current = state.cloudRetry || {};
+  const active = Boolean(current.running) && (!current.target || current.target === name);
+  return active
+    ? actionButton("square", "停止网盘补传", stopCloudRetry)
+    : actionButton("cloud-upload", "补传网盘", () => retryCloudTarget(name));
+}
+
+async function retryCloudTarget(name) {
+  if (state.service?.running) return toast("请先停止录制服务，再单独补传网盘", "error");
+  try {
+    const result = await api(`/api/cloud/retry?target=${encodeURIComponent(name)}`, { method: "POST" });
+    state.cloudRetry = result;
+    toast(`已开始补传 ${name} 的网盘文件`);
+    await loadState(true);
+  } catch (error) {
+    toast(`网盘补传启动失败：${error.message}`, "error");
+  }
+}
+
+async function stopCloudRetry() {
+  try {
+    state.cloudRetry = await api("/api/cloud/retry/stop", { method: "POST" });
+    toast("已停止网盘补传");
+    await loadState(true);
+  } catch (error) {
+    toast(`停止网盘补传失败：${error.message}`, "error");
+  }
 }
 
 async function clearTargetCache(name) {
@@ -659,6 +692,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
     actionButton("file-text", "生成报告", () => openReportDialog(target.name)),
     actionButton("bar-chart-3", "数据详情", () => openAnalytics(target.name)),
     actionButton("folder-open", "打开目录", () => openFolder("anchor", target.name)),
+    cloudRetryButton(target.name),
     actionButton("eraser", "清除缓存", () => clearTargetCache(target.name)),
     actionButton("trash-2", "删除主播", () => {
       const removedName = target.name;

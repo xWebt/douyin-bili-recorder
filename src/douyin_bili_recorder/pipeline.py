@@ -109,6 +109,52 @@ class RecorderService:
         self.recover_pending()
         return self.record_and_upload(target)
 
+    def retry_cloud_only(self, target_name: str | None = None) -> dict[str, int]:
+        selected = None
+        if target_name:
+            selected = self._target_by_name(target_name)
+            if selected is None:
+                raise ValueError(f"unknown target: {target_name}")
+        processed = 0
+        uploaded = 0
+        failed = 0
+        skipped = 0
+        for session in sorted(self.store.all(), key=lambda item: item.created_epoch):
+            if self.shutdown_event.is_set():
+                break
+            target = self._target_by_name(session.target_name)
+            if target is None or (selected is not None and target.name != selected.name):
+                continue
+            if not target.cloud_backup or not target.cloud_remote.strip():
+                continue
+            self._sync_session_cloud_policy(session, target)
+            for part in session.parts:
+                if self.shutdown_event.is_set():
+                    break
+                if part.cloud_status == "UPLOADED":
+                    skipped += 1
+                    continue
+                if part.status in {"CANCELED", "DISCARDED", "LOCAL_ONLY"}:
+                    skipped += 1
+                    continue
+                if not part.path or not Path(part.path).exists():
+                    skipped += 1
+                    continue
+                if self._part_below_minimum(part):
+                    skipped += 1
+                    continue
+                processed += 1
+                if self._cloud_backup_job(target, session, part):
+                    uploaded += 1
+                else:
+                    failed += 1
+        return {
+            "processed": processed,
+            "uploaded": uploaded,
+            "failed": failed,
+            "skipped": skipped,
+        }
+
     def status(self) -> list[SessionRecord]:
         return sorted(self.store.all(), key=lambda item: item.created_epoch, reverse=True)
 

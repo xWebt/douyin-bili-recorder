@@ -1,5 +1,16 @@
 # Validation
 
+## v2.2.48 cloud retry config validation
+
+- Full Python test suite: `105 passed`.
+- A regression test verifies cloud-only retry loads `data/ui/runtime-config.toml` and sees saved anchors rather than the packaged example target.
+
+## v2.2.47 cloud-only retry validation
+
+- Full Python test suite: `104 passed`.
+- The cloud-only retry test verifies the cloud uploader runs while the Bilibili uploader is never called.
+- The API rejects cloud-only retry while the normal recorder service is running.
+
 ## v2.2.46 BVID lookup validation
 
 - Full Python test suite: `103 passed`.
