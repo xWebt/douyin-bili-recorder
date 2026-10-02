@@ -2,6 +2,14 @@
 
 Date: 2026-10-02
 
+## v2.2.53 danmaku quality validation
+
+- The source stream sample was 1088x1920 at 22 fps with an average video bitrate of about 3.25 Mbps.
+- The previous origin render produced about 3.53 Mbps; the CRF 20 render produced about 14.24 Mbps at the same resolution and frame rate.
+- The new renderer avoids a second low-bitrate compression pass while keeping the source resolution and frame rate.
+
+## v2.2.52 UI and end-to-end validation
+
 ## v2.2.52 UI and end-to-end validation
 
 - The packaged `v2.2.52` build completed signature verification.

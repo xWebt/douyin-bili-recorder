@@ -162,9 +162,20 @@ class DanmakuRenderer:
         filters.append(ass_filter)
         command.extend(["-vf", ",".join(filters)])
         bitrate = video_bitrate_kbps(quality, frame_rate)
-        if quality == "origin" and not bitrate:
-            bitrate = max(0, self.probe_video_bitrate(source) // 1000)
-        if bitrate:
+        if quality == "origin":
+            command.extend(
+                [
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "medium",
+                    "-crf",
+                    "20",
+                    "-pix_fmt",
+                    "yuv420p",
+                ]
+            )
+        elif bitrate:
             command.extend(
                 [
                     "-c:v",

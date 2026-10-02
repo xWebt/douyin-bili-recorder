@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.53
+- Origin-quality danmaku rendering now uses `libx264 CRF 20` instead of re-encoding at the source stream's measured bitrate, avoiding an unnecessary second low-bitrate compression pass.
+
 ## v2.2.52
 - Reworked the control deck into a fixed-height application shell with top-level views for recording control, Bilibili submissions, cloud backup, and the video library.
 - Moved upload queues and cloud backup status out of the anchor cards; each network workflow now has its own dedicated view and internal scrolling.
