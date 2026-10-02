@@ -5,7 +5,7 @@ from pathlib import Path
 
 from douyin_bili_recorder.cloud_uploader import CloudUploadResult
 from douyin_bili_recorder.config import load_config
-from douyin_bili_recorder.models import SessionPart, SessionRecord
+from douyin_bili_recorder.models import SessionPart, SessionRecord, SessionStatus
 from douyin_bili_recorder.pipeline import RecorderService
 
 
@@ -129,3 +129,40 @@ def test_retry_cloud_only_does_not_call_bilibili_uploader(tmp_path: Path) -> Non
 
     assert result == {"processed": 1, "uploaded": 1, "failed": 0, "skipped": 0}
     assert cloud.calls == 1
+
+
+def test_cleanup_during_recording_preserves_danmaku_workspace(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    session_dir = config.sessions_dir / "session"
+    runtime_file = session_dir / ".danmaku-runtime" / "data" / "data.sqlite3"
+    runtime_file.parent.mkdir(parents=True)
+    runtime_file.write_bytes(b"sqlite")
+    media = tmp_path / "part.mp4"
+    media.write_bytes(b"video")
+    part = SessionPart(
+        index=1,
+        status="UPLOADED",
+        path=str(media),
+        cloud_status="UPLOADED",
+        bvid="BV0000000001",
+    )
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        status=SessionStatus.RECORDING,
+        cloud_backup=True,
+        cloud_remote="openlist:/DouyinBiliRecorder",
+        parts=[part],
+    )
+
+    service._cleanup_part_if_ready(config.targets[0], session, part)
+
+    assert not media.exists()
+    assert runtime_file.exists()
+
+    session.status = SessionStatus.UPLOADED
+    service._cleanup_uploaded_artifacts(session)
+
+    assert not runtime_file.exists()

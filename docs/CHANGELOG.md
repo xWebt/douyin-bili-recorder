@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.50
+- Prevent per-part post-upload cleanup from deleting the active `.danmaku-runtime` directory while a recording session is still in progress.
+- Added regression coverage that keeps the biliup danmaku database and workspace intact until the full session leaves `RECORDING`.
+
 ## v2.2.49
 - OpenList-backed cloud remotes now upload through the native `PUT /api/fs/put` API instead of WebDAV, avoiding the OpenList/Quark large-file `405 Method Not Allowed` bug.
 - Local rclone WebDAV credentials are revealed only in memory and used to obtain an OpenList API token; credentials and tokens are never logged.

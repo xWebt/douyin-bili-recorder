@@ -1239,6 +1239,12 @@ class RecorderService:
             self._cleanup_uploaded_artifacts(session)
 
     def _cleanup_uploaded_artifacts(self, session: SessionRecord) -> None:
+        if session.status == SessionStatus.RECORDING:
+            self.logger.info(
+                "session workspace cleanup deferred while recording for %s",
+                session.session_id,
+            )
+            return
         if not session.parts or not all(part.status == "UPLOADED" for part in session.parts):
             return
         if not all(self._part_cloud_complete(session, part) for part in session.parts):
