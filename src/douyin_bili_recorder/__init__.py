@@ -1,3 +1,3 @@
 """Douyin live recorder package."""
 
-__version__ = "2.2.61"
+__version__ = "2.2.62"

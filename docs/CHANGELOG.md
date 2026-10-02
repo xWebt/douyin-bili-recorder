@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.62
+- Automatic cleanup now treats a persisted BVID as proof of Bilibili upload completion even if a stale worker later overwrites the part status.
+
 ## v2.2.61
 - Resolve `webcast.amemv.com/.../reflow/<room_id>` live-share links into the anchor `shortId` URL accepted by biliup.
 - Automatically delete local MP4/FLV/XML files once both Bilibili and cloud uploads are confirmed, including before each new storage-budget allocation.

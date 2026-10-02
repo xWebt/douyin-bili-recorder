@@ -1295,7 +1295,7 @@ class RecorderService:
                 self._sync_session_cloud_policy(session, target)
             changed = False
             for part in session.parts:
-                if part.status != "UPLOADED":
+                if part.status != "UPLOADED" and not part.bvid:
                     continue
                 if session.cloud_backup and part.cloud_status != "UPLOADED":
                     continue
