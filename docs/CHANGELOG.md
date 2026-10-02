@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.54
+- Split the Bilibili view into `上传队列` and `稿件状态` subviews so the submission list gets the full content height and cannot be covered by upload controls.
+
 ## v2.2.53
 - Origin-quality danmaku rendering now uses `libx264 CRF 20` instead of re-encoding at the source stream's measured bitrate, avoiding an unnecessary second low-bitrate compression pass.
 

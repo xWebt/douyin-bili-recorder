@@ -198,6 +198,42 @@ body {
   color: var(--info);
 }
 
+.bili-subnav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.bili-subnav button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.bili-subnav button.active {
+  background: var(--signal-soft);
+  color: var(--signal);
+}
+
+[data-bili-panel-content] {
+  grid-row: 2;
+}
+
+[data-bili-panel-content][hidden] {
+  display: none !important;
+}
+
 @media (max-width: 1180px) {
   .app-view[data-view-panel="dashboard"] {
     overflow: auto;

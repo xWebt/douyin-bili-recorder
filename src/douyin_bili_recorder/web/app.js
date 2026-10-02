@@ -10,6 +10,7 @@ const state = {
   submissions: null,
   reportTarget: "",
   activeView: "dashboard",
+  biliPane: "status",
   dirty: false,
   uploadSignature: "",
   cloudSignature: "",
@@ -55,6 +56,8 @@ const els = {
   uploadSpeed: document.querySelector("#uploadSpeed"),
   uploadEta: document.querySelector("#uploadEta"),
   uploadList: document.querySelector("#uploadList"),
+  biliSubnav: document.querySelector("#biliSubnav"),
+  biliPanels: [...document.querySelectorAll("[data-bili-panel-content]")],
   targetList: document.querySelector("#targetList"),
   targetEmpty: document.querySelector("#targetEmpty"),
   targetForm: document.querySelector("#targetForm"),
@@ -140,10 +143,21 @@ function setView(view) {
   for (const panel of els.viewPanels || []) {
     panel.hidden = panel.dataset.viewPanel !== state.activeView;
   }
-  if (state.activeView === "bilibili") openSubmissions();
+  if (state.activeView === "bilibili") setBiliPane(state.biliPane);
   if (state.activeView === "cloud") renderCloudUploads();
   if (state.activeView === "library") openVideoLibrary();
   if (state.activeView === "dashboard") refreshLogs();
+}
+
+function setBiliPane(pane) {
+  state.biliPane = pane === "queue" ? "queue" : "status";
+  for (const button of els.biliSubnav?.querySelectorAll("[data-bili-panel]") || []) {
+    button.classList.toggle("active", button.dataset.biliPanel === state.biliPane);
+  }
+  for (const panel of els.biliPanels || []) {
+    panel.hidden = panel.dataset.biliPanelContent !== state.biliPane;
+  }
+  if (state.biliPane === "status") openSubmissions();
 }
 
 function markDirty() {
@@ -1251,7 +1265,7 @@ function renderSubmissions(payload) {
     const empty = document.createElement("div");
     empty.className = "submission-empty";
     empty.textContent = payload?.available ? "暂无匹配到本机投稿记录的稿件。" : "登录B站后刷新。";
-    els.submissionList.append(empty);
+    els.submissionList.replaceChildren(empty);
     return;
   }
   els.submissionList.replaceChildren(...submissions.map((item) => {
@@ -1492,6 +1506,9 @@ els.targetForm.addEventListener("submit", (event) => {
 });
 els.loginButton.addEventListener("click", openLogin);
 els.closeLoginButton.addEventListener("click", closeLogin);
+for (const button of els.biliSubnav?.querySelectorAll("[data-bili-panel]") || []) {
+  button.addEventListener("click", () => setBiliPane(button.dataset.biliPanel));
+}
 for (const button of els.appNav?.querySelectorAll("[data-view]") || []) {
   button.addEventListener("click", () => setView(button.dataset.view));
 }
@@ -1511,7 +1528,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 window.setInterval(() => {
-  if (state.activeView === "bilibili") openSubmissions();
+  if (state.activeView === "bilibili" && state.biliPane === "status") openSubmissions();
 }, 20000);
 
 const globalControlRail = document.querySelector(".control-rail");

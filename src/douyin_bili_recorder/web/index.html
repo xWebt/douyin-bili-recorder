@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f7fb" />
     <title>DouyinBiliRecorder</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2.2.53" />
-    <link rel="stylesheet" href="/static/app-shell.css?v=2.2.53" />
+    <link rel="stylesheet" href="/static/styles.css?v=2.2.54" />
+    <link rel="stylesheet" href="/static/app-shell.css?v=2.2.54" />
   </head>
   <body>
     <div class="app-shell">
@@ -157,7 +157,11 @@
         </section>
 
         <section class="app-view" data-view-panel="bilibili" hidden>
-          <section class="upload-strip" id="uploadPanel">
+          <nav class="bili-subnav" id="biliSubnav" aria-label="B站投稿分区">
+            <button type="button" data-bili-panel="queue"><i data-lucide="cloud-upload"></i><span>上传队列</span></button>
+            <button type="button" data-bili-panel="status" class="active"><i data-lucide="clipboard-list"></i><span>稿件状态</span></button>
+          </nav>
+          <section class="upload-strip" id="uploadPanel" data-bili-panel-content="queue" hidden>
             <div class="upload-heading">
               <div><p class="eyebrow">UPLOAD QUEUE</p><strong id="uploadTitle">当前没有上传</strong><small id="uploadMeta">等待分段完成</small></div>
               <span class="upload-percent" id="uploadPercent">--</span>
@@ -166,7 +170,7 @@
             <div class="upload-stats"><span id="uploadBytes">-- / --</span><span id="uploadSpeed">--</span><span id="uploadEta">--</span></div>
             <div class="upload-list" id="uploadList"></div>
           </section>
-          <section class="panel submissions-panel">
+          <section class="panel submissions-panel" data-bili-panel-content="status">
             <div class="section-heading">
               <div><p class="eyebrow">BILIBILI SUBMISSIONS</p><h2>稿件状态</h2></div>
               <button class="icon-button" id="submissionsRefreshButton" type="button" title="刷新稿件"><i data-lucide="refresh-cw"></i></button>
@@ -258,6 +262,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="/static/vendor/lucide.min.js"></script>
-    <script src="/static/app.js?v=2.2.53"></script>
+    <script src="/static/app.js?v=2.2.54"></script>
   </body>
 </html>

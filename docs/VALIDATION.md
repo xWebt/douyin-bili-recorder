@@ -2,6 +2,14 @@
 
 Date: 2026-10-02
 
+## v2.2.54 Bilibili status layout validation
+
+- The Bilibili view now has independent `上传队列` and `稿件状态` subviews.
+- With 40 mocked submission rows, the status list received the full panel height and remained scrollable without page scrolling or overlap at 1280x720.
+- Switching to `上传队列` hides the submission panel and restores the upload queue immediately.
+
+## v2.2.53 danmaku quality validation
+
 ## v2.2.53 danmaku quality validation
 
 - The source stream sample was 1088x1920 at 22 fps with an average video bitrate of about 3.25 Mbps.
