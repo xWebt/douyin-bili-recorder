@@ -51,7 +51,7 @@ class RecorderService:
         self.interrupt_event = threading.Event()
         self.store = SessionStore(config.sessions_dir)
         self.record_runner = ProcessRunner(logger, self.shutdown_event, self.interrupt_event)
-        self.io_runner = ProcessRunner(logger, self.shutdown_event)
+        self.io_runner = ProcessRunner(logger, self.shutdown_event, self.interrupt_event)
         self.recorder = BiliupRecorder(config, self.record_runner, logger)
         self.media = MediaProcessor(config, self.io_runner, logger)
         self.danmaku = DanmakuRenderer(config, self.io_runner, logger)
@@ -207,7 +207,13 @@ class RecorderService:
             session.session_id,
         )
         if not output_dir.exists():
-            return
+            session_dir = self.store.session_dir(session.session_id)
+            if not session_dir.exists():
+                return
+            output_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            session_dir = self.store.session_dir(session.session_id)
+        self._recover_unprocessed_sources(session, target, session_dir)
         known_stems = {Path(part.path).stem for part in session.parts if part.path}
         known_indices = {part.index for part in session.parts}
         added = False
@@ -272,6 +278,44 @@ class RecorderService:
             self.store.save(session)
             self.analytics.upsert(session)
             self.logger.info("recovered orphan media parts for %s", session.session_id)
+
+    def _recover_unprocessed_sources(
+        self,
+        session: SessionRecord,
+        target: TargetConfig,
+        session_dir: Path,
+    ) -> None:
+        if target.record_mode == "monitor":
+            return
+        known_sources = {
+            str(Path(part.source_path))
+            for part in session.parts
+            if part.source_path
+        }
+        next_index = max((part.index for part in session.parts), default=0) + 1
+        for source in discover_media(session_dir, self.config.min_file_size_mb):
+            if str(source) in known_sources:
+                continue
+            self.logger.info("recovering completed segment %s", source)
+            part = self._prepare_part(
+                target,
+                session,
+                session_dir,
+                source,
+                next_index,
+                upload_allowed=True,
+            )
+            if part is None:
+                session.error = f"failed to recover segment {source.name}"
+                self.store.save(session)
+                continue
+            if self._part_below_minimum(part):
+                self._discard_short_part(session, part)
+                if part in session.parts:
+                    session.parts.remove(part)
+                self.store.save(session)
+                continue
+            next_index = part.index + 1
 
     def _sync_target_workers(self) -> set[str]:
         try:
@@ -1714,6 +1758,7 @@ class RecorderService:
             self._pause_mode = mode
         self.interrupt_event.set()
         self.record_runner.terminate_active()
+        self.io_runner.terminate_active()
 
     def _wait_for_stop(self, seconds: int) -> bool:
         deadline = time.monotonic() + max(0, seconds)

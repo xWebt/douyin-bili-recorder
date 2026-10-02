@@ -29,9 +29,8 @@ class OpenListManager:
 
     def ensure_running(self, timeout_seconds: float = 10.0) -> bool:
         if self.is_ready():
-            if not self._stop_existing_owned():
-                return True
-            self._wait_until_stopped()
+            self.logger.info("reusing existing OpenList listener on 127.0.0.1:5244")
+            return True
         if not self.binary.is_file() or not os.access(self.binary, os.X_OK):
             self.logger.warning("OpenList executable not found: %s", self.binary)
             return False
@@ -171,10 +170,13 @@ class OpenListManager:
             return ""
         return result.stdout.strip()
 
-    def _wait_until_stopped(self, timeout_seconds: float = 5.0) -> None:
+    def _wait_until_stopped(self, timeout_seconds: float = 5.0) -> bool:
         deadline = time.monotonic() + timeout_seconds
-        while time.monotonic() < deadline and self.is_ready():
+        while time.monotonic() < deadline:
+            if not self.is_ready():
+                return True
             time.sleep(0.1)
+        return False
 
     def _stop_process(self, pid: int) -> None:
         for sig, timeout_seconds in ((signal.SIGTERM, 3.0), (signal.SIGKILL, 1.0)):

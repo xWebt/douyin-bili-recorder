@@ -6,12 +6,13 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from .config import AppConfig
-from .encoding import video_bitrate_kbps
 from .process import ProcessRunner
 
 CHINESE_FONT = "Hiragino Sans GB"
 EMOJI_FONT = "Noto Emoji"
 BUNDLED_FONT_DIR = Path(__file__).with_name("fonts")
+DANMAKU_BITRATE_KBPS = {"origin": 24_000, "1080p": 16_000, "720p": 8_000, "480p": 3_000}
+RENDER_TIMEOUT_SECONDS = 4 * 60 * 60
 
 
 def ass_time(seconds: float) -> str:
@@ -115,6 +116,7 @@ def build_ass(xml_path: Path, ass_path: Path, width: int, height: int) -> int:
     return len(events)
 
 
+
 class DanmakuRenderer:
     def __init__(self, config: AppConfig, runner: ProcessRunner, logger: logging.Logger) -> None:
         self.config = config
@@ -141,75 +143,95 @@ class DanmakuRenderer:
         ass_filter = f"ass={ass_path}"
         if fontsdir:
             ass_filter += f":fontsdir={fontsdir}"
-        command = [
+        filters: list[str] = []
+        if quality != "origin":
+            edge_limit = {"1080p": 1080, "720p": 720, "480p": 480}.get(quality)
+            if edge_limit:
+                if width > height:
+                    filters.append(f"scale=-2:{edge_limit}")
+                else:
+                    filters.append(f"scale={edge_limit}:-2")
+        if frame_rate != "source":
+            filters.append(f"fps={frame_rate}")
+        filters.append(ass_filter)
+
+        bitrate = DANMAKU_BITRATE_KBPS.get(quality, DANMAKU_BITRATE_KBPS["origin"])
+        if frame_rate == "60":
+            bitrate = int(bitrate * 1.35)
+        common = [
             self.config.ffmpeg_bin,
             "-hide_banner",
             "-loglevel",
-            "warning",
+            "error",
             "-y",
             "-fflags",
             "+genpts+igndts",
             "-i",
             str(source),
+            "-vf",
+            ",".join(filters),
         ]
-        filters: list[str] = []
-        if quality != "origin":
-            height_limit = {"1080p": 1080, "720p": 720, "480p": 480}.get(quality)
-            if height_limit:
-                filters.append(f"scale=-2:{height_limit}")
-        if frame_rate != "source":
-            filters.append(f"fps={frame_rate}")
-        filters.append(ass_filter)
-        command.extend(["-vf", ",".join(filters)])
-        bitrate = video_bitrate_kbps(quality, frame_rate)
-        if quality == "origin":
-            command.extend(
-                [
-                    "-c:v",
-                    "libx264",
-                    "-preset",
-                    "medium",
-                    "-crf",
-                    "20",
-                    "-pix_fmt",
-                    "yuv420p",
-                ]
-            )
-        elif bitrate:
-            command.extend(
-                [
-                    "-c:v",
-                    "libx264",
-                    "-preset",
-                    "medium",
-                    "-pix_fmt",
-                    "yuv420p",
-                    "-b:v",
-                    f"{bitrate}k",
-                    "-maxrate",
-                    f"{int(bitrate * 1.2)}k",
-                    "-bufsize",
-                    f"{bitrate * 2}k",
-                ]
-            )
-        else:
-            command.extend(["-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p"])
-        command.extend(
-            [
-                "-c:a",
-                "aac",
-                "-b:a",
-                "256k",
-                "-movflags",
-                "+faststart",
-                "-avoid_negative_ts",
-                "make_zero",
-                str(output_path),
-            ]
-        )
+        container_args = [
+            "-c:a",
+            "aac",
+            "-b:a",
+            "256k",
+            "-movflags",
+            "+faststart",
+            "-avoid_negative_ts",
+            "make_zero",
+            str(output_path),
+        ]
+        hardware_args = [
+            "-c:v",
+            "h264_videotoolbox",
+            "-pix_fmt",
+            "yuv420p",
+            "-profile:v",
+            "high",
+            "-b:v",
+            f"{bitrate}k",
+            "-maxrate",
+            f"{int(bitrate * 1.2)}k",
+            "-bufsize",
+            f"{bitrate * 2}k",
+        ]
+        software_args = [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-pix_fmt",
+            "yuv420p",
+            "-profile:v",
+            "high",
+            "-b:v",
+            f"{bitrate}k",
+            "-maxrate",
+            f"{int(bitrate * 1.2)}k",
+            "-bufsize",
+            f"{bitrate * 2}k",
+        ]
         try:
-            result = self.runner.run(command)
-            if result.returncode != 0 or not output_path.exists():
+            output_path.unlink(missing_ok=True)
+            result = self.runner.run(
+                [*common, *hardware_args, *container_args],
+                timeout_seconds=RENDER_TIMEOUT_SECONDS,
+            )
+            if result.cancelled or result.timed_out:
+                output_path.unlink(missing_ok=True)
+                raise RuntimeError(f"danmaku render interrupted: {output_path}")
+            if result.returncode == 0 and output_path.exists():
+                return count
+
+            self.logger.warning("hardware danmaku render failed; retrying with libx264")
+            output_path.unlink(missing_ok=True)
+            result = self.runner.run(
+                [*common, *software_args, *container_args],
+                timeout_seconds=RENDER_TIMEOUT_SECONDS,
+            )
+            if result.cancelled or result.timed_out or result.returncode != 0 or not output_path.exists():
+                output_path.unlink(missing_ok=True)
                 raise RuntimeError(f"failed to render danmaku video: {output_path}")
         finally:
             ass_path.unlink(missing_ok=True)
@@ -239,7 +261,6 @@ class DanmakuRenderer:
             return 0
 
     def probe_size(self, media: Path) -> tuple[int, int]:
-
         result = subprocess.run(
             [
                 self.config.ffprobe_bin,

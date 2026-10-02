@@ -20,6 +20,16 @@ class FakeRunner:
         return ProcessResult(0, [])
 
 
+class FallbackRunner(FakeRunner):
+    def run(self, args, **_kwargs) -> ProcessResult:
+        command = [str(item) for item in args]
+        self.commands.append(command)
+        if len(self.commands) == 1:
+            return ProcessResult(1, ["hardware renderer failed"])
+        Path(command[-1]).write_bytes(b"burned")
+        return ProcessResult(0, [])
+
+
 def test_build_ass_uses_slow_staggered_right_to_left_motion(tmp_path: Path) -> None:
     xml = tmp_path / "danmaku.xml"
     xml.write_text(
@@ -100,10 +110,45 @@ record_danmaku = true
     assert output.read_bytes() == b"burned"
     assert not output.with_suffix(".ass").exists()
     assert any("ass=" in item for item in runner.commands[0])
-    assert "-crf" in runner.commands[0]
-    assert "20" in runner.commands[0]
-    assert "medium" in runner.commands[0]
+    assert "h264_videotoolbox" in runner.commands[0]
+    assert "24000k" in runner.commands[0]
+    assert "-profile:v" in runner.commands[0]
     assert any("fontsdir=" in item and "douyin_bili_recorder/fonts" in item for item in runner.commands[0])
+
+
+def test_renderer_falls_back_to_software_when_hardware_encoder_fails(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[upload]
+ffmpeg_bin = "ffmpeg"
+ffprobe_bin = "ffprobe"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+record_danmaku = true
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    source = tmp_path / "source.flv"
+    source.write_bytes(b"video")
+    xml = tmp_path / "source.xml"
+    xml.write_text('<i><d p="0.1,1,25,16777215,1,0,0,0">hello</d></i>', encoding="utf-8")
+    output = tmp_path / "output.mp4"
+    runner = FallbackRunner()
+    renderer = DanmakuRenderer(config, runner, logging.getLogger("test"))
+    renderer.probe_size = lambda _path: (1080, 1920)  # type: ignore[method-assign]
+
+    assert renderer.render(source, xml, output, quality="1080p", frame_rate="source") == 1
+    assert "h264_videotoolbox" in runner.commands[0]
+    assert "libx264" in runner.commands[1]
+    assert any("scale=1080:-2" in item for item in runner.commands[1])
+    assert "16000k" in runner.commands[1]
 
 
 def test_build_ass_uses_emoji_font_for_missing_glyphs(tmp_path: Path) -> None:

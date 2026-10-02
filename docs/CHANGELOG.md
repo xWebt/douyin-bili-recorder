@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.58
+- Replaced the slow danmaku burn-in path with high-bitrate VideoToolbox encoding and a `libx264 veryfast` fallback.
+- Fixed portrait-quality scaling and raised render targets so burned-in recordings stay visually close to the source.
+- Stopping the recorder now terminates active rendering and upload child processes instead of leaving orphan `ffmpeg` jobs.
+- Startup recovery now finds completed FLV/XML segments left in a session directory and renders them before upload, so completed P2 segments are no longer hidden behind a stalled P1 render.
+
 ## v2.2.57
 - Removed the global cloud-upload lock; cloud uploads now use per-part locks so different anchors and segments can upload in parallel without blocking each other.
 
