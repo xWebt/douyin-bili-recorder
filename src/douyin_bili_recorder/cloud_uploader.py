@@ -30,7 +30,8 @@ class RcloneCloudUploader:
         self.logger = logger
         self._cancel_lock = threading.Lock()
         self._cancel_events: dict[str, threading.Event] = {}
-        self._upload_lock = threading.Lock()
+        self._part_locks: dict[str, threading.Lock] = {}
+        self._part_locks_guard = threading.Lock()
         self._api_clients: dict[str, OpenListApiClient | None] = {}
 
     def upload_part(
@@ -39,8 +40,13 @@ class RcloneCloudUploader:
         session: SessionRecord,
         part: SessionPart,
     ) -> CloudUploadResult:
-        with self._upload_lock:
+        key = f"{session.session_id}:{part.index}"
+        with self._part_lock(key):
             return self._upload_part_unlocked(target, session, part)
+
+    def _part_lock(self, key: str) -> threading.Lock:
+        with self._part_locks_guard:
+            return self._part_locks.setdefault(key, threading.Lock())
 
     def _upload_part_unlocked(
         self,

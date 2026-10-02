@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 
 from douyin_bili_recorder.cloud_uploader import RcloneCloudUploader
@@ -28,6 +29,21 @@ class FakeOpenListClient:
 
     def upload(self, local_path: Path, remote_path: str, _cancel_event) -> None:
         self.uploads.append((local_path, remote_path))
+
+
+class ConcurrentOpenListClient:
+    def __init__(self) -> None:
+        self.entered = 0
+        self.lock = threading.Lock()
+        self.both_entered = threading.Event()
+        self.release = threading.Event()
+
+    def upload(self, _local_path: Path, _remote_path: str, _cancel_event) -> None:
+        with self.lock:
+            self.entered += 1
+            if self.entered == 2:
+                self.both_entered.set()
+        self.release.wait(timeout=2)
 
 
 def _config(tmp_path: Path):
@@ -120,6 +136,37 @@ def test_cloud_uploader_prefers_native_openlist_api(tmp_path: Path) -> None:
         )
     ]
     assert runner.commands == []
+
+
+def test_cloud_uploader_allows_different_parts_in_parallel(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    sessions = []
+    parts = []
+    for index in (1, 2):
+        media = tmp_path / f"part-{index}.mp4"
+        media.write_bytes(b"video")
+        session = SessionRecord(
+            session_id=f"session-{index}",
+            target_name=f"anchor-{index}",
+            target_url="https://live.douyin.com/1",
+            detected_start_iso="2026-09-30T20:15:00+08:00",
+        )
+        sessions.append(session)
+        parts.append(SessionPart(index=1, path=str(media)))
+    client = ConcurrentOpenListClient()
+    uploader = RcloneCloudUploader(config, FakeRunner(), logging.getLogger("test"))  # type: ignore[arg-type]
+    uploader._openlist_api_client = lambda _remote: client  # type: ignore[method-assign]
+    threads = [
+        threading.Thread(target=uploader.upload_part, args=(config.targets[0], session, part))
+        for session, part in zip(sessions, parts)
+    ]
+    for thread in threads:
+        thread.start()
+    assert client.both_entered.wait(timeout=1)
+    client.release.set()
+    for thread in threads:
+        thread.join(timeout=2)
+    assert all(not thread.is_alive() for thread in threads)
 
 
 def test_cloud_uploader_rejects_missing_remote(tmp_path: Path) -> None:

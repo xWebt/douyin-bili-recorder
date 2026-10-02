@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.57
+- Removed the global cloud-upload lock; cloud uploads now use per-part locks so different anchors and segments can upload in parallel without blocking each other.
+
 ## v2.2.56
 - Filled the control dashboard with a live overview: active recordings, upload tasks, pending cloud backups, cache usage, and recent target states.
 

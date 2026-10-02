@@ -2,6 +2,13 @@
 
 Date: 2026-10-02
 
+## v2.2.57 cloud upload concurrency validation
+
+- Regression coverage verifies two different anchor/part uploads can enter the cloud uploader concurrently.
+- The previous process-wide cloud upload lock was replaced with per-part locks, so cloud backup no longer serializes unrelated anchors.
+
+## v2.2.56 dashboard overview validation
+
 ## v2.2.56 dashboard overview validation
 
 - At 1280x720 the dashboard uses a two-column layout: service controls on the left and a live overview on the right.
