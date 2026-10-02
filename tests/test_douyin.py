@@ -102,3 +102,19 @@ def test_resolve_uses_numeric_canonical_live_url(monkeypatch) -> None:
     assert result.canonical_url == "https://live.douyin.com/694562812381"
     assert result.web_rid == "694562812381"
     assert result.live is True
+
+
+def test_webcast_share_uses_anchor_short_id(monkeypatch) -> None:
+    class TextResponse:
+        text = r'{\"owner\":{\"id\":2344620028077864,\"shortId\":89996101660,\"nickname\":\"凡晨\"},\"title\":\"测试直播\"}'
+
+    resolver = DouyinResolver()
+    monkeypatch.setattr(resolver, "_get", lambda _url, **_kwargs: TextResponse())
+
+    result = resolver._resolve_webcast_share(
+        "https://webcast.amemv.com/douyin/webcast/reflow/7692116106240084786?sec_user_id=test"
+    )
+
+    assert result["web_rid"] == "89996101660"
+    assert result["room_id"] == "7692116106240084786"
+    assert result["live"] is True

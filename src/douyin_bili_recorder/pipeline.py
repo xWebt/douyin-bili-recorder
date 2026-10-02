@@ -318,6 +318,7 @@ class RecorderService:
             next_index = part.index + 1
 
     def _sync_target_workers(self) -> set[str]:
+        self.cleanup_completed_parts()
         try:
             fresh = load_config(self.config.config_path)
         except Exception as exc:  # noqa: BLE001
@@ -827,6 +828,7 @@ class RecorderService:
         return "stream is offline" in text or "stream went offline" in text
 
     def _wait_for_capacity(self, target: TargetConfig) -> bool:
+        self.cleanup_completed_parts()
         segment_seconds = parse_duration_seconds(self.config.segment_time)
         peak = peak_gb_per_segment(
             self.config.quality,
@@ -1281,6 +1283,52 @@ class RecorderService:
             for item in session.parts
         ):
             self._cleanup_uploaded_artifacts(session)
+
+    def cleanup_completed_parts(self) -> dict[str, int]:
+        if not self.config.delete_after_upload:
+            return {"removed": 0, "freed_bytes": 0}
+        removed = 0
+        freed_bytes = 0
+        for session in self.store.all():
+            target = self._target_by_name(session.target_name)
+            if target is not None:
+                self._sync_session_cloud_policy(session, target)
+            changed = False
+            for part in session.parts:
+                if part.status != "UPLOADED":
+                    continue
+                if session.cloud_backup and part.cloud_status != "UPLOADED":
+                    continue
+                paths = [Path(value) for value in (part.path, part.source_path, part.danmaku_path) if value]
+                if not paths:
+                    continue
+                try:
+                    for path in paths:
+                        if path.exists():
+                            freed_bytes += path.stat().st_size
+                            path.unlink()
+                except OSError as exc:
+                    self.logger.warning(
+                        "automatic cleanup deferred for %s P%02d: %s",
+                        session.session_id,
+                        part.index,
+                        exc,
+                    )
+                    continue
+                part.path = ""
+                part.source_path = ""
+                part.danmaku_path = ""
+                removed += 1
+                changed = True
+            if changed:
+                self.store.save(session)
+        if removed:
+            self.logger.info(
+                "automatically removed %s uploaded parts, freed %.2f GB",
+                removed,
+                freed_bytes / (1024**3),
+            )
+        return {"removed": removed, "freed_bytes": freed_bytes}
 
     def _cleanup_uploaded_artifacts(self, session: SessionRecord) -> None:
         if session.status == SessionStatus.RECORDING:

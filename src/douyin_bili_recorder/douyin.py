@@ -81,6 +81,21 @@ class DouyinResolver:
     def resolve(self, url: str, *, check_live: bool = True) -> ResolvedTarget:
         shared_url = extract_shared_url(url)
         final_url = self._follow_redirect(shared_url)
+        share_room = self._resolve_webcast_share(final_url)
+        if share_room:
+            web_rid = str(share_room.get("web_rid") or "")
+            room_id = str(share_room.get("room_id") or "")
+            canonical_room = web_rid or room_id
+            return ResolvedTarget(
+                input_url=url,
+                canonical_url=f"https://live.douyin.com/{canonical_room}" if canonical_room else final_url,
+                anchor_name=str(share_room.get("anchor_name") or ""),
+                sec_uid=str(share_room.get("sec_uid") or ""),
+                web_rid=web_rid,
+                room_id=room_id,
+                live=bool(share_room.get("live")),
+                room_title=str(share_room.get("room_title") or ""),
+            )
         sec_uid = self._extract_sec_uid(final_url)
         web_rid = self._extract_web_rid(final_url)
         room_alias = ""
@@ -127,6 +142,35 @@ class DouyinResolver:
             return url
         response = self._get(url, allow_redirects=True)
         return str(response.url)
+
+    def _resolve_webcast_share(self, url: str) -> dict[str, Any]:
+        if "webcast.amemv.com" not in url and "/douyin/webcast/reflow/" not in url:
+            return {}
+        try:
+            response = self._get(url)
+            response.encoding = "utf-8"
+            text = response.text
+        except requests.RequestException:
+            return {}
+        short_id = self._first_match(text, r'(?s)\\"owner\\":\{.*?\\"shortId\\":(\d+)')
+        if not short_id:
+            short_id = self._first_match(text, r'(?s)"owner":\{.*?"shortId":(\d+)')
+        if not short_id:
+            return {}
+        nickname = self._first_match(text, r'(?s)\\"owner\\":\{.*?\\"nickname\\":\\"([^"\\]+)')
+        if not nickname:
+            nickname = self._first_match(text, r'(?s)"owner":\{.*?"nickname":"([^"]+)')
+        title = self._first_match(text, r'\\"title\\":\\"([^"\\]+)')
+        room_id = self._first_match(url, r'/reflow/(\d+)')
+        sec_uid = self._first_match(url, r'sec_user_id=([^&]+)')
+        return {
+            "web_rid": short_id,
+            "room_id": room_id,
+            "anchor_name": nickname,
+            "room_title": title,
+            "sec_uid": sec_uid,
+            "live": True,
+        }
 
     def _resolve_profile(self, url: str) -> dict[str, Any]:
         result: dict[str, Any] = {}

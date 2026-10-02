@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.61
+- Resolve `webcast.amemv.com/.../reflow/<room_id>` live-share links into the anchor `shortId` URL accepted by biliup.
+- Automatically delete local MP4/FLV/XML files once both Bilibili and cloud uploads are confirmed, including before each new storage-budget allocation.
+
 ## v2.2.60
 - Fixed upload progress sampling for biliup subprocesses whose process name is `python3.14.<pid>` instead of `DouyinBili`.
 - Progress sampling now chooses the actual upload process when cloud backup and Bilibili upload both hold the same media file open.

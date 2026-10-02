@@ -1361,3 +1361,43 @@ enabled = false
     worker.join(timeout=2)
 
     assert [record.message for record in caplog.records].count("no enabled targets configured") == 1
+
+
+def test_cleanup_completed_parts_deletes_uploaded_local_files(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[upload]
+delete_after_upload = true
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    media = tmp_path / "uploaded.mp4"
+    source = tmp_path / "uploaded.flv"
+    media.write_bytes(b"video")
+    source.write_bytes(b"source")
+    session = SessionRecord(
+        session_id="cleanup-session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        status=SessionStatus.UPLOADED,
+        parts=[
+            SessionPart(index=1, status="UPLOADED", path=str(media), source_path=str(source))
+        ],
+    )
+    service.store.save(session)
+
+    result = service.cleanup_completed_parts()
+
+    assert result["removed"] == 1
+    assert not media.exists()
+    assert not source.exists()
