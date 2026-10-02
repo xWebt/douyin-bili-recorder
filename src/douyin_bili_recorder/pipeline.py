@@ -891,14 +891,19 @@ class RecorderService:
     def _part_upload_lock(self, session_id: str, part_index: int):
         lock_dir = self.config.data_dir / "locks"
         lock_dir.mkdir(parents=True, exist_ok=True)
-        lock_path = lock_dir / f"upload-{session_id}-{part_index}.lock"
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        session_lock = lock_dir / f"upload-session-{session_id}.lock"
+        part_lock = lock_dir / f"upload-{session_id}-{part_index}.lock"
+        session_fd = os.open(session_lock, os.O_CREAT | os.O_RDWR, 0o600)
+        part_fd = os.open(part_lock, os.O_CREAT | os.O_RDWR, 0o600)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            fcntl.flock(session_fd, fcntl.LOCK_EX)
+            fcntl.flock(part_fd, fcntl.LOCK_EX)
             yield
         finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-            os.close(fd)
+            fcntl.flock(part_fd, fcntl.LOCK_UN)
+            fcntl.flock(session_fd, fcntl.LOCK_UN)
+            os.close(part_fd)
+            os.close(session_fd)
 
     def _managed_usage_bytes(self) -> int:
         roots = {self.config.sessions_dir, self.config.video_dir.expanduser()}

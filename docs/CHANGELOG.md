@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.63
+- Serialize Bilibili part uploads per recording session so later segments always append to the first segment's BVID instead of creating separate submissions.
+
 ## v2.2.62
 - Automatic cleanup now treats a persisted BVID as proof of Bilibili upload completion even if a stale worker later overwrites the part status.
 

@@ -1401,3 +1401,70 @@ url = "https://live.douyin.com/1"
     assert result["removed"] == 1
     assert not media.exists()
     assert not source.exists()
+
+
+def test_concurrent_parts_share_one_session_bvid(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[upload]
+cookie_file = "cookies.json"
+retry_count = 0
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "cookies.json").write_text("{}", encoding="utf-8")
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+
+    class ConcurrentUploader:
+        def __init__(self) -> None:
+            self.calls: list[tuple[int, str | None]] = []
+            self.entered = threading.Event()
+            self.release = threading.Event()
+            self.lock = threading.Lock()
+
+        def upload_part(self, _target, _session, _media_path, *, part_index, title, bvid=None):
+            with self.lock:
+                self.calls.append((part_index, bvid))
+            if bvid is None:
+                self.entered.set()
+                self.release.wait(timeout=2)
+                return UploadResult("BV0000000001", True, [])
+            return UploadResult(bvid, True, [])
+
+    uploader = ConcurrentUploader()
+    service.uploader = uploader  # type: ignore[assignment]
+    media1 = tmp_path / "p1.mp4"
+    media2 = tmp_path / "p2.mp4"
+    media1.write_bytes(b"p1")
+    media2.write_bytes(b"p2")
+    part1 = SessionPart(index=1, status="PENDING", title="anchor P01", path=str(media1))
+    part2 = SessionPart(index=2, status="PENDING", title="anchor P02", path=str(media2))
+    session = SessionRecord(
+        session_id="concurrent-session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        status=SessionStatus.RECORDED,
+        parts=[part1, part2],
+    )
+    service.store.save(session)
+
+    first = threading.Thread(target=lambda: service._upload_part_with_retries(config.targets[0], session, media1, part1))
+    second = threading.Thread(target=lambda: service._upload_part_with_retries(config.targets[0], session, media2, part2))
+    first.start()
+    assert uploader.entered.wait(timeout=2)
+    second.start()
+    time.sleep(0.1)
+    uploader.release.set()
+    first.join(timeout=3)
+    second.join(timeout=3)
+
+    assert sorted(uploader.calls) == [(1, None), (2, "BV0000000001")]
