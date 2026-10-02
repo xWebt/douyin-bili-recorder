@@ -219,7 +219,7 @@ class RcloneCloudUploader:
 
     @staticmethod
     def _part_files(part: SessionPart) -> list[Path]:
-        candidates = [part.path, part.source_path, part.danmaku_path]
+        candidates = [part.path]
         paths: list[Path] = []
         seen: set[str] = set()
         for value in candidates:

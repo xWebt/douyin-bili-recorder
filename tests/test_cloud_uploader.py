@@ -84,10 +84,11 @@ def test_cloud_uploader_uses_independent_remote_path(tmp_path: Path) -> None:
     result = uploader.upload_part(config.targets[0], session, part)
 
     assert result.uploaded is True
-    assert len(result.remote_paths) == 3
+    assert len(result.remote_paths) == 1
     assert result.remote_paths[0] == (
         "quark:/DouyinBiliRecorder/anchor/2026-09-30/hour-01.mp4"
     )
+    assert all(not path.endswith((".flv", ".xml")) for path in result.remote_paths)
     assert all(command[:2] == ["rclone", "copyto"] for command in runner.commands)
     assert "--timeout" in runner.commands[0]
     assert "60m" in runner.commands[0]
