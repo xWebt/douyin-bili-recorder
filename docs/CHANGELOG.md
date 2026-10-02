@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.56
+- Filled the control dashboard with a live overview: active recordings, upload tasks, pending cloud backups, cache usage, and recent target states.
+
 ## v2.2.55
 - Converted the main navigation into a fixed left sidebar and split `监视主播` and `运行日志` into their own views.
 - The control dashboard now keeps recording status, cache/space usage, and service controls together without target or log panels competing for height.

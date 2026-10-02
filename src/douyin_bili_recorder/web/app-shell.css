@@ -239,6 +239,8 @@ body[data-active-view="dashboard"] .log-panel {
   display: none !important;
 }
 
+body[data-active-view="targets"] .dashboard-overview,
+body[data-active-view="logs"] .dashboard-overview,
 body[data-active-view="targets"] .status-strip,
 body[data-active-view="targets"] .control-rail,
 body[data-active-view="targets"] .log-panel,

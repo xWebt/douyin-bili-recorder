@@ -2,6 +2,14 @@
 
 Date: 2026-10-02
 
+## v2.2.56 dashboard overview validation
+
+- At 1280x720 the dashboard uses a two-column layout: service controls on the left and a live overview on the right.
+- The overview shows active recordings, active uploads, pending cloud backup parts, cache usage, cache limit, and each target's latest state.
+- Switching to `监视主播` or `运行日志` hides the overview completely and shows only that dedicated view.
+
+## v2.2.55 sidebar layout validation
+
 ## v2.2.55 sidebar layout validation
 
 - At 1280x720 the app renders a 220px fixed sidebar and the page itself does not scroll.

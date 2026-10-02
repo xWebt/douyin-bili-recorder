@@ -14,6 +14,7 @@ const state = {
   dirty: false,
   uploadSignature: "",
   cloudSignature: "",
+  dashboardSignature: "",
 };
 
 const els = {
@@ -28,6 +29,12 @@ const els = {
   maxCacheGb: document.querySelector("#maxCacheGb"),
   cacheSettingHint: document.querySelector("#cacheSettingHint"),
   targetCount: document.querySelector("#targetCount"),
+  overviewRecording: document.querySelector("#overviewRecording"),
+  overviewUploading: document.querySelector("#overviewUploading"),
+  overviewCloudPending: document.querySelector("#overviewCloudPending"),
+  overviewCache: document.querySelector("#overviewCache"),
+  overviewCacheLimit: document.querySelector("#overviewCacheLimit"),
+  overviewTargetList: document.querySelector("#overviewTargetList"),
   collectionState: document.querySelector("#collectionState"),
   servicePulse: document.querySelector("#servicePulse"),
   startButton: document.querySelector("#startButton"),
@@ -197,6 +204,7 @@ async function refreshService() {
     state.authenticated = payload.authenticated;
     renderService();
     updateTargetRuntime();
+    renderDashboardOverview();
     renderCloudUploads();
   } catch (_error) {
     els.connectionState.classList.remove("online");
@@ -294,6 +302,7 @@ function render() {
   renderService();
   renderSettings();
   renderTargets();
+  renderDashboardOverview();
   renderCloudUploads();
   renderIcons();
 }
@@ -1293,6 +1302,51 @@ function renderSubmissions(payload) {
     row.append(info, meta);
     return row;
   }));
+}
+
+function renderDashboardOverview() {
+  if (!els.overviewTargetList || !state.config) return;
+  const sessions = state.service?.sessions || [];
+  const uploads = state.service?.upload_progresses || [];
+  const statuses = state.service?.target_statuses || {};
+  const recording = sessions.filter((item) => String(item.status || "").toUpperCase() === "RECORDING").length;
+  const uploading = uploads.filter((item) => item.available && ["uploading", "completed", "paused"].includes(String(item.state || ""))).length;
+  const cloudPending = sessions.reduce((sum, item) => sum + Number(item.cloud_pending_parts || 0), 0);
+  const used = Number(state.service?.cache_used_gb || 0);
+  const limit = Number(state.service?.cache_limit_gb || state.config.max_cache_gb || 10);
+  const signature = JSON.stringify({ recording, uploading, cloudPending, used, limit, statuses });
+  if (state.dashboardSignature === signature) return;
+  state.dashboardSignature = signature;
+  els.overviewRecording.textContent = String(recording);
+  els.overviewUploading.textContent = String(uploading);
+  els.overviewCloudPending.textContent = String(cloudPending);
+  els.overviewCache.textContent = `${used.toFixed(2)} GB`;
+  els.overviewCacheLimit.textContent = `上限 ${limit} GB`;
+  const rows = (state.config.targets || []).slice(0, 6).map((target) => {
+    const runtime = statuses[target.name] || {};
+    const meta = TARGET_STATE_META[runtime.state] || { label: runtime.state || "待机", tone: "muted" };
+    const row = document.createElement("div");
+    row.className = "overview-target-row";
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = target.name;
+    const message = document.createElement("small");
+    message.textContent = runtime.message || "等待状态更新";
+    info.append(name, message);
+    const stateLabel = document.createElement("span");
+    stateLabel.className = `overview-target-state ${meta.tone}`;
+    stateLabel.textContent = meta.label;
+    row.append(info, stateLabel);
+    return row;
+  });
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "submission-empty";
+    empty.textContent = "还没有监视主播。";
+    els.overviewTargetList.replaceChildren(empty);
+  } else {
+    els.overviewTargetList.replaceChildren(...rows);
+  }
 }
 
 function renderCloudUploads() {

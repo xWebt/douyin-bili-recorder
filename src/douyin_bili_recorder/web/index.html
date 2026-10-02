@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f7fb" />
     <title>DouyinBiliRecorder</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2.2.55" />
-    <link rel="stylesheet" href="/static/app-shell.css?v=2.2.55" />
-    <link rel="stylesheet" href="/static/sidebar.css?v=2.2.55" />
+    <link rel="stylesheet" href="/static/styles.css?v=2.2.56" />
+    <link rel="stylesheet" href="/static/app-shell.css?v=2.2.56" />
+    <link rel="stylesheet" href="/static/sidebar.css?v=2.2.56" />
   </head>
   <body>
     <div class="app-shell">
@@ -137,6 +137,20 @@
             </label>
             <button class="save-button" id="saveButton" type="button"><i data-lucide="save"></i><span>保存设置</span></button>
           </aside>
+
+          <section class="panel dashboard-overview">
+            <div class="section-heading">
+              <div><p class="eyebrow">OVERVIEW</p><h2>运行概览</h2></div>
+            </div>
+            <div class="overview-metrics">
+              <div><span>正在录制</span><strong id="overviewRecording">0</strong><small>个主播</small></div>
+              <div><span>上传任务</span><strong id="overviewUploading">0</strong><small>个活动任务</small></div>
+              <div><span>网盘待处理</span><strong id="overviewCloudPending">0</strong><small>个分段</small></div>
+              <div><span>缓存占用</span><strong id="overviewCache">0.00 GB</strong><small id="overviewCacheLimit">上限 -- GB</small></div>
+            </div>
+            <div class="overview-section-title">最近主播状态</div>
+            <div class="overview-target-list" id="overviewTargetList"></div>
+          </section>
 
           <section class="targets-panel">
             <div class="section-heading">
@@ -269,6 +283,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="/static/vendor/lucide.min.js"></script>
-    <script src="/static/app.js?v=2.2.55"></script>
+    <script src="/static/app.js?v=2.2.56"></script>
   </body>
 </html>
