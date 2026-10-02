@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from douyin_bili_recorder.config import load_config
-from douyin_bili_recorder.danmaku import DanmakuRenderer, build_ass
+from douyin_bili_recorder.danmaku import DanmakuRenderer, build_ass, format_ass_text
 from douyin_bili_recorder.process import ProcessResult
 
 
@@ -149,6 +149,11 @@ record_danmaku = true
     assert "libx264" in runner.commands[1]
     assert any("scale=1080:-2" in item for item in runner.commands[1])
     assert "16000k" in runner.commands[1]
+
+
+def test_format_ass_text_replaces_unsupported_supplementary_glyphs() -> None:
+    assert "?" in format_ass_text("部署𒐪")
+    assert "𒐪" not in format_ass_text("部署𒐪")
 
 
 def test_build_ass_uses_emoji_font_for_missing_glyphs(tmp_path: Path) -> None:

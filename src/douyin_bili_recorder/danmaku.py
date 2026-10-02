@@ -42,6 +42,8 @@ def format_ass_text(text: str) -> str:
     in_emoji = False
     for char in text:
         emoji = is_emoji_char(char)
+        if ord(char) > 0xFFFF and not emoji:
+            char = "?"
         if emoji != in_emoji:
             result.append(rf"{{\fn{EMOJI_FONT}}}" if emoji else rf"{{\fn{CHINESE_FONT}}}")
             in_emoji = emoji
@@ -176,8 +178,6 @@ class DanmakuRenderer:
             "aac",
             "-b:a",
             "256k",
-            "-movflags",
-            "+faststart",
             "-avoid_negative_ts",
             "make_zero",
             str(output_path),

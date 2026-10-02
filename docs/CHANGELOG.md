@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.59
+- Replaced unsupported non-emoji supplementary-plane danmaku characters with `?` before ASS generation, preventing per-frame font fallback stalls from glyphs such as `U+1242A`.
+- Removed the MP4 `faststart` rewrite pass from danmaku rendering; large upload files finalize immediately as valid `moov`-at-end MP4 files.
+
 ## v2.2.58
 - Replaced the slow danmaku burn-in path with high-bitrate VideoToolbox encoding and a `libx264 veryfast` fallback.
 - Fixed portrait-quality scaling and raised render targets so burned-in recordings stay visually close to the source.
