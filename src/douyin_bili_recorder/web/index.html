@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f7fb" />
     <title>DouyinBiliRecorder</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2.2.54" />
-    <link rel="stylesheet" href="/static/app-shell.css?v=2.2.54" />
+    <link rel="stylesheet" href="/static/styles.css?v=2.2.55" />
+    <link rel="stylesheet" href="/static/app-shell.css?v=2.2.55" />
+    <link rel="stylesheet" href="/static/sidebar.css?v=2.2.55" />
   </head>
   <body>
     <div class="app-shell">
@@ -22,6 +23,9 @@
           <button class="ghost-button nav-button active" id="dashboardButton" data-view="dashboard" type="button">
             <i data-lucide="layout-dashboard"></i><span>控制台</span>
           </button>
+          <button class="ghost-button nav-button" id="targetsButton" data-view="targets" type="button">
+            <i data-lucide="radio-tower"></i><span>监视主播</span>
+          </button>
           <button class="ghost-button nav-button" id="submissionsButton" data-view="bilibili" type="button">
             <i data-lucide="upload-cloud"></i><span>B站投稿</span>
           </button>
@@ -30,6 +34,9 @@
           </button>
           <button class="ghost-button nav-button" id="videoLibraryButton" data-view="library" type="button">
             <i data-lucide="folder-open"></i><span>视频库</span>
+          </button>
+          <button class="ghost-button nav-button" id="logsButton" data-view="logs" type="button">
+            <i data-lucide="scroll-text"></i><span>运行日志</span>
           </button>
           <button class="ghost-button" id="loginButton" type="button">
             <i data-lucide="scan-qr-code"></i><span id="loginLabel">B站登录</span>
@@ -262,6 +269,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="/static/vendor/lucide.min.js"></script>
-    <script src="/static/app.js?v=2.2.54"></script>
+    <script src="/static/app.js?v=2.2.55"></script>
   </body>
 </html>

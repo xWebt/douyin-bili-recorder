@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.55
+- Converted the main navigation into a fixed left sidebar and split `监视主播` and `运行日志` into their own views.
+- The control dashboard now keeps recording status, cache/space usage, and service controls together without target or log panels competing for height.
+
 ## v2.2.54
 - Split the Bilibili view into `上传队列` and `稿件状态` subviews so the submission list gets the full content height and cannot be covered by upload controls.
 

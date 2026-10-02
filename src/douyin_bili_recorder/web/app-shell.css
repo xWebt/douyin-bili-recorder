@@ -234,6 +234,36 @@ body {
   display: none !important;
 }
 
+body[data-active-view="dashboard"] .targets-panel,
+body[data-active-view="dashboard"] .log-panel {
+  display: none !important;
+}
+
+body[data-active-view="targets"] .status-strip,
+body[data-active-view="targets"] .control-rail,
+body[data-active-view="targets"] .log-panel,
+body[data-active-view="logs"] .status-strip,
+body[data-active-view="logs"] .control-rail,
+body[data-active-view="logs"] .targets-panel {
+  display: none !important;
+}
+
+body[data-active-view="dashboard"] .control-grid {
+  grid-template-columns: minmax(320px, 760px);
+}
+
+body[data-active-view="targets"] .control-grid,
+body[data-active-view="logs"] .control-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-active-view="targets"] .targets-panel,
+body[data-active-view="logs"] .log-panel {
+  height: 100%;
+  max-height: none;
+  overflow: auto;
+}
+
 @media (max-width: 1180px) {
   .app-view[data-view-panel="dashboard"] {
     overflow: auto;

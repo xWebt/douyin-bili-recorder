@@ -135,18 +135,20 @@ function renderIcons() {
 }
 
 function setView(view) {
-  const allowed = new Set(["dashboard", "bilibili", "cloud", "library"]);
+  const allowed = new Set(["dashboard", "targets", "bilibili", "cloud", "library", "logs"]);
   state.activeView = allowed.has(view) ? view : "dashboard";
   for (const button of els.appNav?.querySelectorAll("[data-view]") || []) {
     button.classList.toggle("active", button.dataset.view === state.activeView);
   }
+  document.body.dataset.activeView = state.activeView;
+  const baseView = ["targets", "logs"].includes(state.activeView) ? "dashboard" : state.activeView;
   for (const panel of els.viewPanels || []) {
-    panel.hidden = panel.dataset.viewPanel !== state.activeView;
+    panel.hidden = panel.dataset.viewPanel !== baseView;
   }
   if (state.activeView === "bilibili") setBiliPane(state.biliPane);
   if (state.activeView === "cloud") renderCloudUploads();
   if (state.activeView === "library") openVideoLibrary();
-  if (state.activeView === "dashboard") refreshLogs();
+  if (state.activeView === "dashboard" || state.activeView === "logs") refreshLogs();
 }
 
 function setBiliPane(pane) {

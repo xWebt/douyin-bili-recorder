@@ -2,6 +2,14 @@
 
 Date: 2026-10-02
 
+## v2.2.55 sidebar layout validation
+
+- At 1280x720 the app renders a 220px fixed sidebar and the page itself does not scroll.
+- `控制台`, `监视主播`, and `运行日志` each show only their own panel; the dashboard keeps service controls visible.
+- Target view and log view both remain fixed within the window with internal scrolling.
+
+## v2.2.54 Bilibili status layout validation
+
 ## v2.2.54 Bilibili status layout validation
 
 - The Bilibili view now has independent `上传队列` and `稿件状态` subviews.
