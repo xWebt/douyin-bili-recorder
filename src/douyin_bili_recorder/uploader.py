@@ -75,6 +75,9 @@ class BiliupUploader:
         if existing:
             self.logger.info("submission already exists for title %s: %s", resolved_title, existing)
             return UploadResult(existing, True, ["submission already exists"])
+        missing = [str(path) for path in files if not path.is_file()]
+        if missing:
+            raise RuntimeError(f"media file does not exist: {missing[0]}")
 
         first = files[0]
         command = self._upload_command(
@@ -145,6 +148,8 @@ class BiliupUploader:
         existing = self.find_bvid_by_title(title)
         if existing:
             return UploadResult(existing, True, ["submission already exists"])
+        if not media_path.is_file():
+            raise RuntimeError(f"media file does not exist: {media_path}")
         if bvid:
             command = self._append_command(
                 target,

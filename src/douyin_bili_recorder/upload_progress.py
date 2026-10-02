@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import re
 import tempfile
 import threading
 import time
@@ -235,12 +236,33 @@ class UploadProgressSampler:
             )
         except OSError:
             return 0
+        pids: list[int] = []
         for line in result.stdout.splitlines():
             try:
-                return int(line.strip())
+                pid = int(line.strip())
             except ValueError:
                 continue
-        return 0
+            if pid not in pids:
+                pids.append(pid)
+        if not pids:
+            return 0
+        if len(pids) == 1:
+            return pids[0]
+        for pid in pids:
+            try:
+                connections = subprocess.run(
+                    ["lsof", "-nP", "-p", str(pid)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=3,
+                ).stdout
+            except OSError:
+                continue
+            remote_ports = set(re.findall(r"->(?:\[[^\]]+\]|[^:]+):(\d+)", connections))
+            if remote_ports and "5244" not in remote_ports:
+                return pid
+        return pids[0]
 
     def _sample(self, pid: int) -> UploadSample | None:
         try:
@@ -253,9 +275,13 @@ class UploadProgressSampler:
             )
         except OSError:
             return None
-        for line in reversed(result.stdout.splitlines()):
+        return self.parse_nettop_sample(pid, result.stdout)
+
+    @staticmethod
+    def parse_nettop_sample(pid: int, output: str) -> UploadSample | None:
+        for line in reversed(output.splitlines()):
             fields = line.strip().split(",")
-            if len(fields) < 7 or "DouyinBili" not in fields[1]:
+            if len(fields) < 7 or not fields[1].endswith(f".{pid}"):
                 continue
             try:
                 clock = datetime.strptime(fields[0], "%H:%M:%S.%f")

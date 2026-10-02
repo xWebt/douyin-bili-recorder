@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from douyin_bili_recorder.upload_progress import UploadProgressStore
+from douyin_bili_recorder.upload_progress import UploadProgressSampler, UploadProgressStore
 
 
 def test_upload_progress_store_round_trip(tmp_path: Path) -> None:
@@ -34,3 +34,13 @@ def test_upload_progress_store_tracks_multiple_uploads(tmp_path: Path) -> None:
     assert store.load()["target"] == "B"
     store.remove("session-b:1")
     assert [item["target"] for item in store.load_all()] == ["A"]
+
+
+def test_progress_sampler_accepts_python_biliup_process_name() -> None:
+    output = (
+        "time,,interface,state,bytes_in,bytes_out,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,\n"
+        "23:12:24.620435,python3.14.66714,,,79618,17532589,0,0,0,,,,,,,,,,,\n"
+    )
+    sample = UploadProgressSampler.parse_nettop_sample(66714, output)
+    assert sample is not None
+    assert sample.bytes_out == 17532589

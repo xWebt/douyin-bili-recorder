@@ -139,6 +139,36 @@ def test_upload_rate_limit_detection_includes_bilibili_601() -> None:
     ])
 
 
+def test_upload_part_rejects_directory_path(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[upload]
+cookie_file = "cookies.json"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+enabled = true
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "cookies.json").write_text("{}", encoding="utf-8")
+    config = load_config(config_path)
+    class EmptyRunner:
+        def run(self, _args, **_kwargs) -> ProcessResult:
+            return ProcessResult(0, [])
+
+    uploader = BiliupUploader(config, EmptyRunner(), logging.getLogger("test"))  # type: ignore[arg-type]
+    session = SessionRecord(session_id="session", target_name="anchor", target_url="https://live.douyin.com/123")
+
+    with pytest.raises(RuntimeError, match="media file does not exist"):
+        uploader.upload_part(config.targets[0], session, Path("."), part_index=1, title="anchor P01")
+
+
 def test_find_bvid_by_title_uses_single_cached_listing(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(

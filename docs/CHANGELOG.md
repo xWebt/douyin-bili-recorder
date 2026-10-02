@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.60
+- Fixed upload progress sampling for biliup subprocesses whose process name is `python3.14.<pid>` instead of `DouyinBili`.
+- Progress sampling now chooses the actual upload process when cloud backup and Bilibili upload both hold the same media file open.
+- Bilibili upload now rejects empty or directory media paths before invoking biliup, preventing accidental uploads of `.`.
+
 ## v2.2.59
 - Replaced unsupported non-emoji supplementary-plane danmaku characters with `?` before ASS generation, preventing per-frame font fallback stalls from glyphs such as `U+1242A`.
 - Removed the MP4 `faststart` rewrite pass from danmaku rendering; large upload files finalize immediately as valid `moov`-at-end MP4 files.
