@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f7fb" />
     <title>DouyinBiliRecorder</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2.2.51" />
+    <link rel="stylesheet" href="/static/styles.css?v=2.2.52" />
+    <link rel="stylesheet" href="/static/app-shell.css?v=2.2.52" />
   </head>
   <body>
     <div class="app-shell">
@@ -17,12 +18,18 @@
             <h1>直播录制控制台</h1>
           </div>
         </div>
-        <div class="topbar-actions">
-          <button class="ghost-button" id="videoLibraryButton" type="button">
-            <i data-lucide="folder-open"></i><span>视频库</span>
+        <nav class="topbar-actions app-nav" id="appNav" aria-label="应用导航">
+          <button class="ghost-button nav-button active" id="dashboardButton" data-view="dashboard" type="button">
+            <i data-lucide="layout-dashboard"></i><span>控制台</span>
           </button>
-          <button class="ghost-button" id="submissionsButton" type="button">
-            <i data-lucide="clipboard-list"></i><span>稿件状态</span>
+          <button class="ghost-button nav-button" id="submissionsButton" data-view="bilibili" type="button">
+            <i data-lucide="upload-cloud"></i><span>B站投稿</span>
+          </button>
+          <button class="ghost-button nav-button" id="cloudButton" data-view="cloud" type="button">
+            <i data-lucide="cloud-cog"></i><span>网盘备份</span>
+          </button>
+          <button class="ghost-button nav-button" id="videoLibraryButton" data-view="library" type="button">
+            <i data-lucide="folder-open"></i><span>视频库</span>
           </button>
           <button class="ghost-button" id="loginButton" type="button">
             <i data-lucide="scan-qr-code"></i><span id="loginLabel">B站登录</span>
@@ -30,10 +37,11 @@
           <div class="connection-state" id="connectionState">
             <span class="status-dot"></span><span>正在连接</span>
           </div>
-        </div>
+        </nav>
       </header>
 
-      <main>
+      <main class="view-stack">
+        <section class="app-view active" data-view-panel="dashboard">
         <section class="status-strip" aria-label="服务状态">
           <div class="status-block">
             <span class="status-label">录制进程</span>
@@ -57,17 +65,6 @@
             <small id="collectionState">合集待绑定</small>
           </div>
         </section>
-
-        <section class="upload-strip" id="uploadPanel">
-          <div class="upload-heading">
-            <div><p class="eyebrow">UPLOAD</p><strong id="uploadTitle">当前没有上传</strong><small id="uploadMeta">等待分段完成</small></div>
-            <span class="upload-percent" id="uploadPercent">--</span>
-          </div>
-          <div class="meter upload-meter"><span id="uploadBar"></span></div>
-          <div class="upload-stats"><span id="uploadBytes">-- / --</span><span id="uploadSpeed">--</span><span id="uploadEta">--</span></div>
-          <div class="upload-list" id="uploadList"></div>
-        </section>
-
         <section class="control-grid">
           <aside class="control-rail">
             <div class="section-heading">
@@ -157,6 +154,54 @@
             <pre class="log-view" id="logView">等待日志...</pre>
           </aside>
         </section>
+        </section>
+
+        <section class="app-view" data-view-panel="bilibili" hidden>
+          <section class="upload-strip" id="uploadPanel">
+            <div class="upload-heading">
+              <div><p class="eyebrow">UPLOAD QUEUE</p><strong id="uploadTitle">当前没有上传</strong><small id="uploadMeta">等待分段完成</small></div>
+              <span class="upload-percent" id="uploadPercent">--</span>
+            </div>
+            <div class="meter upload-meter"><span id="uploadBar"></span></div>
+            <div class="upload-stats"><span id="uploadBytes">-- / --</span><span id="uploadSpeed">--</span><span id="uploadEta">--</span></div>
+            <div class="upload-list" id="uploadList"></div>
+          </section>
+          <section class="panel submissions-panel">
+            <div class="section-heading">
+              <div><p class="eyebrow">BILIBILI SUBMISSIONS</p><h2>稿件状态</h2></div>
+              <button class="icon-button" id="submissionsRefreshButton" type="button" title="刷新稿件"><i data-lucide="refresh-cw"></i></button>
+            </div>
+            <p class="submission-note" id="submissionNote">正在读取 B站稿件状态。</p>
+            <div class="submission-list" id="submissionList"></div>
+          </section>
+        </section>
+
+        <section class="app-view" data-view-panel="cloud" hidden>
+          <section class="cloud-hero">
+            <div><p class="eyebrow">CLOUD BACKUP</p><h2>网盘备份控制</h2><small>按主播独立上传烧录后的成片，网络任务与 B站投稿互不影响。</small></div>
+            <div class="cloud-hero-actions">
+              <span class="cloud-retry-state" id="cloudRetryStatus">补传任务空闲</span>
+              <button class="secondary-button" id="cloudRefreshButton" type="button"><i data-lucide="refresh-cw"></i><span>刷新</span></button>
+            </div>
+          </section>
+          <section class="panel cloud-panel">
+            <div class="section-heading">
+              <div><p class="eyebrow">TARGET BACKUPS</p><h2>主播备份列表</h2></div>
+            </div>
+            <div class="cloud-list" id="cloudList"></div>
+          </section>
+        </section>
+
+        <section class="app-view" data-view-panel="library" hidden>
+          <section class="panel library-panel">
+            <div class="section-heading">
+              <div><p class="eyebrow">VIDEO LIBRARY</p><h2>视频库</h2></div>
+              <button class="icon-button" id="libraryRefreshButton" type="button" title="刷新视频库"><i data-lucide="refresh-cw"></i></button>
+            </div>
+            <div class="library-root"><code id="videoRootPath"></code><button class="secondary-button" id="openRootButton" type="button"><i data-lucide="folder-open"></i><span>打开总目录</span></button></div>
+            <div class="library-list" id="libraryList"></div>
+          </section>
+        </section>
       </main>
     </div>
 
@@ -182,14 +227,6 @@
       </section>
     </div>
 
-    <div class="modal-backdrop" id="videoLibraryModal" hidden>
-      <section class="dialog wide" role="dialog" aria-modal="true">
-        <button class="icon-button modal-close" id="closeVideoLibrary" type="button" title="关闭"><i data-lucide="x"></i></button>
-        <p class="eyebrow">VIDEO LIBRARY</p><h2>视频库</h2>
-        <div class="library-root"><code id="videoRootPath"></code><button class="secondary-button" id="openRootButton" type="button"><i data-lucide="folder-open"></i><span>打开总目录</span></button></div>
-        <div class="library-list" id="libraryList"></div>
-      </section>
-    </div>
 
     <div class="modal-backdrop" id="analyticsModal" hidden>
       <section class="dialog analytics-dialog" role="dialog" aria-modal="true">
@@ -204,14 +241,6 @@
       </section>
     </div>
 
-    <div class="modal-backdrop" id="submissionsModal" hidden>
-      <section class="dialog wide" role="dialog" aria-modal="true">
-        <button class="icon-button modal-close" id="closeSubmissions" type="button" title="关闭"><i data-lucide="x"></i></button>
-        <p class="eyebrow">BILIBILI SUBMISSIONS</p><h2>稿件状态</h2>
-        <p class="submission-note" id="submissionNote">正在读取 B站稿件状态。</p>
-        <div class="submission-list" id="submissionList"></div>
-      </section>
-    </div>
 
     <div class="modal-backdrop" id="reportModal" hidden>
       <section class="dialog report-dialog" role="dialog" aria-modal="true">
@@ -229,6 +258,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="/static/vendor/lucide.min.js"></script>
-    <script src="/static/app.js?v=2.2.51"></script>
+    <script src="/static/app.js?v=2.2.52"></script>
   </body>
 </html>

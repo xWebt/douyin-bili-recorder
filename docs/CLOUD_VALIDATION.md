@@ -1,5 +1,11 @@
 # Validation
 
+## v2.2.52 rendered-video-only cloud validation
+
+- Full Python test suite: `109 passed`.
+- A part containing MP4, FLV, and XML was uploaded through the real application cloud uploader.
+- The remote validation listing contained only `danmaku-burned.mp4`; the temporary remote object was removed afterward.
+
 ## v2.2.49 native OpenList upload validation
 
 - Full Python test suite: `108 passed`.

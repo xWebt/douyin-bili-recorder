@@ -9,8 +9,10 @@ const state = {
   analyticsTarget: "",
   submissions: null,
   reportTarget: "",
+  activeView: "dashboard",
   dirty: false,
   uploadSignature: "",
+  cloudSignature: "",
 };
 
 const els = {
@@ -73,9 +75,10 @@ const els = {
   pauseKeepButton: document.querySelector("#pauseKeepButton"),
   discardButton: document.querySelector("#discardButton"),
   pauseCancelButton: document.querySelector("#pauseCancelButton"),
+  appNav: document.querySelector("#appNav"),
+  viewPanels: [...document.querySelectorAll("[data-view-panel]")],
+  dashboardButton: document.querySelector("#dashboardButton"),
   videoLibraryButton: document.querySelector("#videoLibraryButton"),
-  videoLibraryModal: document.querySelector("#videoLibraryModal"),
-  closeVideoLibrary: document.querySelector("#closeVideoLibrary"),
   videoRootPath: document.querySelector("#videoRootPath"),
   openRootButton: document.querySelector("#openRootButton"),
   libraryList: document.querySelector("#libraryList"),
@@ -95,8 +98,12 @@ const els = {
   previousWeekReportButton: document.querySelector("#previousWeekReportButton"),
   monthlyReportButton: document.querySelector("#monthlyReportButton"),
   submissionsButton: document.querySelector("#submissionsButton"),
-  submissionsModal: document.querySelector("#submissionsModal"),
-  closeSubmissions: document.querySelector("#closeSubmissions"),
+  submissionsRefreshButton: document.querySelector("#submissionsRefreshButton"),
+  cloudButton: document.querySelector("#cloudButton"),
+  cloudList: document.querySelector("#cloudList"),
+  cloudRetryStatus: document.querySelector("#cloudRetryStatus"),
+  cloudRefreshButton: document.querySelector("#cloudRefreshButton"),
+  libraryRefreshButton: document.querySelector("#libraryRefreshButton"),
   submissionNote: document.querySelector("#submissionNote"),
   submissionList: document.querySelector("#submissionList"),
   toastRegion: document.querySelector("#toastRegion"),
@@ -122,6 +129,21 @@ function icon(name) {
 
 function renderIcons() {
   if (window.lucide) window.lucide.createIcons();
+}
+
+function setView(view) {
+  const allowed = new Set(["dashboard", "bilibili", "cloud", "library"]);
+  state.activeView = allowed.has(view) ? view : "dashboard";
+  for (const button of els.appNav?.querySelectorAll("[data-view]") || []) {
+    button.classList.toggle("active", button.dataset.view === state.activeView);
+  }
+  for (const panel of els.viewPanels || []) {
+    panel.hidden = panel.dataset.viewPanel !== state.activeView;
+  }
+  if (state.activeView === "bilibili") openSubmissions();
+  if (state.activeView === "cloud") renderCloudUploads();
+  if (state.activeView === "library") openVideoLibrary();
+  if (state.activeView === "dashboard") refreshLogs();
 }
 
 function markDirty() {
@@ -159,6 +181,7 @@ async function refreshService() {
     state.authenticated = payload.authenticated;
     renderService();
     updateTargetRuntime();
+    renderCloudUploads();
   } catch (_error) {
     els.connectionState.classList.remove("online");
   }
@@ -255,6 +278,7 @@ function render() {
   renderService();
   renderSettings();
   renderTargets();
+  renderCloudUploads();
   renderIcons();
 }
 
@@ -398,9 +422,12 @@ function deleteUpload(key) {
 function cloudRetryButton(name) {
   const current = state.cloudRetry || {};
   const active = Boolean(current.running) && (!current.target || current.target === name);
-  return active
-    ? actionButton("square", "停止网盘补传", stopCloudRetry)
-    : actionButton("cloud-upload", "补传网盘", () => retryCloudTarget(name));
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = active ? "danger-button compact-action" : "secondary-button compact-action";
+  button.append(icon(active ? "square" : "cloud-upload"), document.createTextNode(active ? "停止补传" : "补传网盘"));
+  button.addEventListener("click", active ? stopCloudRetry : () => retryCloudTarget(name));
+  return button;
 }
 
 async function retryCloudTarget(name) {
@@ -655,10 +682,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   const recordingStatus = document.createElement("span");
   recordingStatus.className = `target-status target-recording-status ${normalized.recordingMeta.tone}`;
   recordingStatus.append(makeDot(), document.createTextNode(normalized.recordingMeta.label));
-  const uploadStatus = document.createElement("span");
-  uploadStatus.className = `target-status target-upload-status ${normalized.uploadMeta.tone}`;
-  uploadStatus.append(makeDot(), document.createTextNode(normalized.uploadMeta.label));
-  statusStack.append(recordingStatus, uploadStatus);
+  statusStack.append(recordingStatus);
   const name = document.createElement("strong");
   name.textContent = target.name || "未命名主播";
   const url = document.createElement("small");
@@ -670,15 +694,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   const usage = document.createElement("small");
   usage.className = "target-usage";
   usage.textContent = `空间占用 ${formatBytes(usageBytes)}`;
-  const uploadMessage = document.createElement("small");
-  uploadMessage.className = "target-upload-progress";
-  uploadMessage.textContent = normalized.uploadDetail;
-  uploadMessage.hidden = !normalized.uploadDetail;
-  const cloudMessage = document.createElement("small");
-  cloudMessage.className = "target-cloud-progress";
-  cloudMessage.textContent = normalized.cloudDetail;
-  cloudMessage.hidden = !normalized.cloudDetail;
-  identity.append(statusStack, name, url, runtimeMessage, uploadMessage, cloudMessage, usage);
+  identity.append(statusStack, name, url, runtimeMessage, usage);
 
   const actions = document.createElement("div");
   actions.className = "target-actions";
@@ -692,7 +708,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
     actionButton("file-text", "生成报告", () => openReportDialog(target.name)),
     actionButton("bar-chart-3", "数据详情", () => openAnalytics(target.name)),
     actionButton("folder-open", "打开目录", () => openFolder("anchor", target.name)),
-    cloudRetryButton(target.name),
+    actionButton("cloud-upload", "网盘设置", () => setView("cloud")),
     actionButton("eraser", "清除缓存", () => clearTargetCache(target.name)),
     actionButton("trash-2", "删除主播", () => {
       const removedName = target.name;
@@ -1216,7 +1232,6 @@ function openReportDialog(name) {
 }
 
 async function openSubmissions() {
-  els.submissionsModal.hidden = false;
   els.submissionNote.textContent = "正在读取 B站稿件状态。";
   els.submissionList.replaceChildren();
   try {
@@ -1264,6 +1279,77 @@ function renderSubmissions(payload) {
   }));
 }
 
+function renderCloudUploads() {
+  if (!els.cloudList || !state.config) return;
+  const retry = state.cloudRetry || {};
+  if (els.cloudRetryStatus) {
+    els.cloudRetryStatus.textContent = retry.running
+      ? `正在补传${retry.target ? `：${retry.target}` : ""}`
+      : "补传任务空闲";
+  }
+  const latestByTarget = new Map();
+  for (const session of state.service?.sessions || []) {
+    if (!latestByTarget.has(session.target_name)) latestByTarget.set(session.target_name, session);
+  }
+  const statusByTarget = state.service?.target_statuses || {};
+  const signature = JSON.stringify({
+    targets: (state.config.targets || []).map((target) => ({ name: target.name, backup: target.cloud_backup, remote: target.cloud_remote })),
+    statuses: statusByTarget,
+    sessions: (state.service?.sessions || []).slice(0, 20).map((session) => ({ target: session.target_name, title: session.title, parts: session.parts, cloud: session.cloud_status })),
+    retry: state.cloudRetry,
+    running: state.service?.running,
+  });
+  if (state.cloudSignature === signature) return;
+  state.cloudSignature = signature;
+  const rows = (state.config.targets || []).map((target) => {
+    const latest = latestByTarget.get(target.name);
+    const status = statusByTarget[target.name] || {};
+    const stateName = String(status.cloud_state || latest?.cloud_status || "").toLowerCase();
+    const stateLabel = !target.cloud_backup
+      ? "未开启"
+      : stateName === "uploaded" ? "已备份"
+        : stateName === "failed" ? "备份失败"
+          : stateName === "uploading" ? "上传中"
+            : stateName === "pending" ? "等待中" : "空闲";
+    const row = document.createElement("div");
+    row.className = "cloud-backup-row";
+    const identity = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = target.name || "未命名主播";
+    const remote = document.createElement("small");
+    remote.textContent = target.cloud_backup ? target.cloud_remote || "尚未配置远端路径" : "该主播未启用网盘备份";
+    identity.append(name, remote);
+    const detail = document.createElement("div");
+    const detailText = document.createElement("small");
+    detailText.textContent = status.cloud_message || (latest?.title ? `${latest.title} · ${latest.parts || 0} 个分段` : "暂无备份记录");
+    const pill = document.createElement("span");
+    pill.className = `cloud-state-pill ${stateName}`;
+    pill.textContent = stateLabel;
+    detail.append(pill, detailText);
+    const actions = document.createElement("div");
+    actions.className = "cloud-backup-actions";
+    const testButton = document.createElement("button");
+    testButton.type = "button";
+    testButton.className = "secondary-button compact-action";
+    testButton.append(icon("cloud-check"), document.createTextNode("测试网盘"));
+    testButton.disabled = !target.cloud_backup || !target.cloud_remote;
+    testButton.addEventListener("click", () => testCloudTarget(target));
+    const retryButton = cloudRetryButton(target.name);
+    retryButton.disabled = !target.cloud_backup || !target.cloud_remote || Boolean(state.service?.running);
+    actions.append(testButton, retryButton);
+    row.append(identity, detail, actions);
+    return row;
+  });
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "submission-empty";
+    empty.textContent = "还没有监控主播。";
+    rows.push(empty);
+  }
+  els.cloudList.replaceChildren(...rows);
+  renderIcons();
+}
+
 function submissionStateClass(value) {
   const state = String(value || "").toLowerCase();
   if (state.includes("pubed") || state.includes("开放")) return "published";
@@ -1298,7 +1384,6 @@ async function downloadReport(period, allowPartial = false) {
 }
 
 async function openVideoLibrary() {
-  els.videoLibraryModal.hidden = false;
   try {
     state.library = await api("/api/videos");
     els.videoRootPath.textContent = state.library.root;
@@ -1407,24 +1492,26 @@ els.targetForm.addEventListener("submit", (event) => {
 });
 els.loginButton.addEventListener("click", openLogin);
 els.closeLoginButton.addEventListener("click", closeLogin);
-els.videoLibraryButton.addEventListener("click", openVideoLibrary);
-els.closeVideoLibrary.addEventListener("click", () => { els.videoLibraryModal.hidden = true; });
+for (const button of els.appNav?.querySelectorAll("[data-view]") || []) {
+  button.addEventListener("click", () => setView(button.dataset.view));
+}
+els.submissionsRefreshButton?.addEventListener("click", openSubmissions);
+els.cloudRefreshButton?.addEventListener("click", () => loadState(true));
+els.libraryRefreshButton?.addEventListener("click", openVideoLibrary);
 els.openRootButton.addEventListener("click", () => openFolder("root"));
 els.closeAnalytics.addEventListener("click", () => { els.analyticsModal.hidden = true; });
 els.closeReport.addEventListener("click", () => { els.reportModal.hidden = true; });
 els.currentWeekReportButton.addEventListener("click", () => downloadReport("week", true));
 els.previousWeekReportButton.addEventListener("click", () => downloadReport("week", false));
 els.monthlyReportButton.addEventListener("click", () => downloadReport("month"));
-els.submissionsButton.addEventListener("click", openSubmissions);
-els.closeSubmissions.addEventListener("click", () => { els.submissionsModal.hidden = true; });
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  for (const modal of [els.loginModal, els.stopModal, els.videoLibraryModal, els.analyticsModal, els.submissionsModal, els.reportModal]) modal.hidden = true;
+  for (const modal of [els.loginModal, els.stopModal, els.analyticsModal, els.reportModal]) modal.hidden = true;
 });
 
 window.setInterval(() => {
-  if (!els.submissionsModal.hidden) openSubmissions();
+  if (state.activeView === "bilibili") openSubmissions();
 }, 20000);
 
 const globalControlRail = document.querySelector(".control-rail");
@@ -1437,6 +1524,7 @@ if (globalControlRail) {
 }
 
 loadState(true);
+setView("dashboard");
 refreshLogs();
 window.setInterval(refreshService, 3000);
 window.setInterval(refreshLogs, 3500);

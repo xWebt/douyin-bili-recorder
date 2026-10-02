@@ -1,0 +1,261 @@
+/* Fixed application shell overrides for the routed work areas. */
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-shell {
+  width: 100%;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.topbar {
+  min-height: 72px;
+  padding: 0 22px;
+  background: rgba(245, 247, 251, 0.94);
+  backdrop-filter: blur(14px);
+  z-index: 5;
+}
+
+.topbar-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.nav-button.active {
+  border-color: var(--signal);
+  background: var(--signal-soft);
+  color: var(--signal);
+}
+
+.view-stack {
+  min-height: 0;
+  padding: 16px 22px 22px;
+  overflow: hidden;
+}
+
+.app-view {
+  height: 100%;
+  min-height: 0;
+}
+
+.app-view[hidden] {
+  display: none !important;
+}
+
+.app-view[data-view-panel="dashboard"] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.app-view[data-view-panel="dashboard"] .control-grid {
+  height: 100%;
+  min-height: 0;
+  margin-top: 0;
+}
+
+.app-view[data-view-panel="dashboard"] .control-rail,
+.app-view[data-view-panel="dashboard"] .targets-panel,
+.app-view[data-view-panel="dashboard"] .log-panel {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.log-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.log-view {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+.app-view[data-view-panel="bilibili"],
+.app-view[data-view-panel="cloud"] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.panel {
+  min-width: 0;
+  padding: 21px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow);
+}
+
+.submissions-panel,
+.cloud-panel,
+.library-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.submission-list,
+.cloud-list,
+.library-list {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.cloud-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  background: linear-gradient(120deg, #ffffff 0%, #edf8f7 100%);
+  box-shadow: var(--shadow);
+}
+
+.cloud-hero small {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-soft);
+}
+
+.cloud-hero-actions,
+.cloud-backup-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cloud-backup-actions {
+  justify-content: flex-end;
+}
+
+.cloud-retry-state {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.cloud-list {
+  display: grid;
+  gap: 10px;
+}
+
+.cloud-backup-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1.5fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  background: #fbfcfe;
+}
+
+.cloud-backup-row strong,
+.cloud-backup-row small {
+  display: block;
+}
+
+.cloud-backup-row small {
+  margin-top: 4px;
+  color: var(--ink-dim);
+}
+
+.cloud-state-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.cloud-state-pill.uploaded {
+  border-color: rgba(15, 139, 141, 0.42);
+  color: var(--signal);
+}
+
+.cloud-state-pill.failed {
+  border-color: rgba(225, 29, 72, 0.42);
+  color: var(--danger);
+}
+
+.cloud-state-pill.uploading {
+  border-color: rgba(37, 99, 235, 0.42);
+  color: var(--info);
+}
+
+@media (max-width: 1180px) {
+  .app-view[data-view-panel="dashboard"] {
+    overflow: auto;
+  }
+
+  .app-view[data-view-panel="dashboard"] .control-grid {
+    height: auto;
+  }
+
+  .app-view[data-view-panel="dashboard"] .control-rail,
+  .app-view[data-view-panel="dashboard"] .targets-panel,
+  .app-view[data-view-panel="dashboard"] .log-panel {
+    height: auto;
+    max-height: none;
+  }
+}
+
+@media (max-width: 820px) {
+  html,
+  body {
+    overflow: auto;
+  }
+
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .view-stack {
+    padding: 14px 12px 20px;
+    overflow: visible;
+  }
+
+  .app-view {
+    height: auto;
+  }
+
+  .app-view[data-view-panel="dashboard"],
+  .app-view[data-view-panel="bilibili"],
+  .app-view[data-view-panel="cloud"],
+  .submissions-panel,
+  .cloud-panel,
+  .library-panel {
+    display: block;
+  }
+
+  .submission-list,
+  .cloud-list,
+  .library-list {
+    overflow: visible;
+  }
+
+  .cloud-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cloud-backup-row {
+    grid-template-columns: 1fr;
+  }
+}

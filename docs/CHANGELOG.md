@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.52
+- Reworked the control deck into a fixed-height application shell with top-level views for recording control, Bilibili submissions, cloud backup, and the video library.
+- Moved upload queues and cloud backup status out of the anchor cards; each network workflow now has its own dedicated view and internal scrolling.
+- Added a dedicated cloud backup list with per-anchor status, remote test, and cloud-only retry controls.
+
 ## v2.2.51
 - Cloud backup now uploads only the final rendered video (`part.path`) and excludes raw FLV/source files and danmaku XML.
 

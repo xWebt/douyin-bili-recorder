@@ -1,6 +1,16 @@
 # Local validation report
 
-Date: 2026-10-01
+Date: 2026-10-02
+
+## v2.2.52 UI and end-to-end validation
+
+- The packaged `v2.2.52` build completed signature verification.
+- The fixed-height web shell was exercised in Chromium at 1440x900 and 1280x800; the document stayed within the viewport and did not create page-level scrolling.
+- The four navigation buttons were clicked three times each; every click switched to the correct view and no `pageerror` was emitted.
+- A real Douyin live stream was recorded, 70 danmaku messages were captured and burned, and a private Bilibili submission was created and verified as `BV1Rya266EhR`.
+- A cloud upload containing one MP4, one FLV, and one XML uploaded only the MP4 to the isolated Quark validation path; the remote listing contained only `danmaku-burned.mp4`.
+
+## v2.2.49 Douyin-to-Bilibili validation
 
 ## v2.2.49 Douyin-to-Bilibili current-state validation
 
