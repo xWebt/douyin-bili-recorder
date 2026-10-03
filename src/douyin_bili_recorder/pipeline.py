@@ -17,6 +17,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .analytics import AnalyticsStore
+from .bandwidth import BANDWIDTH
 from .collection import BilibiliCollectionManager
 from .bilibili_status import BilibiliSubmissionClient
 from .cloud_uploader import CloudUploadError, CloudUploadResult, RcloneCloudUploader
@@ -87,6 +88,11 @@ class RecorderService:
         self._queued_cloud_parts: set[str] = set()
         self._cloud_queue_lock = threading.Lock()
         self._parent_pid = int(os.environ.get("DOUYIN_RECORDER_PARENT_PID", "0") or 0)
+        BANDWIDTH.configure(
+            cloud_limit_kbps=config.cloud_bandwidth_limit_kbps,
+            cloud_max_concurrency=config.cloud_max_concurrency,
+            bilibili_priority=config.bilibili_priority,
+        )
 
     def _bilibili_part_lookup(self, bvid: str) -> list[str]:
         """Lazily build the B站 client used for append idempotency checks."""
@@ -1307,6 +1313,17 @@ class RecorderService:
             part.index,
             fingerprint=self._part_fingerprint(part),
         )
+        with BANDWIDTH.cloud_slot():
+            return self._cloud_backup_locked(target, session, part, job_key, claim)
+
+    def _cloud_backup_locked(
+        self,
+        target: TargetConfig,
+        session: SessionRecord,
+        part: SessionPart,
+        job_key: str,
+        claim,
+    ) -> bool:
         if not claim.claimed:
             if claim.job.succeeded:
                 part.cloud_status = "UPLOADED"
@@ -1828,9 +1845,21 @@ class RecorderService:
             "upload_submit_interval_seconds",
             "cloud_rclone_bin",
             "cloud_upload_timeout_seconds",
+            "cloud_max_concurrency",
+            "cloud_bandwidth_limit_kbps",
+            "cloud_chunk_size_mb",
+            "cloud_quark_cli",
+            "cloud_baidu_cli",
+            "cloud_quark_cookie_file",
+            "bilibili_priority",
             "targets",
         ):
             setattr(self.config, field, getattr(current, field))
+        BANDWIDTH.configure(
+            cloud_limit_kbps=self.config.cloud_bandwidth_limit_kbps,
+            cloud_max_concurrency=self.config.cloud_max_concurrency,
+            bilibili_priority=self.config.bilibili_priority,
+        )
         fresh_target = self._target_by_name(target.name)
         if fresh_target is not None:
             for field in (

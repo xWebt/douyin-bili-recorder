@@ -108,6 +108,13 @@ class AppConfig:
     upload_submit_interval_seconds: int
     cloud_rclone_bin: str
     cloud_upload_timeout_seconds: int
+    cloud_max_concurrency: int
+    cloud_bandwidth_limit_kbps: int
+    cloud_chunk_size_mb: int
+    cloud_quark_cli: str
+    cloud_baidu_cli: str
+    cloud_quark_cookie_file: Path
+    bilibili_priority: bool
     launchd_label: str
     targets: list[TargetConfig]
     config_path: Path
@@ -182,6 +189,17 @@ def load_config(path: str | Path) -> AppConfig:
         upload_submit_interval_seconds=max(0, int(upload.get("submit_interval_seconds", 180))),
         cloud_rclone_bin=resolve_executable(str(cloud.get("rclone_bin", "rclone")), base),
         cloud_upload_timeout_seconds=int(cloud.get("upload_timeout_seconds", 6 * 60 * 60)),
+        cloud_max_concurrency=max(1, int(cloud.get("max_concurrency", 1))),
+        cloud_bandwidth_limit_kbps=max(0, int(cloud.get("bandwidth_limit_kbps", 0))),
+        cloud_chunk_size_mb=max(1, int(cloud.get("chunk_size_mb", 4))),
+        cloud_quark_cli=resolve_executable(
+            str(cloud.get("quark_cli", "quarkpan")), base
+        ),
+        cloud_baidu_cli=resolve_executable(str(cloud.get("baidu_cli", "bypy")), base),
+        cloud_quark_cookie_file=_expand_path(
+            cloud.get("quark_cookie_file", "quark-cookies.txt"), base
+        ),
+        bilibili_priority=bool(cloud.get("bilibili_priority", True)),
         launchd_label=str(launchd.get("label", "com.webt.douyin-bili-recorder")),
         targets=targets,
         config_path=config_path,
@@ -255,6 +273,12 @@ def _validate(config: AppConfig) -> None:
         raise ConfigError("submit_interval_seconds cannot be negative")
     if config.cloud_upload_timeout_seconds < 60:
         raise ConfigError("cloud upload_timeout_seconds must be at least 60")
+    if config.cloud_max_concurrency < 1:
+        raise ConfigError("cloud max_concurrency must be at least 1")
+    if config.cloud_chunk_size_mb < 1:
+        raise ConfigError("cloud chunk_size_mb must be at least 1")
+    if config.cloud_bandwidth_limit_kbps < 0:
+        raise ConfigError("cloud bandwidth_limit_kbps cannot be negative")
     for target in config.targets:
         if target.record_mode not in {"record", "monitor"}:
             raise ConfigError(f"target {target.name} has invalid record_mode: {target.record_mode}")

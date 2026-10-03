@@ -5,9 +5,10 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from .cloud import CloudDriver, CloudDriverError, DriverContext, create_driver
+from .cloud.driver import detect_provider as _detect_provider
 from .config import AppConfig, TargetConfig
 from .models import SessionPart, SessionRecord
-from .openlist_api import OpenListApiClient, OpenListApiError
 from .paths import safe_path_name
 from .process import ProcessRunner
 
@@ -24,6 +25,13 @@ class CloudUploadError(RuntimeError):
 
 
 class RcloneCloudUploader:
+    """Backs up finished parts through the best available cloud driver.
+
+    The public API is unchanged from the rclone-only implementation; the
+    actual transfer is delegated to a driver (Quark CLI, Baidu CLI, OpenList or
+    plain rclone) chosen by :mod:`douyin_bili_recorder.cloud`.
+    """
+
     def __init__(self, config: AppConfig, runner: ProcessRunner, logger: logging.Logger) -> None:
         self.config = config
         self.runner = runner
@@ -32,7 +40,10 @@ class RcloneCloudUploader:
         self._cancel_events: dict[str, threading.Event] = {}
         self._part_locks: dict[str, threading.Lock] = {}
         self._part_locks_guard = threading.Lock()
-        self._api_clients: dict[str, OpenListApiClient | None] = {}
+        self._drivers: dict[str, CloudDriver] = {}
+        self._drivers_guard = threading.Lock()
+
+    # ------------------------------------------------------------------ public
 
     def upload_part(
         self,
@@ -44,9 +55,48 @@ class RcloneCloudUploader:
         with self._part_lock(key):
             return self._upload_part_unlocked(target, session, part)
 
-    def _part_lock(self, key: str) -> threading.Lock:
-        with self._part_locks_guard:
-            return self._part_locks.setdefault(key, threading.Lock())
+    def ensure_anchor_dir(
+        self,
+        target_name: str,
+        remote: str,
+        *,
+        rclone_bin: str | None = None,
+    ) -> str:
+        remote_root = self._validate_remote(remote)
+        anchor = safe_path_name(target_name, "未命名主播")
+        remote_path = f"{remote_root}/{anchor}"
+        driver = self._driver(remote_root, target_name)
+        try:
+            driver.ensure_dir(remote_path, threading.Event())
+        except CloudDriverError as exc:
+            raise CloudUploadError(str(exc)) from exc
+        return remote_path
+
+    def test_remote(self, remote: str) -> CloudUploadResult:
+        remote_root = self._validate_remote(remote)
+        driver = self._driver(remote_root, remote_root)
+        try:
+            lines = driver.probe(remote_root)
+        except CloudDriverError as exc:
+            raise CloudUploadError(str(exc)) from exc
+        return CloudUploadResult(True, [remote_root], lines)
+
+    def driver_info(self, remote: str) -> dict[str, object]:
+        driver = self._driver(remote, remote)
+        return {
+            "driver": driver.name,
+            "capabilities": driver.capabilities.to_dict(),
+            "remote": remote,
+        }
+
+    def cancel(self, key: str) -> None:
+        self._cancel_event(key).set()
+
+    def reset_cancel(self, key: str) -> None:
+        with self._cancel_lock:
+            self._cancel_events.pop(key, None)
+
+    # ----------------------------------------------------------------- internal
 
     def _upload_part_unlocked(
         self,
@@ -63,152 +113,60 @@ class RcloneCloudUploader:
             raise CloudUploadError(f"P{part.index:02d} has no local files to back up")
 
         remote_dir = self.part_remote_dir(target, session, part, remote_root)
+        provider = target.cloud_provider or _detect_provider(remote_root)
+        driver = self._driver(remote_root, provider, provider=provider)
         uploaded_paths: list[str] = []
         messages: list[str] = []
-        api_client = self._openlist_api_client(remote_root)
+        try:
+            driver.ensure_dir(remote_dir, cancel_event)
+        except CloudDriverError as exc:
+            raise CloudUploadError(str(exc)) from exc
         for local_path in files:
             if cancel_event.is_set():
                 raise CloudUploadError("网盘备份已停止")
             remote_path = f"{remote_dir}/{local_path.name}"
-            if api_client is not None:
-                try:
-                    api_client.upload(local_path, remote_path, cancel_event)
-                except OpenListApiError as exc:
-                    raise CloudUploadError(str(exc)) from exc
-                uploaded_paths.append(remote_path)
-                continue
-            command = [
-                self.config.cloud_rclone_bin,
-                "copyto",
-                str(local_path),
-                remote_path,
-                "--stats",
-                "1s",
-                "--stats-one-line",
-                "--retries",
-                "3",
-                "--low-level-retries",
-                "5",
-                "--retries-sleep",
-                "15s",
-                "--timeout",
-                "60m",
-                "--contimeout",
-                "1m",
-                "--transfers",
-                "1",
-                "--checkers",
-                "1",
-            ]
             try:
-                result = self.runner.run(
-                    command,
-                    cancel_event=cancel_event,
-                    timeout_seconds=self.config.cloud_upload_timeout_seconds,
-                )
-            except FileNotFoundError as exc:
-                self.reset_cancel(f"{session.session_id}:{part.index}")
-                raise CloudUploadError(
-                    f"rclone 不存在或不可执行：{self.config.cloud_rclone_bin}"
-                ) from exc
-            messages.extend(result.lines)
-            if result.cancelled:
-                raise CloudUploadError("网盘备份已停止")
-            if result.timed_out:
-                raise CloudUploadError(f"网盘上传超时：{local_path.name}")
-            if result.returncode != 0:
-                detail = result.lines[-1] if result.lines else f"exit code {result.returncode}"
-                raise CloudUploadError(f"网盘上传失败：{local_path.name}：{detail}")
-            uploaded_paths.append(remote_path)
+                outcome = driver.upload(local_path, remote_path, cancel_event)
+            except CloudDriverError as exc:
+                raise CloudUploadError(str(exc)) from exc
+            uploaded_paths.extend(outcome.remote_paths)
+            messages.extend(outcome.messages)
         self.reset_cancel(f"{session.session_id}:{part.index}")
         return CloudUploadResult(True, uploaded_paths, messages)
 
-    def cancel(self, key: str) -> None:
-        self._cancel_event(key).set()
-
-    def reset_cancel(self, key: str) -> None:
-        with self._cancel_lock:
-            self._cancel_events.pop(key, None)
-
-    def _openlist_api_client(self, remote: str) -> OpenListApiClient | None:
-        if remote not in self._api_clients:
-            self._api_clients[remote] = OpenListApiClient.from_rclone_remote(
+    def _driver(
+        self,
+        remote: str,
+        cache_key: str,
+        *,
+        provider: str | None = None,
+    ) -> CloudDriver:
+        key = f"{provider or _detect_provider(remote)}|{cache_key}|{remote}"
+        with self._drivers_guard:
+            cached = self._drivers.get(key)
+            if cached is not None:
+                return cached
+            context = DriverContext(config=self.config, runner=self.runner, logger=self.logger)
+            try:
+                driver = create_driver(provider or _detect_provider(remote), remote, context)
+            except CloudDriverError as exc:
+                raise CloudUploadError(str(exc)) from exc
+            self._drivers[key] = driver
+            self.logger.info(
+                "cloud driver for %s: %s (%s)",
                 remote,
-                rclone_bin=self.config.cloud_rclone_bin,
-                timeout_seconds=self.config.cloud_upload_timeout_seconds,
+                driver.name,
+                driver.capabilities.notes or "no notes",
             )
-        return self._api_clients[remote]
+            return driver
+
+    def _part_lock(self, key: str) -> threading.Lock:
+        with self._part_locks_guard:
+            return self._part_locks.setdefault(key, threading.Lock())
 
     def _cancel_event(self, key: str) -> threading.Event:
         with self._cancel_lock:
             return self._cancel_events.setdefault(key, threading.Event())
-
-    def ensure_anchor_dir(
-        self,
-        target_name: str,
-        remote: str,
-        *,
-        rclone_bin: str | None = None,
-    ) -> str:
-        remote_root = self._validate_remote(remote)
-        anchor = safe_path_name(target_name, "未命名主播")
-        remote_path = f"{remote_root}/{anchor}"
-        list_command = [
-            rclone_bin or self.config.cloud_rclone_bin,
-            "lsf",
-            remote_root,
-            "--max-depth",
-            "1",
-            "--dirs-only",
-        ]
-        try:
-            listed = self.runner.run(list_command, timeout_seconds=60)
-        except FileNotFoundError as exc:
-            raise CloudUploadError(
-                f"rclone 不存在或不可执行：{list_command[0]}"
-            ) from exc
-        if listed.cancelled:
-            raise CloudUploadError("检查网盘主播目录已停止")
-        if listed.timed_out:
-            raise CloudUploadError("检查网盘主播目录超时")
-        entries = {line.strip().rstrip("/") for line in listed.lines if line.strip()}
-        if listed.returncode == 0 and anchor in entries:
-            return remote_path
-        command = [rclone_bin or self.config.cloud_rclone_bin, "mkdir", remote_path]
-        try:
-            result = self.runner.run(command, timeout_seconds=60)
-        except FileNotFoundError as exc:
-            raise CloudUploadError(
-                f"rclone 不存在或不可执行：{command[0]}"
-            ) from exc
-        if result.cancelled:
-            raise CloudUploadError("创建网盘主播目录已停止")
-        if result.timed_out:
-            raise CloudUploadError("创建网盘主播目录超时")
-        if result.returncode != 0:
-            detail = result.lines[-1] if result.lines else f"exit code {result.returncode}"
-            raise CloudUploadError(f"创建网盘主播目录失败：{detail}")
-        return remote_path
-
-    def test_remote(self, remote: str) -> CloudUploadResult:
-        remote_root = self._validate_remote(remote)
-        command = [
-            self.config.cloud_rclone_bin,
-            "lsf",
-            remote_root,
-            "--max-depth",
-            "1",
-        ]
-        try:
-            result = self.runner.run(command, timeout_seconds=60)
-        except FileNotFoundError as exc:
-            raise CloudUploadError(
-                f"rclone 不存在或不可执行：{self.config.cloud_rclone_bin}"
-            ) from exc
-        if result.returncode != 0:
-            detail = result.lines[-1] if result.lines else f"exit code {result.returncode}"
-            raise CloudUploadError(f"网盘远端不可访问：{detail}")
-        return CloudUploadResult(True, [remote_root], result.lines)
 
     def part_remote_dir(
         self,

@@ -5,6 +5,7 @@ import threading
 from pathlib import Path
 
 from douyin_bili_recorder.cloud_uploader import RcloneCloudUploader
+from douyin_bili_recorder.openlist_api import OpenListApiClient
 from douyin_bili_recorder.config import load_config
 from douyin_bili_recorder.models import SessionPart, SessionRecord
 from douyin_bili_recorder.process import ProcessResult
@@ -105,12 +106,13 @@ def test_cloud_uploader_uses_independent_remote_path(tmp_path: Path) -> None:
         "quark:/DouyinBiliRecorder/anchor/2026-09-30/hour-01.mp4"
     )
     assert all(not path.endswith((".flv", ".xml")) for path in result.remote_paths)
-    assert all(command[:2] == ["rclone", "copyto"] for command in runner.commands)
-    assert "--timeout" in runner.commands[0]
-    assert "60m" in runner.commands[0]
+    copy_commands = [command for command in runner.commands if command[:2] == ["rclone", "copyto"]]
+    assert len(copy_commands) == 1
+    assert "--timeout" in copy_commands[0]
+    assert "60m" in copy_commands[0]
 
 
-def test_cloud_uploader_prefers_native_openlist_api(tmp_path: Path) -> None:
+def test_cloud_uploader_prefers_native_openlist_api(tmp_path: Path, monkeypatch) -> None:
     config = _config(tmp_path)
     media = tmp_path / "part.mp4"
     media.write_bytes(b"video")
@@ -124,7 +126,11 @@ def test_cloud_uploader_prefers_native_openlist_api(tmp_path: Path) -> None:
     runner = FakeRunner()
     client = FakeOpenListClient()
     uploader = RcloneCloudUploader(config, runner, logging.getLogger("test"))  # type: ignore[arg-type]
-    uploader._openlist_api_client = lambda _remote: client  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        OpenListApiClient,
+        "from_rclone_remote",
+        classmethod(lambda cls, remote, **kwargs: client),
+    )
 
     result = uploader.upload_part(config.targets[0], session, part)
 
@@ -135,10 +141,11 @@ def test_cloud_uploader_prefers_native_openlist_api(tmp_path: Path) -> None:
             "quark:/DouyinBiliRecorder/anchor/2026-09-30/part.mp4",
         )
     ]
-    assert runner.commands == []
+    # Directory preparation may still use rclone; the file itself must not.
+    assert all(command[:2] != ["rclone", "copyto"] for command in runner.commands)
 
 
-def test_cloud_uploader_allows_different_parts_in_parallel(tmp_path: Path) -> None:
+def test_cloud_uploader_allows_different_parts_in_parallel(tmp_path: Path, monkeypatch) -> None:
     config = _config(tmp_path)
     sessions = []
     parts = []
@@ -155,7 +162,11 @@ def test_cloud_uploader_allows_different_parts_in_parallel(tmp_path: Path) -> No
         parts.append(SessionPart(index=1, path=str(media)))
     client = ConcurrentOpenListClient()
     uploader = RcloneCloudUploader(config, FakeRunner(), logging.getLogger("test"))  # type: ignore[arg-type]
-    uploader._openlist_api_client = lambda _remote: client  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        OpenListApiClient,
+        "from_rclone_remote",
+        classmethod(lambda cls, remote, **kwargs: client),
+    )
     threads = [
         threading.Thread(target=uploader.upload_part, args=(config.targets[0], session, part))
         for session, part in zip(sessions, parts)

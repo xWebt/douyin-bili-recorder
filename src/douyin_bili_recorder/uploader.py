@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config import AppConfig, TargetConfig
+from .bandwidth import BANDWIDTH
 from .models import SessionRecord
 from .process import ProcessRunner
 from .timeutil import build_title
@@ -379,7 +380,9 @@ class BiliupUploader:
                 else:
                     time.sleep(min(wait, 1.0))
             try:
-                yield
+                # B站 uploads take priority; the cloud scheduler yields to them.
+                with BANDWIDTH.bilibili_upload():
+                    yield
             finally:
                 self._next_submit_at = time.monotonic() + interval
 
