@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.68
+
+- Cleared stale stop requests before startup process recovery so interrupted work is resumed instead of being treated as a user cancellation.
+- Prioritized the currently uploading item in the dashboard when other parts are queued behind it.
+
 ## v2.2.67
 
 - Added an application-level control lock and stale-process reaper so legacy GUI, control-server, worker, and danmaku processes cannot race the packaged recorder.
