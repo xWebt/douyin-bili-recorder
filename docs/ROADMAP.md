@@ -81,3 +81,9 @@
 - 夸克分片并发实测：`scripts/quark_benchmark.py --dry-run` 已验证分片/并发/报告链路；真实吞吐需在装有 Quark CLI 或 OpenList 的机器上跑矩阵。
 - GUI 视觉走查：布局/结构与静态服务已通过测试，仍需在 macOS 窗口内确认滚动、间距和报告按钮。
 - 打包：`APP_VERSION=2.3.0 scripts/build-macos-app.sh` 与签名校验需在带网络/证书的环境执行。
+
+## 已执行的额外验证
+
+- 真实数据迁移演练：把线上 `data/sessions`（47 个 `session.json`、98 个分 P）复制到临时目录，首次打开即导入 SQLite（0.05s），部分 P 状态、云备份待处理数量保持正确。
+- 上传幂等演练：在副本上完成 `claim → SUCCEEDED → 再次 claim` 流程，第二次正确返回 `already-succeeded` 并保留 BVID。
+- UI 启动演练：`create_app()` 能正常构建，`/` 返回 19KB 控制台页面，包含新增的录制状态与统计视图，21 个 `/api` 路由可用。

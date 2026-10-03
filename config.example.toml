@@ -34,6 +34,16 @@ submit_interval_seconds = 180
 [cloud]
 rclone_bin = "rclone"
 upload_timeout_seconds = 21600
+# 网盘驱动：quark/baidu 会优先尝试配置的 CLI，不可用时回退 OpenList/rclone
+quark_cli = "quarkpan"
+baidu_cli = "bypy"
+quark_cookie_file = "quark-cookies.txt"
+chunk_size_mb = 4
+max_concurrency = 1
+# 0 表示不限速；B站上传进行中时网盘默认降到 2 Mbps
+bandwidth_limit_kbps = 0
+bilibili_priority = true
+
 
 [launchd]
 label = "com.webt.douyin-bili-recorder"
