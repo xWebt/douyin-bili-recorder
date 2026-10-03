@@ -526,8 +526,10 @@ def create_app(config: AppConfig) -> FastAPI:
             today = datetime.now(ZoneInfo(config.timezone)).date()
             effective_end = None
             if end >= today:
-                if not allow_partial or period != "week":
+                if not allow_partial:
                     raise HTTPException(status_code=409, detail="当前周期尚未结束，请生成上一个完整周期")
+                # Explicit partial reports are clamped to today and labelled
+                # “截至 X 日”，避免把未结束的月份当成完整月报。
                 effective_end = today
             path = report.generate(
                 target_name,

@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f7fb" />
     <title>DouyinBiliRecorder</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2.2.66" />
-    <link rel="stylesheet" href="/static/app-shell.css?v=2.2.66" />
-    <link rel="stylesheet" href="/static/sidebar.css?v=2.2.66" />
+    <link rel="stylesheet" href="/static/styles.css?v=2.3.0" />
+    <link rel="stylesheet" href="/static/app-shell.css?v=2.3.0" />
+    <link rel="stylesheet" href="/static/sidebar.css?v=2.3.0" />
   </head>
   <body>
     <div class="app-shell">
@@ -26,6 +26,9 @@
           <button class="ghost-button nav-button" id="targetsButton" data-view="targets" type="button">
             <i data-lucide="radio-tower"></i><span>监视主播</span>
           </button>
+          <button class="ghost-button nav-button" id="recordingButton" data-view="recording" type="button">
+            <i data-lucide="clapperboard"></i><span>录制状态</span>
+          </button>
           <button class="ghost-button nav-button" id="submissionsButton" data-view="bilibili" type="button">
             <i data-lucide="upload-cloud"></i><span>B站投稿</span>
           </button>
@@ -37,6 +40,9 @@
           </button>
           <button class="ghost-button nav-button" id="logsButton" data-view="logs" type="button">
             <i data-lucide="scroll-text"></i><span>运行日志</span>
+          </button>
+          <button class="ghost-button nav-button" id="analyticsButton" data-view="analytics" type="button">
+            <i data-lucide="bar-chart-3"></i><span>统计与报告</span>
           </button>
           <button class="ghost-button" id="loginButton" type="button">
             <i data-lucide="scan-qr-code"></i><span id="loginLabel">B站登录</span>
@@ -227,6 +233,44 @@
             <div class="library-list" id="libraryList"></div>
           </section>
         </section>
+
+        <section class="app-view" data-view-panel="recording" hidden>
+          <section class="panel recording-panel">
+            <div class="section-heading">
+              <div><p class="eyebrow">RECORDING</p><h2>录制状态</h2></div>
+              <span class="submission-note" id="recordingNote">正在读取场次…</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>主播</th><th>场次</th><th>分段</th><th>录制状态</th><th>B站状态</th><th>网盘状态</th><th>开始时间</th><th>BVID</th></tr></thead>
+                <tbody id="recordingRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="app-view" data-view-panel="analytics" hidden>
+          <section class="panel analytics-panel">
+            <div class="section-heading">
+              <div><p class="eyebrow">ANALYTICS &amp; REPORTS</p><h2>数据统计与报告</h2></div>
+              <div class="analytics-toolbar">
+                <label class="select-row"><span>主播</span><select id="analyticsTargetSelect"></select></label>
+                <label class="select-row"><span>月份</span><input type="month" id="analyticsMonth" /></label>
+                <button class="secondary-button" id="analyticsRefreshButton" type="button"><i data-lucide="refresh-cw"></i><span>刷新</span></button>
+                <button class="secondary-button" id="analyticsWeekButton" type="button"><i data-lucide="file-text"></i><span>本周周报</span></button>
+                <button class="secondary-button" id="analyticsMonthButton" type="button"><i data-lucide="file-text"></i><span>本月月报</span></button>
+              </div>
+            </div>
+            <div class="metric-grid" id="analyticsViewMetrics"></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>日期</th><th>开播</th><th>时长</th><th>迟到</th><th>重连</th><th>BVID</th></tr></thead>
+                <tbody id="analyticsViewRows"></tbody>
+              </table>
+            </div>
+            <p class="submission-note" id="analyticsViewNote">未结束的周期不会自动生成完整月报，可在月报中使用“截至今日”。</p>
+          </section>
+        </section>
       </main>
     </div>
 
@@ -283,6 +327,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="/static/vendor/lucide.min.js"></script>
-    <script src="/static/app.js?v=2.2.66"></script>
+    <script src="/static/app.js?v=2.3.0"></script>
   </body>
 </html>

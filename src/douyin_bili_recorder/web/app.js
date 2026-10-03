@@ -15,6 +15,8 @@ const state = {
   uploadSignature: "",
   cloudSignature: "",
   dashboardSignature: "",
+  recordSignature: "",
+  analyticsSignature: "",
 };
 
 const els = {
@@ -66,6 +68,16 @@ const els = {
   biliSubnav: document.querySelector("#biliSubnav"),
   biliPanels: [...document.querySelectorAll("[data-bili-panel-content]")],
   targetList: document.querySelector("#targetList"),
+  recordingRows: document.querySelector("#recordingRows"),
+  recordingNote: document.querySelector("#recordingNote"),
+  analyticsTargetSelect: document.querySelector("#analyticsTargetSelect"),
+  analyticsMonth: document.querySelector("#analyticsMonth"),
+  analyticsViewMetrics: document.querySelector("#analyticsViewMetrics"),
+  analyticsViewRows: document.querySelector("#analyticsViewRows"),
+  analyticsViewNote: document.querySelector("#analyticsViewNote"),
+  analyticsRefreshButton: document.querySelector("#analyticsRefreshButton"),
+  analyticsWeekButton: document.querySelector("#analyticsWeekButton"),
+  analyticsMonthButton: document.querySelector("#analyticsMonthButton"),
   targetEmpty: document.querySelector("#targetEmpty"),
   targetForm: document.querySelector("#targetForm"),
   targetName: document.querySelector("#targetName"),
@@ -142,7 +154,9 @@ function renderIcons() {
 }
 
 function setView(view) {
-  const allowed = new Set(["dashboard", "targets", "bilibili", "cloud", "library", "logs"]);
+  const allowed = new Set([
+    "dashboard", "targets", "recording", "bilibili", "cloud", "library", "analytics", "logs",
+  ]);
   state.activeView = allowed.has(view) ? view : "dashboard";
   for (const button of els.appNav?.querySelectorAll("[data-view]") || []) {
     button.classList.toggle("active", button.dataset.view === state.activeView);
@@ -153,6 +167,8 @@ function setView(view) {
     panel.hidden = panel.dataset.viewPanel !== baseView;
   }
   if (state.activeView === "bilibili") setBiliPane(state.biliPane);
+  if (state.activeView === "recording") renderRecordingStatus();
+  if (state.activeView === "analytics") openAnalyticsView();
   if (state.activeView === "cloud") renderCloudUploads();
   if (state.activeView === "library") openVideoLibrary();
   if (state.activeView === "dashboard" || state.activeView === "logs") refreshLogs();
@@ -206,6 +222,7 @@ async function refreshService() {
     updateTargetRuntime();
     renderDashboardOverview();
     renderCloudUploads();
+    if (state.activeView === "recording") renderRecordingStatus();
   } catch (_error) {
     els.connectionState.classList.remove("online");
   }
@@ -1174,6 +1191,130 @@ async function resolveTargetUrl() {
 }
 
 async function openAnalytics(name) {
+function recordingStateMeta(session) {
+  const status = String(session.status || "").toUpperCase();
+  if (status === "RECORDING") return { label: "录制中", tone: "recording" };
+  if (status === "STARTING") return { label: "连接中", tone: "checking" };
+  if (status === "UPLOADING") return { label: "录制完成 · 上传中", tone: "uploading" };
+  if (status === "UPLOADED") return { label: "已完成", tone: "success" };
+  if (status === "UPLOAD_SUBMITTED_UNVERIFIED") return { label: "待核验", tone: "uploading" };
+  if (status === "UPLOAD_FAILED" || status === "FAILED") return { label: "异常", tone: "danger" };
+  if (status === "CANCELED") return { label: "已停止", tone: "muted" };
+  return { label: "已录制", tone: "neutral" };
+}
+
+function renderRecordingStatus() {
+  if (!els.recordingRows) return;
+  const sessions = state.service?.sessions || [];
+  const signature = JSON.stringify(
+    sessions.map((item) => [item.session_id, item.status, item.parts, item.cloud_status, item.bvid, item.error]),
+  );
+  if (signature === state.recordSignature) return;
+  state.recordSignature = signature;
+  els.recordingNote.textContent = sessions.length
+    ? `最近 ${sessions.length} 个场次；录制与上传状态分开显示。`
+    : "暂无场次记录。";
+  els.recordingRows.replaceChildren(...sessions.map((session) => {
+    const meta = recordingStateMeta(session);
+    const row = document.createElement("tr");
+    const biliState = session.bvid ? `已投稿 ${session.bvid}` : (session.error || "待投稿");
+    const cloudState = session.cloud_status === "UPLOADED"
+      ? "已备份"
+      : session.cloud_status === "FAILED"
+        ? `备份失败 ${Number(session.cloud_pending_parts || 0)} 个`
+        : session.cloud_status ? `待备份 ${Number(session.cloud_pending_parts || 0)} 个` : "未开启";
+    row.innerHTML = [
+      `<td>${session.target_name || "-"}</td>`,
+      `<td>${shortTime(session.started_at) || session.session_id || "-"}</td>`,
+      `<td>${Number(session.parts || 0)}</td>`,
+      `<td><span class="target-status ${meta.tone}">${meta.label}</span></td>`,
+      `<td>${biliState}</td>`,
+      `<td>${cloudState}</td>`,
+      `<td>${session.started_at || "-"}</td>`,
+      `<td>${session.bvid || "-"}</td>`,
+    ].join("");
+    return row;
+  }));
+}
+
+function currentMonthAnchor() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function refreshAnalyticsTargetOptions() {
+  const select = els.analyticsTargetSelect;
+  if (!select) return "";
+  const targets = state.config?.targets || [];
+  const current = select.value || state.analyticsTarget || targets[0]?.name || "";
+  select.replaceChildren(...targets.map((target) => {
+    const option = document.createElement("option");
+    option.value = target.name || "";
+    option.textContent = target.name || "未命名主播";
+    return option;
+  }));
+  const names = new Set(targets.map((target) => target.name));
+  select.value = names.has(current) ? current : (targets[0]?.name || "");
+  if (select.value) state.analyticsTarget = select.value;
+  return select.value;
+}
+
+async function openAnalyticsView(force = false) {
+  const select = els.analyticsTargetSelect;
+  if (!select) return;
+  if (els.analyticsMonth && !els.analyticsMonth.value) {
+    els.analyticsMonth.value = currentMonthAnchor().slice(0, 7);
+  }
+  const target = refreshAnalyticsTargetOptions();
+  if (!target) {
+    els.analyticsViewMetrics?.replaceChildren();
+    els.analyticsViewRows?.replaceChildren();
+    if (els.analyticsViewNote) els.analyticsViewNote.textContent = "请先在“监视主播”中添加主播。";
+    return;
+  }
+  const month = els.analyticsMonth?.value || "";
+  try {
+    const query = month ? `?month=${encodeURIComponent(month)}` : "";
+    const data = await api(`/api/targets/${encodeURIComponent(target)}/analytics${query}`);
+    renderAnalyticsView(target, month, data, force);
+  } catch (error) {
+    toast(`统计数据读取失败：${error.message}`, "error");
+  }
+}
+
+function renderAnalyticsView(target, month, data, force = false) {
+  if (!els.analyticsViewMetrics || !els.analyticsViewRows) return;
+  const signature = `${target}|${month}|${JSON.stringify(data)}`;
+  if (!force && signature === state.analyticsSignature) return;
+  state.analyticsSignature = signature;
+  const metrics = [
+    ["开播天数", data.live_days || 0],
+    ["直播场次", data.sessions || 0],
+    ["总时长", formatHours(data.total_duration_seconds || 0)],
+    ["迟到日", data.late_days || 0],
+    ["迟到场次", data.late_sessions || 0],
+    ["按时率", `${data.on_time_rate || 100}%`],
+  ];
+  els.analyticsViewMetrics.replaceChildren(...metrics.map(([label, value]) => {
+    const card = document.createElement("div");
+    card.className = "metric-card";
+    card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+    return card;
+  }));
+  const rows = (data.sessions_detail || []).slice().reverse();
+  els.analyticsViewRows.replaceChildren(...rows.map((item) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td>${item.date || "-"}</td><td>${shortTime(item.detected_start_iso)}</td>` +
+      `<td>${formatHours(item.duration_seconds || 0)}</td>` +
+      `<td>${item.late ? `迟到 ${item.late_minutes} 分钟` : "正常"}</td>` +
+      `<td>${item.reconnect_count || 0}</td><td>${item.bvid || "-"}</td>`;
+    return row;
+  }));
+  if (els.analyticsViewNote) {
+    const monthText = month || "全部月份";
+    els.analyticsViewNote.textContent = `${target} · ${monthText} · 共 ${rows.length} 场；本月未结束时请使用“本月月报”，报告会标注截至日期。`;
+  }
+}
   state.analyticsTarget = name;
   els.analyticsTitle.textContent = `${name} · 本月数据`;
   els.analyticsModal.hidden = false;
@@ -1431,9 +1572,12 @@ function submissionStateClass(value) {
 async function downloadReport(period, allowPartial = false) {
   const target = state.reportTarget || state.analyticsTarget;
   if (!target) return;
-  const anchor = period === "week" && allowPartial
-    ? localDateISO(new Date())
-    : period === "week" ? previousWeekAnchor() : previousMonthAnchor();
+  if (els.analyticsViewNote && state.activeView === "analytics") {
+    els.analyticsViewNote.textContent = "正在生成报告，请稍候…";
+  }
+  const anchor = allowPartial
+    ? (period === "week" ? localDateISO(new Date()) : currentMonthAnchor())
+    : (period === "week" ? previousWeekAnchor() : previousMonthAnchor());
   const url = `/api/targets/${encodeURIComponent(target)}/reports/${period}?anchor_date=${anchor}&allow_partial=${allowPartial}`;
   try {
     const response = await fetch(url);
@@ -1447,7 +1591,8 @@ async function downloadReport(period, allowPartial = false) {
     link.click();
     link.remove();
     URL.revokeObjectURL(objectUrl);
-    toast(period === "week" ? (allowPartial ? "本周周报已生成" : "上周周报已生成") : "上月月报已生成");
+    if (period === "week") toast(allowPartial ? "本周周报已生成" : "上周周报已生成");
+    else toast(allowPartial ? "本月月报（截至今日）已生成" : "上月月报已生成");
   } catch (error) {
     toast(`报告生成失败：${error.message}`, "error");
   }
@@ -1569,6 +1714,20 @@ for (const button of els.appNav?.querySelectorAll("[data-view]") || []) {
   button.addEventListener("click", () => setView(button.dataset.view));
 }
 els.submissionsRefreshButton?.addEventListener("click", openSubmissions);
+els.analyticsRefreshButton?.addEventListener("click", () => openAnalyticsView(true));
+els.analyticsTargetSelect?.addEventListener("change", () => {
+  state.analyticsTarget = els.analyticsTargetSelect.value;
+  openAnalyticsView(true);
+});
+els.analyticsMonth?.addEventListener("change", () => openAnalyticsView(true));
+els.analyticsWeekButton?.addEventListener("click", () => {
+  state.reportTarget = state.analyticsTarget;
+  downloadReport("week", true);
+});
+els.analyticsMonthButton?.addEventListener("click", () => {
+  state.reportTarget = state.analyticsTarget;
+  downloadReport("month", true);
+});
 els.cloudRefreshButton?.addEventListener("click", () => loadState(true));
 els.libraryRefreshButton?.addEventListener("click", openVideoLibrary);
 els.openRootButton.addEventListener("click", () => openFolder("root"));

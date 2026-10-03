@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.3.0
+
+- Replaced JSON session files with a SQLite source of truth (`recorder.sqlite3`, WAL) covering sessions, parts, upload jobs, anchors and monthly stats; `session.json` is now a debug/export snapshot and legacy data is imported automatically on first open.
+- Added a canonical per-part state machine and transactional read-modify-write helpers so the control console and the recorder worker can no longer clobber each other's writes.
+- Made B站 append idempotent: upload jobs are claimed once per part, successful parts are recorded with their BVID, and the uploader verifies existing分 P on the B站 side before appending.
+- Introduced a cloud driver layer (`openlist` / `quark` CLI / `baidu` CLI / `rclone`) with capability reporting, plus a benchmark harness for Quark chunked uploads (`scripts/quark_benchmark.py`).
+- Added a global bandwidth scheduler where B站 uploads take priority and cloud transfers yield (`--bwlimit`, concurrency limits, runtime-configurable).
+- Hardened process lifecycle: every child process (FFmpeg / biliup / rclone / OpenList) is registered in one reaper with SIGINT → SIGTERM → SIGKILL escalation, and the single-instance lock now records pid/start time and survives stale-lock recovery.
+- Added sidebar sections for 录制状态 and 统计与报告 with per-anchor analytics, week/month PDF export entry points, and an explicit “截至今日” partial month report instead of silently generating a full month.
+
 ## v2.2.68
 
 - Cleared stale stop requests before startup process recovery so interrupted work is resumed instead of being treated as a user cancellation.

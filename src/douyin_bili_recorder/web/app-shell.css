@@ -82,10 +82,33 @@ body {
 }
 
 .app-view[data-view-panel="bilibili"],
-.app-view[data-view-panel="cloud"] {
+.app-view[data-view-panel="cloud"],
+.app-view[data-view-panel="recording"],
+.app-view[data-view-panel="analytics"] {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
+}
+
+.recording-panel,
+.analytics-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.recording-panel .table-wrap,
+.analytics-panel .table-wrap {
+  overflow: auto;
+}
+
+.analytics-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
 .panel {
