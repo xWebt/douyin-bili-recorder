@@ -9,6 +9,7 @@ from douyin_bili_recorder.paths import target_key
 from douyin_bili_recorder.pipeline import RecorderService
 from douyin_bili_recorder.service_control import ServiceController
 from douyin_bili_recorder.ui_state import UIStateStore
+from douyin_bili_recorder.uploader import UploadCancelled
 from douyin_bili_recorder.webapp import _pause_target
 
 
@@ -151,3 +152,44 @@ def test_recorder_stop_reads_discard_request(tmp_path: Path, monkeypatch) -> Non
 
     assert service.pause_mode() == "discard"
     assert service.interrupt_event.is_set()
+
+
+def test_shutdown_stop_preserves_desired_running(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    state_store = UIStateStore(config)
+    state = state_store.load()
+    state["worker_running"] = True
+    state_store.save(state)
+    controller = ServiceController(config, state_store)
+
+    controller.stop("shutdown", persist=False)
+
+    assert state_store.load()["worker_running"] is True
+    assert controller.stop_request_path.read_text(encoding="utf-8") == "shutdown"
+
+
+def test_shutdown_upload_cancellation_keeps_part_pending(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    media = tmp_path / "part.mp4"
+    media.write_bytes(b"video")
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        status=SessionStatus.RECORDED,
+        parts=[SessionPart(index=1, status="PENDING", title="anchor P01", path=str(media))],
+    )
+    service.store.save(session)
+
+    class CancelledUploader:
+        @staticmethod
+        def upload_part(*_args, **_kwargs):
+            raise UploadCancelled("shutdown")
+
+    service.uploader = CancelledUploader()  # type: ignore[assignment]
+    service.shutdown_event.set()
+    result = service._upload_part_with_retries(config.targets[0], session, media, session.parts[0])
+
+    assert not result.verified
+    assert service.store.load("session").parts[0].status == "PENDING"

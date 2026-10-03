@@ -13,10 +13,20 @@ import uvicorn
 import webview
 
 from .config import AppConfig
+from .runtime_cleanup import cleanup_stale_runtime_processes
+from .state import SingleInstanceLock
 from .webapp import create_app
 
 
 def run_desktop(config: AppConfig, *, debug: bool = False) -> None:
+    logger = logging.getLogger(__name__)
+    with SingleInstanceLock(config.data_dir / "control.lock"):
+        (config.data_dir / "ui" / "stop.request").unlink(missing_ok=True)
+        cleanup_stale_runtime_processes(config.data_dir, logger=logger)
+        _run_desktop(config, debug=debug)
+
+
+def _run_desktop(config: AppConfig, *, debug: bool = False) -> None:
     port = _free_port()
     app = create_app(config)
     server = uvicorn.Server(
@@ -37,7 +47,6 @@ def run_desktop(config: AppConfig, *, debug: bool = False) -> None:
     if not server.started:
         raise RuntimeError("control deck server failed to start")
 
-    logger = logging.getLogger(__name__)
     cleanup = getattr(app.state, "shutdown_cleanup", None)
     cleanup_done = False
     cleanup_lock = threading.Lock()

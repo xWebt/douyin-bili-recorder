@@ -917,7 +917,10 @@ class RecorderService:
                 )
             active = any(
                 not future.done()
-                for futures in self._pending_uploads.values()
+                for futures in (
+                    *self._pending_uploads.values(),
+                    *self._pending_cloud_uploads.values(),
+                )
                 for future in futures
             )
             if not active:
@@ -1572,6 +1575,11 @@ class RecorderService:
             except UploadCancelled:
                 if generation != self._upload_generation(session.session_id, part.index):
                     return UploadResult(None, False, ["stale upload canceled"])
+                if self.pause_mode() == "shutdown" or self.shutdown_event.is_set():
+                    part.status = "PENDING"
+                    part.error = "应用退出，等待恢复上传"
+                    self.store.save(session)
+                    return UploadResult(None, False, ["application shutdown"])
                 if self._upload_is_paused(session.session_id, part.index):
                     part.status = "PAUSED"
                     part.error = "上传已暂停"
@@ -1867,13 +1875,15 @@ class RecorderService:
                 requested = Path(stop_path).read_text(encoding="utf-8").strip()
             except OSError:
                 requested = ""
-            if requested in {"upload", "keep", "discard"}:
+            if requested in {"upload", "keep", "discard", "shutdown"}:
                 mode = requested
         self.request_pause(mode)
 
     def request_pause(self, mode: str) -> None:
         with self._state_lock:
             self._pause_mode = mode
+        if mode == "shutdown":
+            self.shutdown_event.set()
         self.interrupt_event.set()
         self.record_runner.terminate_active()
         self.io_runner.terminate_active()

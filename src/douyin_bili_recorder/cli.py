@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 import signal
 import sys
@@ -221,6 +222,15 @@ def command_run(config: AppConfig, logger: logging.Logger) -> int:
 
     def stop(_signum, _frame) -> None:
         logger.info("shutdown signal received")
+        requested = ""
+        stop_path = os.environ.get("DOUYIN_RECORDER_STOP_FILE", "").strip()
+        if stop_path:
+            try:
+                requested = Path(stop_path).read_text(encoding="utf-8").strip()
+            except OSError:
+                requested = ""
+        if requested in {"", "shutdown"}:
+            shutdown.set()
         service.stop()
 
     signal.signal(signal.SIGTERM, stop)

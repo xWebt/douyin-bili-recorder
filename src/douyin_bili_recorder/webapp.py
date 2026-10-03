@@ -375,7 +375,7 @@ def create_app(config: AppConfig) -> FastAPI:
             ("cloud retry", cloud_retry.stop),
             ("OpenList", openlist.stop),
             ("service supervisor", controller.stop_supervisor),
-            ("recorder worker", lambda: controller.stop("keep")),
+            ("recorder worker", lambda: controller.stop("shutdown", persist=False)),
         ):
             try:
                 action()

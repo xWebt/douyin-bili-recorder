@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.67
+
+- Added an application-level control lock and stale-process reaper so legacy GUI, control-server, worker, and danmaku processes cannot race the packaged recorder.
+- Changed application shutdown to preserve interrupted uploads as pending work, allowing automatic recovery on the next launch instead of silently canceling them.
+- Fixed cache-capacity waits to account for active cloud uploads as well as Bilibili uploads.
+- Fixed the dashboard active-upload summary so it no longer displays an older completed item while newer uploads are queued or running.
 ## v2.2.66
 - Once Bilibili confirms a part exists, remove the raw FLV and danmaku XML immediately while retaining the rendered MP4 until cloud backup completes.
 - This prevents rendered-and-uploaded segments from consuming double local space while a cloud backup is still running.

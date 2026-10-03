@@ -94,26 +94,32 @@ class ServiceController:
         )
         return self.status()
 
-    def stop(self, mode: str = "upload") -> dict[str, Any]:
-        state = self.store.load()
-        state["worker_running"] = False
-        self.store.save(state)
+    def stop(self, mode: str = "upload", *, persist: bool = True) -> dict[str, Any]:
+        if persist:
+            state = self.store.load()
+            state["worker_running"] = False
+            self.store.save(state)
         self.store.root.mkdir(parents=True, exist_ok=True)
         self.stop_request_path.write_text(
-            mode if mode in {"upload", "keep", "discard"} else "upload",
+            mode if mode in {"upload", "keep", "discard", "shutdown"} else "upload",
             encoding="utf-8",
         )
         runtime = self.store.load_runtime_state()
         pid = int(runtime.get("pid", 0) or 0)
         if pid and self._pid_alive(pid):
-            if mode in {"upload", "discard"}:
+            if mode in {"upload", "discard", "shutdown"}:
                 try:
                     os.killpg(pid, signal.SIGINT)
                 except (PermissionError, ProcessLookupError):
                     pass
+                if mode == "shutdown":
+                    self._wait_or_terminate(pid, timeout=15)
+                if persist:
+                    self.store.save_runtime_state({})
                 return self.status()
             self._terminate(pid)
-            self.store.save_runtime_state({})
+            if persist:
+                self.store.save_runtime_state({})
         return self.status()
 
     def restart(self, mode: str = "upload") -> dict[str, Any]:
@@ -168,6 +174,22 @@ class ServiceController:
                 progress["state"] = "completed"
                 progress["message"] = "上传完成"
                 progress["bvid"] = part.bvid
+        active_progress = next(
+            (
+                progress
+                for progress in upload_progresses
+                if progress.get("state") == "uploading" or progress.get("message") == "上传中"
+            ),
+            next(
+                (
+                    progress
+                    for progress in upload_progresses
+                    if progress.get("state") in {"queued", "paused"}
+                    or progress.get("message") in {"准备上传", "等待重试", "已暂停"}
+                ),
+                upload_progresses[0] if upload_progresses else {},
+            ),
+        )
         target_statuses = TargetStatusStore(self.config.data_dir).load_all()
         target_names = [str(item.get("name", "")) for item in state.get("targets", []) if item.get("name")]
         target_usage_bytes = self._target_usage_bytes(sessions, target_names)
@@ -183,7 +205,7 @@ class ServiceController:
             "mode": runtime.get("mode") if alive else None,
             "desired_running": bool(state.get("worker_running", False)),
             "disk_free_gb": round(self._disk_free() / (1024**3), 2),
-            "upload_progress": upload_progress_store.load(),
+            "upload_progress": active_progress,
             "upload_progresses": upload_progresses,
             "target_statuses": target_statuses,
             "target_usage_bytes": target_usage_bytes,
@@ -258,6 +280,15 @@ class ServiceController:
         except PermissionError:
             return True
         return True
+
+    def _wait_or_terminate(self, pid: int, *, timeout: float) -> None:
+        deadline = time.monotonic() + max(0.0, timeout)
+        while time.monotonic() < deadline:
+            if not self._pid_alive(pid):
+                return
+            time.sleep(0.2)
+        if self._pid_alive(pid):
+            self._terminate(pid)
 
     def _terminate(self, pid: int) -> None:
         for sig, timeout in ((signal.SIGINT, 5), (signal.SIGTERM, 3), (signal.SIGKILL, 2)):
