@@ -1498,3 +1498,45 @@ url = "https://live.douyin.com/1"
     saved = service.store.load("stale-session")
     assert saved.status == SessionStatus.RECORDED
     assert saved.ended_epoch is not None
+
+
+def test_cleanup_removes_raw_source_while_cloud_still_uploading(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[upload]
+delete_after_upload = true
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+cloud_backup = true
+cloud_remote = "openlist:/backup"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    media = tmp_path / "part.mp4"
+    source = tmp_path / "part.flv"
+    media.write_bytes(b"video")
+    source.write_bytes(b"source")
+    session = SessionRecord(
+        session_id="cleanup-cloud",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        status=SessionStatus.RECORDED,
+        cloud_backup=True,
+        parts=[
+            SessionPart(index=1, status="UPLOADED", bvid="BV0000000001", path=str(media), source_path=str(source), cloud_status="UPLOADING")
+        ],
+    )
+    service.store.save(session)
+
+    service.cleanup_completed_parts()
+
+    assert not source.exists()
+    assert media.exists()

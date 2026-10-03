@@ -1358,11 +1358,17 @@ class RecorderService:
                 self._sync_session_cloud_policy(session, target)
             changed = False
             for part in session.parts:
-                if part.status != "UPLOADED" and not part.bvid:
+                bili_complete = part.status == "UPLOADED" or bool(part.bvid)
+                if not bili_complete:
                     continue
-                if session.cloud_backup and part.cloud_status != "UPLOADED":
-                    continue
-                paths = [Path(value) for value in (part.path, part.source_path, part.danmaku_path) if value]
+                cloud_complete = not session.cloud_backup or part.cloud_status == "UPLOADED"
+                paths: list[Path] = []
+                if part.source_path:
+                    paths.append(Path(part.source_path))
+                if part.danmaku_path:
+                    paths.append(Path(part.danmaku_path))
+                if cloud_complete and part.path:
+                    paths.append(Path(part.path))
                 if not paths:
                     continue
                 try:
@@ -1378,9 +1384,10 @@ class RecorderService:
                         exc,
                     )
                     continue
-                part.path = ""
                 part.source_path = ""
                 part.danmaku_path = ""
+                if cloud_complete:
+                    part.path = ""
                 removed += 1
                 changed = True
             if changed:

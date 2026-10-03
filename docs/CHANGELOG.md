@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.66
+- Once Bilibili confirms a part exists, remove the raw FLV and danmaku XML immediately while retaining the rendered MP4 until cloud backup completes.
+- This prevents rendered-and-uploaded segments from consuming double local space while a cloud backup is still running.
+
 ## v2.2.65
 - Replaced PID-file single-instance detection with an OS-level `flock`, so a killed worker can never leave a stale lock that prevents automatic restart.
 - Recovery now detects interrupted `.flv.part` segments and renders them after a worker restart instead of dropping the partial recording.
