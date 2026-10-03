@@ -13,6 +13,7 @@ from .network import detect_system_proxy, session_proxies
 
 ARCHIVES_API = "https://member.bilibili.com/x/web/archives"
 VIEW_API = "https://member.bilibili.com/x/vupre/web/archive/view"
+PUBLIC_VIEW_API = "https://api.bilibili.com/x/web-interface/view"
 REFERER = "https://member.bilibili.com/platform/upload/video/frame"
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -57,6 +58,33 @@ class BilibiliSubmissionClient:
         self.session = self._new_session()
         self.proxy_session: requests.Session | None = None
         self._detail_cache: dict[str, tuple[float, SubmissionStatus | None]] = {}
+        self._pages_cache: dict[str, tuple[float, list[str]]] = {}
+
+    def list_parts(self, bvid: str, *, ttl_seconds: int = 30) -> list[str]:
+        """Return the current part titles of one submission.
+
+        Used to keep B站 append idempotent after a crash or repeated retry.
+        """
+        cached = self._pages_cache.get(bvid)
+        if cached is not None and time.time() - cached[0] < ttl_seconds:
+            return list(cached[1])
+        response = self._request("GET", PUBLIC_VIEW_API, params={"bvid": bvid})
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError(f"获取稿件 {bvid} 分P失败: HTTP {response.status_code}") from exc
+        if int(payload.get("code", -1)) != 0:
+            message = payload.get("message") or payload.get("msg") or payload.get("code")
+            raise RuntimeError(f"获取稿件 {bvid} 分P失败: {message}")
+        data = payload.get("data") or {}
+        pages = data.get("pages") if isinstance(data, dict) else None
+        titles: list[str] = []
+        if isinstance(pages, list):
+            for page in pages:
+                if isinstance(page, dict) and page.get("part"):
+                    titles.append(str(page["part"]).strip())
+        self._pages_cache[bvid] = (time.time(), titles)
+        return list(titles)
 
     def list_for_bvids(self, bvids: set[str]) -> list[SubmissionStatus]:
         if not bvids:

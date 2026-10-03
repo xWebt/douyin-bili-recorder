@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from .analytics import AnalyticsStore
 from .collection import BilibiliCollectionManager
+from .bilibili_status import BilibiliSubmissionClient
 from .cloud_uploader import CloudUploadError, CloudUploadResult, RcloneCloudUploader
 from .config import AppConfig, TargetConfig, load_config
 from .douyin import DouyinResolver
@@ -29,7 +30,7 @@ from .paths import safe_path_name, session_output_dir, target_key
 from .process import ProcessRunner
 from .recorder import BiliupRecorder, discover_media
 from .scheduling import active_slot, expected_start_for_moment, is_late_detection, next_poll_delay_seconds, should_poll_now
-from .state import SessionStore, SingleInstanceLock, slugify
+from .state import SessionStore, SingleInstanceLock, slugify, upload_job_key
 from .storage_guard import StorageGuard
 from .target_status import TargetStatusStore
 from .timeutil import build_title, epoch_iso, parse_duration_seconds
@@ -55,7 +56,14 @@ class RecorderService:
         self.recorder = BiliupRecorder(config, self.record_runner, logger)
         self.media = MediaProcessor(config, self.io_runner, logger)
         self.danmaku = DanmakuRenderer(config, self.io_runner, logger)
-        self.uploader = BiliupUploader(config, self.io_runner, logger)
+        self.uploader = BiliupUploader(
+            config,
+            self.io_runner,
+            logger,
+            part_lookup=self._bilibili_part_lookup,
+        )
+        self._submission_client: BilibiliSubmissionClient | None = None
+        self._submission_client_lock = threading.Lock()
         self.cloud_uploader = RcloneCloudUploader(config, self.io_runner, logger)
         self.storage = StorageGuard(config.sessions_dir, logger)
         self.analytics = AnalyticsStore(config.video_dir, config.timezone)
@@ -79,6 +87,30 @@ class RecorderService:
         self._queued_cloud_parts: set[str] = set()
         self._cloud_queue_lock = threading.Lock()
         self._parent_pid = int(os.environ.get("DOUYIN_RECORDER_PARENT_PID", "0") or 0)
+
+    def _bilibili_part_lookup(self, bvid: str) -> list[str]:
+        """Lazily build the B站 client used for append idempotency checks."""
+
+        with self._submission_client_lock:
+            if self._submission_client is None:
+                try:
+                    self._submission_client = BilibiliSubmissionClient(self.config.cookie_file)
+                except Exception as exc:  # noqa: BLE001
+                    raise RuntimeError(f"B站客户端不可用: {exc}") from exc
+            client = self._submission_client
+        return client.list_parts(bvid)
+
+    @staticmethod
+    def _part_fingerprint(part: SessionPart) -> str:
+        """Cheap content fingerprint (size + mtime) used by upload jobs."""
+
+        if not part.path:
+            return f"{part.index}:{part.size}"
+        try:
+            stat = Path(part.path).stat()
+        except OSError:
+            return f"{part.index}:{part.size}"
+        return f"{part.index}:{stat.st_size}:{int(stat.st_mtime)}"
 
     def run_forever(self) -> None:
         self._start_external_stop_watcher()
@@ -1265,6 +1297,27 @@ class RecorderService:
         session: SessionRecord,
         part: SessionPart,
     ) -> bool:
+        job_key = upload_job_key("cloud", session.session_id, part.index)
+        claim = self.store.claim_upload_job(
+            "cloud",
+            session.session_id,
+            part.index,
+            fingerprint=self._part_fingerprint(part),
+        )
+        if not claim.claimed:
+            if claim.job.succeeded:
+                part.cloud_status = "UPLOADED"
+                part.cloud_error = ""
+                part.cloud_path = claim.job.remote_path or part.cloud_path
+                part.cloud_uploaded_at = part.cloud_uploaded_at or int(time.time())
+                self.store.save(session)
+                return True
+            self.logger.info(
+                "cloud backup already running for %s P%02d",
+                session.session_id,
+                part.index,
+            )
+            return False
         part.cloud_status = "UPLOADING"
         part.cloud_error = ""
         self.store.save(session)
@@ -1275,6 +1328,7 @@ class RecorderService:
             part.cloud_status = "FAILED"
             part.cloud_error = str(exc)
             self.store.save(session)
+            self.store.finish_upload_job(job_key, "FAILED", message=str(exc))
             self.analytics.upsert(session)
             self._set_cloud_status(target, "failed", f"P{part.index:02d} 网盘备份失败：{exc}")
             self.logger.warning("cloud backup failed for %s P%02d: %s", target.name, part.index, exc)
@@ -1284,6 +1338,13 @@ class RecorderService:
         part.cloud_path = result.remote_paths[-1] if result.remote_paths else ""
         part.cloud_uploaded_at = int(time.time())
         self.store.save(session)
+        self.store.finish_upload_job(
+            job_key,
+            "SUCCEEDED",
+            remote_path=part.cloud_path,
+            fingerprint=self._part_fingerprint(part),
+            message="cloud backup uploaded",
+        )
         self.analytics.upsert(session)
         self._set_cloud_status(target, "uploaded", f"P{part.index:02d} 已备份到网盘")
         if self.config.delete_after_upload:
@@ -1508,6 +1569,14 @@ class RecorderService:
     ) -> UploadResult:
         base_title = part.title or session.title or f"{session.target_name} P{part.index:02d}"
         generation = self._upload_generation(session.session_id, part.index)
+        job_key = upload_job_key("bilibili", session.session_id, part.index)
+        job_succeeded = False
+        job_claimed = False
+
+        def mark_job_failed(message: str) -> None:
+            if job_claimed and not job_succeeded:
+                self.store.finish_upload_job(job_key, "FAILED", message=message)
+
         for attempt in range(self.config.upload_retry_count + 1):
             try:
                 if attempt > 0:
@@ -1548,9 +1617,54 @@ class RecorderService:
                         part.status = "UPLOADED"
                         part.uploaded_at = latest_part.uploaded_at or int(time.time())
                         part.error = ""
+                        self.store.finish_upload_job(
+                            job_key,
+                            "SUCCEEDED",
+                            bvid=uploaded_bvid or "",
+                            message="part already uploaded",
+                        )
+                        job_succeeded = True
                         return UploadResult(uploaded_bvid, bool(uploaded_bvid), ["part already uploaded"])
                     if latest.bvid:
                         session.bvid = latest.bvid
+                    claim = self.store.claim_upload_job(
+                        "bilibili",
+                        session.session_id,
+                        part.index,
+                        fingerprint=self._part_fingerprint(part),
+                    )
+                    if not claim.claimed:
+                        if claim.job.succeeded:
+                            uploaded_bvid = claim.job.bvid or latest.bvid or session.bvid
+                            session.bvid = uploaded_bvid
+                            part.bvid = uploaded_bvid
+                            part.status = "UPLOADED"
+                            part.uploaded_at = part.uploaded_at or int(time.time())
+                            part.error = ""
+                            job_succeeded = True
+
+                            def mark_uploaded(item: SessionPart) -> None:
+                                item.status = "UPLOADED"
+                                item.bvid = uploaded_bvid
+                                item.uploaded_at = item.uploaded_at or int(time.time())
+                                item.error = ""
+
+                            self.store.update_part(
+                                session.session_id,
+                                part.index,
+                                mark_uploaded,
+                                session_mutator=lambda item, value=uploaded_bvid: setattr(
+                                    item, "bvid", value or item.bvid
+                                ),
+                            )
+                            return UploadResult(
+                                uploaded_bvid,
+                                bool(uploaded_bvid),
+                                ["part already appended"],
+                            )
+                        part.error = "该 P 已在其他上传任务中处理"
+                        return UploadResult(None, False, ["upload already in progress"])
+                    job_claimed = True
                     part.status = "UPLOADING"
                     self.store.save(session)
                     result = self.uploader.upload_part(
@@ -1567,12 +1681,21 @@ class RecorderService:
                         part.status = "UPLOADED"
                         part.uploaded_at = int(time.time())
                         part.error = ""
+                        self.store.finish_upload_job(
+                            job_key,
+                            "SUCCEEDED",
+                            bvid=result.bvid,
+                            fingerprint=self._part_fingerprint(part),
+                            message="uploaded",
+                        )
+                        job_succeeded = True
                         self.store.save(session)
                 if result.verified:
                     return result
                 if attempt < self.config.upload_retry_count:
                     self.shutdown_event.wait(self.config.upload_retry_backoff_seconds * (attempt + 1))
             except UploadCancelled:
+                mark_job_failed("upload cancelled")
                 if generation != self._upload_generation(session.session_id, part.index):
                     return UploadResult(None, False, ["stale upload canceled"])
                 if self.pause_mode() == "shutdown" or self.shutdown_event.is_set():
@@ -1620,6 +1743,7 @@ class RecorderService:
                 self.logger.exception("part upload failed for %s", part.index)
                 if attempt < self.config.upload_retry_count:
                     self.shutdown_event.wait(self.config.upload_retry_backoff_seconds * (attempt + 1))
+        mark_job_failed("upload attempts exhausted")
         return UploadResult(None, False, [])
 
     def _wait_for_reconnect(self, target: TargetConfig, session: SessionRecord) -> bool:

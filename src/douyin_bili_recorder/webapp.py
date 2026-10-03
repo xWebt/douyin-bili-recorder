@@ -26,7 +26,7 @@ from .ui_state import UIStateStore
 from .bilibili_status import BilibiliSubmissionClient
 from .reports import ReportGenerator
 from .state import SessionStore
-from .models import SessionStatus
+from .models import SessionRecord, SessionStatus
 from .openlist import OpenListManager
 from .upload_progress import UploadProgressStore
 
@@ -225,26 +225,39 @@ def _request_upload_control(
     if action == "retry":
         if not part.path or not Path(part.path).exists():
             raise HTTPException(status_code=409, detail="本地视频文件不存在，无法重试")
-        part.status = "PENDING"
-        part.error = ""
+        new_status = "PENDING_UPLOAD"
+        new_error = ""
         progress_message = "等待重试"
         progress_state = "queued"
     elif action == "pause":
-        part.status = "PAUSED"
-        part.error = "上传已暂停"
+        new_status = "PAUSED"
+        new_error = "上传已暂停"
         progress_message = "已暂停"
         progress_state = "paused"
     elif action == "delete":
-        part.status = "CANCELED"
-        part.error = "上传任务和本地录像已由用户删除"
+        new_status = "CANCELED"
+        new_error = "上传任务和本地录像已由用户删除"
         progress_message = "已删除"
         progress_state = "deleted"
     else:
-        part.status = "CANCELED"
-        part.error = "上传已由用户停止"
+        new_status = "CANCELED"
+        new_error = "上传已由用户停止"
         progress_message = "已停止"
         progress_state = "stopped"
-    session_store.save(session)
+
+    def apply_control(session: SessionRecord) -> None:
+        target = next((item for item in session.parts if item.index == part_index), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="part not found")
+        target.status = new_status
+        target.error = new_error
+
+    # Read-modify-write in one transaction so the worker cannot clobber the
+    # control request with a stale full-session write.
+    session = session_store.update(session_id, apply_control)
+    part = next((item for item in session.parts if item.index == part_index), None)
+    if part is None:
+        raise HTTPException(status_code=404, detail="part not found")
     control_dir = config.data_dir / "ui" / "upload-control"
     control_dir.mkdir(parents=True, exist_ok=True)
     request_path = control_dir / f"{session_id}-{part_index}.request"
@@ -276,7 +289,25 @@ def _request_upload_control(
         if all(item.status in {"CANCELED", "DISCARDED", "UPLOADED"} for item in session.parts):
             session.status = "CANCELED"
             session.error = "上传任务和本地录像已由用户删除"
-        session_store.save(session)
+
+        def apply_delete(session: SessionRecord) -> None:
+            item = next(
+                (candidate for candidate in session.parts if candidate.index == part_index),
+                None,
+            )
+            if item is None:
+                return
+            item.path = ""
+            item.source_path = ""
+            item.danmaku_path = ""
+            if all(
+                candidate.status in {"CANCELED", "DISCARDED", "UPLOADED"}
+                for candidate in session.parts
+            ):
+                session.status = "CANCELED"
+                session.error = "上传任务和本地录像已由用户删除"
+
+        session_store.update(session_id, apply_delete)
         UploadProgressStore(config.data_dir).remove(f"{session_id}:{part_index}")
         return {"ok": True, "session_id": session_id, "part_index": part_index, "action": action}
 

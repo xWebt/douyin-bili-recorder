@@ -9,6 +9,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .config import AppConfig, TargetConfig
 from .models import SessionRecord
@@ -36,10 +37,17 @@ class UploadCancelled(RuntimeError):
 
 
 class BiliupUploader:
-    def __init__(self, config: AppConfig, runner: ProcessRunner, logger: logging.Logger) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        runner: ProcessRunner,
+        logger: logging.Logger,
+        part_lookup: Callable[[str], list[str]] | None = None,
+    ) -> None:
         self.config = config
         self.runner = runner
         self.logger = logger
+        self._part_lookup = part_lookup
         self.progress_store = UploadProgressStore(config.data_dir)
         self._cancel_lock = threading.Lock()
         self._cancel_events: dict[str, threading.Event] = {}
@@ -151,6 +159,9 @@ class BiliupUploader:
         if not media_path.is_file():
             raise RuntimeError(f"media file does not exist: {media_path}")
         if bvid:
+            if self.part_already_appended(bvid, title):
+                self.logger.info("part already appended to %s: %s", bvid, title)
+                return UploadResult(bvid, True, ["part already appended"])
             command = self._append_command(
                 target,
                 session,
@@ -204,6 +215,24 @@ class BiliupUploader:
         if found:
             self._mark_progress_complete(found, f"{session.session_id}:{part_index}")
         return UploadResult(found, bool(found), list(result.lines))
+
+    def part_already_appended(self, bvid: str, title: str) -> bool:
+        """Check the B站 side so a retried append does not duplicate a part.
+
+        The lookup is best effort: when it is unavailable the upload still
+        proceeds, and the local upload job record remains the first guard.
+        """
+        if self._part_lookup is None:
+            return False
+        needle = title.strip()
+        if not needle:
+            return False
+        try:
+            titles = self._part_lookup(bvid)
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning("failed to verify existing parts for %s: %s", bvid, exc)
+            return False
+        return any(item.strip() == needle for item in titles)
 
     def _upload_command(
         self,
