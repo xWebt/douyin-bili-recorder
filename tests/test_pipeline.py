@@ -1468,3 +1468,33 @@ url = "https://live.douyin.com/1"
     second.join(timeout=3)
 
     assert sorted(uploader.calls) == [(1, None), (2, "BV0000000001")]
+
+
+def test_finalize_stale_sessions_marks_recording_as_recorded(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/1"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    session = SessionRecord(
+        session_id="stale-session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/1",
+        status=SessionStatus.RECORDING,
+    )
+    service.store.save(session)
+
+    service._finalize_stale_sessions("anchor")
+
+    saved = service.store.load("stale-session")
+    assert saved.status == SessionStatus.RECORDED
+    assert saved.ended_epoch is not None

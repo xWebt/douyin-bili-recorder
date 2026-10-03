@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.64
+- Finalize stale `RECORDING` sessions when their target worker exits, so the UI stops showing an offline anchor as live.
+
 ## v2.2.63
 - Serialize Bilibili part uploads per recording session so later segments always append to the first segment's BVID instead of creating separate submissions.
 

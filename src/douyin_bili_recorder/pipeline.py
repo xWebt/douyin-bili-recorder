@@ -332,9 +332,11 @@ class RecorderService:
         for name, worker in list(self._target_workers.items()):
             if not worker.is_alive():
                 self._target_workers.pop(name, None)
+                self._finalize_stale_sessions(name)
                 continue
             if name not in current_names:
                 self._removed_targets.add(name)
+                self._finalize_stale_sessions(name)
                 self.target_status.clear(name)
 
         for target in fresh.targets:
@@ -353,6 +355,22 @@ class RecorderService:
             self._target_workers[target.name] = worker
             worker.start()
         return enabled
+
+    def _finalize_stale_sessions(self, target_name: str) -> None:
+        changed = False
+        for session in self.store.all():
+            if session.target_name != target_name or session.status != SessionStatus.RECORDING:
+                continue
+            session.status = SessionStatus.RECORDED
+            session.ended_epoch = session.ended_epoch or int(time.time())
+            self.store.save(session)
+            self.analytics.upsert(session)
+            self.logger.info("finalized stale recording session %s", session.session_id)
+            changed = True
+        if changed:
+            target = self._target_by_name(target_name)
+            if target is not None:
+                self._set_target_status(target, "offline", "当前未开播")
 
     def _schedule_allows_polling(self, target: TargetConfig, now: datetime) -> bool:
         if target.watch_mode != "scheduled" or not target.schedule:
