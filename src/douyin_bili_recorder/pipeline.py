@@ -293,6 +293,46 @@ class RecorderService:
             if part.source_path
         }
         next_index = max((part.index for part in session.parts), default=0) + 1
+        partial_sources = discover_media(
+            session_dir,
+            self.config.min_file_size_mb,
+            allow_partials=True,
+        )
+        completed_sources = discover_media(session_dir, self.config.min_file_size_mb)
+        incomplete = [source for source in partial_sources if source not in completed_sources]
+        for source in incomplete:
+            if str(source) in known_sources:
+                continue
+            self.logger.info("recovering interrupted segment %s", source)
+            danmaku_source = self._find_danmaku_source(source)
+            if danmaku_source is not None:
+                part = self._prepare_danmaku_part(
+                    target,
+                    session,
+                    session_dir,
+                    source,
+                    danmaku_source,
+                    next_index,
+                    upload_allowed=True,
+                )
+            else:
+                part = self._prepare_part(
+                    target,
+                    session,
+                    session_dir,
+                    source,
+                    next_index,
+                    upload_allowed=True,
+                )
+            if part is None:
+                continue
+            if self._part_below_minimum(part):
+                self._discard_short_part(session, part)
+                if part in session.parts:
+                    session.parts.remove(part)
+                self.store.save(session)
+                continue
+            next_index = part.index + 1
         for source in discover_media(session_dir, self.config.min_file_size_mb):
             if str(source) in known_sources:
                 continue

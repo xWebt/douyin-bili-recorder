@@ -24,3 +24,13 @@ def test_session_store_round_trip(tmp_path: Path) -> None:
     assert loaded.status == SessionStatus.RECORDED
     assert loaded.files[0].path == "part-000.mp4"
     assert loaded.files[0].duration_seconds == 12.5
+
+
+def test_single_instance_lock_ignores_stale_lock_file(tmp_path: Path) -> None:
+    lock_path = tmp_path / "recorder.lock"
+    lock_path.write_text("999999", encoding="utf-8")
+
+    with SingleInstanceLock(lock_path):
+        assert lock_path.exists()
+
+    assert not lock_path.exists()

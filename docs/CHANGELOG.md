@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.2.65
+- Replaced PID-file single-instance detection with an OS-level `flock`, so a killed worker can never leave a stale lock that prevents automatic restart.
+- Recovery now detects interrupted `.flv.part` segments and renders them after a worker restart instead of dropping the partial recording.
+
 ## v2.2.64
 - Finalize stale `RECORDING` sessions when their target worker exits, so the UI stops showing an offline anchor as live.
 

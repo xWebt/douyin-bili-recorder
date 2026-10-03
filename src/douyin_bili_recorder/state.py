@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -69,45 +70,28 @@ class SingleInstanceLock:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.acquired = False
+        self._fd = -1
 
     def __enter__(self) -> SingleInstanceLock:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        for _ in range(2):
-            try:
-                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                break
-            except FileExistsError as exc:
-                if self._remove_stale_lock():
-                    continue
-                raise RuntimeError(f"Another recorder process is already running: {self.path}") from exc
-        else:
-            raise RuntimeError(f"Unable to acquire recorder lock: {self.path}")
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(str(os.getpid()))
+        self._fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            os.close(self._fd)
+            self._fd = -1
+            raise RuntimeError(f"Another recorder process is already running: {self.path}") from exc
+        os.ftruncate(self._fd, 0)
+        os.write(self._fd, str(os.getpid()).encode("utf-8"))
+        os.fsync(self._fd)
         self.acquired = True
         return self
 
-    def _remove_stale_lock(self) -> bool:
-        try:
-            pid = int(self.path.read_text(encoding="utf-8").strip())
-        except (OSError, ValueError):
-            pid = -1
-        if pid > 0:
-            try:
-                os.kill(pid, 0)
-                return False
-            except ProcessLookupError:
-                pass
-            except PermissionError:
-                return False
-        try:
-            self.path.unlink()
-            return True
-        except FileNotFoundError:
-            return True
-
     def __exit__(self, exc_type, exc, traceback) -> None:
         if self.acquired:
+            fcntl.flock(self._fd, fcntl.LOCK_UN)
+            os.close(self._fd)
+            self._fd = -1
             try:
                 self.path.unlink()
             except FileNotFoundError:
