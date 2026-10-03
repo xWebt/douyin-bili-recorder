@@ -10,6 +10,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+import errno
 from typing import Iterable
 
 
@@ -28,6 +29,15 @@ class RunningProcess:
     reader: threading.Thread
     reaper: threading.Thread
 
+    def group_alive(self) -> bool:
+        try:
+            os.killpg(self.process.pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
     def poll(self) -> int | None:
         returncode = self.process.poll()
         if returncode is not None:
@@ -41,19 +51,92 @@ class RunningProcess:
         return list(self.lines)
 
     def terminate(self) -> None:
-        if self.process.poll() is not None:
+        if not _process_group_exists(self.process.pid):
+            self.process.poll()
             return
+        terminate_process_group(self.process.pid)
         try:
-            os.killpg(self.process.pid, signal.SIGINT)
+            self.process.wait(timeout=1)
+        except subprocess.TimeoutExpired:  # pragma: no cover - defensive
+            pass
+
+
+def terminate_process_group(pid: int, *, interrupt_timeout: float = 5.0,
+                          term_timeout: float = 5.0, kill_timeout: float = 2.0) -> bool:
+    """Escalate SIGINT → SIGTERM → SIGKILL until the process group is gone."""
+
+    for sig, timeout in (
+        (signal.SIGINT, interrupt_timeout),
+        (signal.SIGTERM, term_timeout),
+        (signal.SIGKILL, kill_timeout),
+    ):
+        try:
+            os.killpg(pid, sig)
         except ProcessLookupError:
-            return
-        try:
-            self.process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(self.process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
+            return True
+        except PermissionError:
+            return True
+        deadline = time.monotonic() + max(0.0, timeout)
+        while time.monotonic() < deadline:
+            if not _process_group_exists(pid):
+                return True
+            time.sleep(0.1)
+    return not _process_group_exists(pid)
+
+
+def _process_group_exists(pid: int) -> bool:
+    try:
+        os.killpg(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError as exc:  # pragma: no cover - defensive
+        return exc.errno != errno.ESRCH
+    return True
+
+
+class ChildProcessRegistry:
+    """Tracks every child process so shutdown can reap them all."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._processes: dict[int, subprocess.Popen[str]] = {}
+
+    def register(self, process: subprocess.Popen[str]) -> None:
+        with self._lock:
+            self._processes[process.pid] = process
+
+    def unregister(self, process: subprocess.Popen[str]) -> None:
+        with self._lock:
+            self._processes.pop(process.pid, None)
+
+    def active(self) -> list[subprocess.Popen[str]]:
+        with self._lock:
+            return list(self._processes.values())
+
+    def terminate_all(self, *, keep: Iterable[subprocess.Popen[str]] = ()) -> list[int]:
+        protected = {process.pid for process in keep}
+        terminated: list[int] = []
+        for process in self.active():
+            if process.pid in protected:
+                continue
+            if process.poll() is not None:
+                self.unregister(process)
+                continue
+            terminate_process_group(process.pid)
+            terminated.append(process.pid)
+            self.unregister(process)
+        return terminated
+
+
+SHARED_CHILD_PROCESSES = ChildProcessRegistry()
+
+
+def terminate_all_children() -> list[int]:
+    """Terminate every child process started through ``ProcessRunner``."""
+
+    return SHARED_CHILD_PROCESSES.terminate_all()
 
 
 class ProcessRunner:
@@ -68,6 +151,7 @@ class ProcessRunner:
         self.interrupt_event = interrupt_event
         self._active: set[subprocess.Popen[str]] = set()
         self._lock = threading.Lock()
+        self.registry = SHARED_CHILD_PROCESSES
 
     def start(
         self,
@@ -95,6 +179,7 @@ class ProcessRunner:
         )
         with self._lock:
             self._active.add(process)
+        self.registry.register(process)
 
         lines: deque[str] = deque(maxlen=5000)
 
@@ -109,6 +194,7 @@ class ProcessRunner:
             process.wait()
             with self._lock:
                 self._active.discard(process)
+            self.registry.unregister(process)
 
         reader_thread = threading.Thread(target=reader, name="process-output", daemon=True)
         reaper_thread = threading.Thread(target=reaper, name="process-reaper", daemon=True)
@@ -160,19 +246,14 @@ class ProcessRunner:
         )
 
     def terminate(self, process: subprocess.Popen[str]) -> None:
-        if process.poll() is not None:
+        if not _process_group_exists(process.pid):
+            process.poll()
             return
+        terminate_process_group(process.pid)
         try:
-            os.killpg(process.pid, signal.SIGINT)
-        except ProcessLookupError:
-            return
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:  # pragma: no cover - defensive
+            pass
 
     def terminate_active(self) -> None:
         with self._lock:

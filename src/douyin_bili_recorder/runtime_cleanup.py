@@ -70,6 +70,10 @@ def is_managed_process(command: str, data_dir: Path) -> bool:
         data_path in lowered or "douyinbilirecorder" in compact_text
     ):
         return True
+    if tool_name.startswith("openlist") and (
+        data_path in lowered or "douyinbilirecorder" in compact_text
+    ):
+        return True
     if tool_name == "rclone" and "douyinbilirecorder" in compact_text:
         return True
     return False

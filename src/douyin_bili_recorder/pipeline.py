@@ -27,7 +27,7 @@ from .encoding import peak_gb_per_segment
 from .media import MediaProcessor
 from .models import MediaFile, SessionPart, SessionRecord, SessionStatus
 from .paths import safe_path_name, session_output_dir, target_key
-from .process import ProcessRunner
+from .process import SHARED_CHILD_PROCESSES, ProcessRunner, terminate_all_children
 from .recorder import BiliupRecorder, discover_media
 from .scheduling import active_slot, expected_start_for_moment, is_late_detection, next_poll_delay_seconds, should_poll_now
 from .state import SessionStore, SingleInstanceLock, slugify, upload_job_key
@@ -119,7 +119,10 @@ class RecorderService:
         self._start_parent_watcher()
         self.config.sessions_dir.mkdir(parents=True, exist_ok=True)
         lock_path = self.config.data_dir / "recorder.lock"
-        with SingleInstanceLock(lock_path):
+        with SingleInstanceLock(
+            lock_path,
+            command=f"recorder worker pid={os.getpid()}",
+        ):
             self.recover_pending()
             no_targets_warned = False
             while not self.shutdown_event.is_set():
@@ -2011,6 +2014,19 @@ class RecorderService:
         self.interrupt_event.set()
         self.record_runner.terminate_active()
         self.io_runner.terminate_active()
+        self._reap_remaining_children()
+
+    def _reap_remaining_children(self) -> None:
+        """Terminate any child process still alive (FFmpeg / biliup / rclone)."""
+
+        terminated = terminate_all_children()
+        if terminated:
+            self.logger.info("reaped %s remaining child processes: %s", len(terminated), terminated)
+        leftovers = [process.pid for process in SHARED_CHILD_PROCESSES.active()]
+        if leftovers:
+            self.logger.warning(
+                "child processes still registered after shutdown: %s", leftovers
+            )
 
     def _wait_for_stop(self, seconds: int) -> bool:
         deadline = time.monotonic() + max(0, seconds)
@@ -2290,6 +2306,7 @@ class RecorderService:
                 self.interrupt_event.set()
                 self.record_runner.terminate_active()
                 self.io_runner.terminate_active()
+                self._reap_remaining_children()
                 self.shutdown_event.set()
                 return
 

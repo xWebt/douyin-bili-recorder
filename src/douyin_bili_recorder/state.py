@@ -688,9 +688,74 @@ class SessionStore:
                 continue
 
 
+@dataclass(slots=True)
+class LockInfo:
+    pid: int
+    started_at: int = 0
+    command: str = ""
+
+
+def read_lock_info(path: Path) -> LockInfo | None:
+    """Read the recorded lock holder without taking the lock."""
+
+    try:
+        raw = Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    if raw.startswith("{"):
+        try:
+            payload = json.loads(raw)
+        except ValueError:
+            return None
+        try:
+            pid = int(payload.get("pid", 0))
+        except (TypeError, ValueError):
+            return None
+        if pid <= 0:
+            return None
+        return LockInfo(
+            pid=pid,
+            started_at=int(payload.get("started_at", 0) or 0),
+            command=str(payload.get("command", "")),
+        )
+    try:
+        pid = int(raw)
+    except ValueError:
+        return None
+    if pid <= 0:
+        return None
+    return LockInfo(pid=pid)
+
+
+def lock_is_held(path: Path) -> bool:
+    """Probe the lock without disturbing the holder."""
+
+    target = Path(path)
+    if not target.exists():
+        return False
+    try:
+        fd = os.open(target, os.O_CREAT | os.O_RDWR, 0o600)
+    except OSError:
+        return False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
 class SingleInstanceLock:
-    def __init__(self, path: Path) -> None:
-        self.path = path
+    """flock-based single instance guard with an auditable holder record."""
+
+    def __init__(self, path: Path, *, command: str = "") -> None:
+        self.path = Path(path)
+        self.command = command
         self.acquired = False
         self._fd = -1
 
@@ -700,22 +765,42 @@ class SingleInstanceLock:
         try:
             fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
+            holder = read_lock_info(self.path)
             os.close(self._fd)
             self._fd = -1
-            raise RuntimeError(f"Another recorder process is already running: {self.path}") from exc
+            detail = f" (pid {holder.pid})" if holder is not None else ""
+            raise RuntimeError(
+                f"Another recorder process is already running{detail}: {self.path}"
+            ) from exc
         os.ftruncate(self._fd, 0)
-        os.write(self._fd, str(os.getpid()).encode("utf-8"))
+        payload = json.dumps(
+            {
+                "pid": os.getpid(),
+                "started_at": int(time.time()),
+                "command": self.command,
+            },
+            ensure_ascii=False,
+        )
+        os.write(self._fd, payload.encode("utf-8"))
         os.fsync(self._fd)
         self.acquired = True
         return self
 
+    def holder(self) -> LockInfo | None:
+        return read_lock_info(self.path)
+
     def __exit__(self, exc_type, exc, traceback) -> None:
-        if self.acquired:
-            fcntl.flock(self._fd, fcntl.LOCK_UN)
-            os.close(self._fd)
-            self._fd = -1
-            try:
-                self.path.unlink()
-            except FileNotFoundError:
-                pass
-            self.acquired = False
+        if not self.acquired:
+            return
+        fcntl.flock(self._fd, fcntl.LOCK_UN)
+        os.close(self._fd)
+        self._fd = -1
+        self.acquired = False
+        holder = read_lock_info(self.path)
+        if holder is not None and holder.pid != os.getpid():
+            # Someone else reclaimed the path after we released it.
+            return
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
