@@ -157,9 +157,67 @@ class DanmakuRenderer:
             filters.append(f"fps={frame_rate}")
         filters.append(ass_filter)
 
-        bitrate = DANMAKU_BITRATE_KBPS.get(quality, DANMAKU_BITRATE_KBPS["origin"])
-        if frame_rate == "60":
-            bitrate = int(bitrate * 1.35)
+        source_bitrate_kbps = max(0, self.probe_video_bitrate(source) // 1000)
+        mode = getattr(self.config, "danmaku_encoder", "quality")
+        if mode == "quality":
+            crf = {"origin": 18, "1080p": 18, "720p": 20, "480p": 22}.get(quality, 18)
+            preset = "fast" if width * height > 1920 * 1080 else "medium"
+            primary_args = [
+                "-c:v",
+                "libx264",
+                "-preset",
+                preset,
+                "-crf",
+                str(crf),
+                "-pix_fmt",
+                "yuv420p",
+                "-profile:v",
+                "high",
+            ]
+            fallback_args = [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "faster",
+                "-crf",
+                str(crf + 2),
+                "-pix_fmt",
+                "yuv420p",
+                "-profile:v",
+                "high",
+            ]
+        else:
+            bitrate = DANMAKU_BITRATE_KBPS.get(quality, DANMAKU_BITRATE_KBPS["origin"])
+            if source_bitrate_kbps:
+                bitrate = max(bitrate, int(source_bitrate_kbps * 1.15))
+            if frame_rate == "60":
+                bitrate = int(bitrate * 1.35)
+            primary_args = [
+                "-c:v",
+                "h264_videotoolbox",
+                "-pix_fmt",
+                "yuv420p",
+                "-profile:v",
+                "high",
+                "-b:v",
+                f"{bitrate}k",
+                "-maxrate",
+                f"{int(bitrate * 1.2)}k",
+                "-bufsize",
+                f"{bitrate * 2}k",
+            ]
+            fallback_args = [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-profile:v",
+                "high",
+            ]
         common = [
             self.config.ffmpeg_bin,
             "-hide_banner",
@@ -180,42 +238,14 @@ class DanmakuRenderer:
             "256k",
             "-avoid_negative_ts",
             "make_zero",
+            "-movflags",
+            "+faststart",
             str(output_path),
-        ]
-        hardware_args = [
-            "-c:v",
-            "h264_videotoolbox",
-            "-pix_fmt",
-            "yuv420p",
-            "-profile:v",
-            "high",
-            "-b:v",
-            f"{bitrate}k",
-            "-maxrate",
-            f"{int(bitrate * 1.2)}k",
-            "-bufsize",
-            f"{bitrate * 2}k",
-        ]
-        software_args = [
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-pix_fmt",
-            "yuv420p",
-            "-profile:v",
-            "high",
-            "-b:v",
-            f"{bitrate}k",
-            "-maxrate",
-            f"{int(bitrate * 1.2)}k",
-            "-bufsize",
-            f"{bitrate * 2}k",
         ]
         try:
             output_path.unlink(missing_ok=True)
             result = self.runner.run(
-                [*common, *hardware_args, *container_args],
+                [*common, *primary_args, *container_args],
                 timeout_seconds=RENDER_TIMEOUT_SECONDS,
             )
             if result.cancelled or result.timed_out:
@@ -224,10 +254,13 @@ class DanmakuRenderer:
             if result.returncode == 0 and output_path.exists():
                 return count
 
-            self.logger.warning("hardware danmaku render failed; retrying with libx264")
+            self.logger.warning(
+                "%s danmaku render failed; retrying with libx264",
+                mode,
+            )
             output_path.unlink(missing_ok=True)
             result = self.runner.run(
-                [*common, *software_args, *container_args],
+                [*common, *fallback_args, *container_args],
                 timeout_seconds=RENDER_TIMEOUT_SECONDS,
             )
             if result.cancelled or result.timed_out or result.returncode != 0 or not output_path.exists():

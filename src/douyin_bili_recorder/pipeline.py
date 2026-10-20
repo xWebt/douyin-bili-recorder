@@ -12,6 +12,7 @@ import time
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import Future, wait
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -28,7 +29,12 @@ from .encoding import peak_gb_per_segment
 from .media import MediaProcessor
 from .models import MediaFile, SessionPart, SessionRecord, SessionStatus
 from .paths import safe_path_name, session_output_dir, target_key
-from .process import SHARED_CHILD_PROCESSES, ProcessRunner, terminate_all_children
+from .process import (
+    SHARED_CHILD_PROCESSES,
+    ProcessRunner,
+    RunningProcess,
+    terminate_all_children,
+)
 from .recorder import BiliupRecorder, discover_media
 from .scheduling import active_slot, expected_start_for_moment, is_late_detection, next_poll_delay_seconds, should_poll_now
 from .state import SessionStore, SingleInstanceLock, slugify, upload_job_key
@@ -77,6 +83,8 @@ class RecorderService:
         self._removed_targets: set[str] = set()
         self._paused_targets: set[str] = set()
         self._target_control_lock = threading.Lock()
+        self._active_recorders: dict[str, RunningProcess] = {}
+        self._active_recorders_lock = threading.Lock()
         self._cancelled_uploads: set[str] = set()
         self._paused_uploads: set[str] = set()
         self._upload_generations: dict[str, int] = {}
@@ -173,6 +181,9 @@ class RecorderService:
                 if self.shutdown_event.is_set():
                     break
                 if part.cloud_status == "UPLOADED":
+                    skipped += 1
+                    continue
+                if part.cloud_status == "UNAVAILABLE":
                     skipped += 1
                     continue
                 if part.status in {"CANCELED", "DISCARDED", "LOCAL_ONLY"}:
@@ -417,6 +428,7 @@ class RecorderService:
                 continue
             if name not in current_names:
                 self._removed_targets.add(name)
+                self._terminate_active_recorder(name)
                 self._finalize_stale_sessions(name)
                 self.target_status.clear(name)
 
@@ -510,11 +522,15 @@ class RecorderService:
                     if self._wait_for_stop(next_poll_delay_seconds(target.schedule, now)):
                         break
                     continue
-                self._set_target_status(target, "checking", "正在检测直播间")
+                current = self.target_status.load_all().get(target.name, {})
+                if str(current.get("state") or "") not in {"error", "waiting_space"}:
+                    self._set_target_status(target, "checking", "正在检测直播间")
                 if self.record_and_upload(target):
                     self._last_live_epoch[target.name] = int(time.time())
                 else:
-                    self._set_target_status(target, "offline", "当前未开播")
+                    current = self.target_status.load_all().get(target.name, {})
+                    if str(current.get("state") or "") not in {"error", "waiting_space"}:
+                        self._set_target_status(target, "offline", "当前未开播")
             except Exception as exc:  # noqa: BLE001
                 self.logger.exception("target loop failed for %s: %s", target.name, exc)
                 self._set_target_status(target, "error", f"检测异常：{exc}")
@@ -536,6 +552,10 @@ class RecorderService:
         if not self._is_live(target):
             self._set_target_status(target, "offline", "当前未开播")
             return False
+        resolved = self._resolve_status(target)
+        canonical_url = getattr(resolved, "canonical_url", "") if resolved is not None else ""
+        if canonical_url:
+            target = replace(target, url=resolved.canonical_url)
         self._ensure_cloud_anchor_dir(target)
         if not self._wait_for_capacity(target):
             self._set_target_status(target, "error", "缓存空间不足，下一段录制已暂停")
@@ -572,6 +592,7 @@ class RecorderService:
                 break
 
             process = self.recorder.start(target, session_dir)
+            self._register_recorder(target.name, process)
             connection_started = int(time.time())
             media_found = False
             self._mark_recording_connected(target, session, connection_started)
@@ -581,7 +602,8 @@ class RecorderService:
                 and not self.interrupt_event.is_set()
                 and target.name not in self._removed_targets
             ):
-                if self._target_is_paused(target.name):
+                if target.name in self._removed_targets or self._target_is_paused(target.name):
+                    self._terminate_active_recorder(target.name)
                     break
                 new_media = self._new_media_paths(
                     session_dir,
@@ -624,6 +646,7 @@ class RecorderService:
                     upload_futures,
                 )
 
+            self._unregister_recorder(target.name, process)
             if self._target_is_paused(target.name):
                 break
             if self.interrupt_event.is_set():
@@ -928,6 +951,7 @@ class RecorderService:
 
     def _wait_for_capacity(self, target: TargetConfig) -> bool:
         self.cleanup_completed_parts()
+        self.cleanup_expired_failed_parts()
         segment_seconds = parse_duration_seconds(self.config.segment_time)
         peak = peak_gb_per_segment(
             self.config.quality,
@@ -940,16 +964,27 @@ class RecorderService:
             not self.shutdown_event.is_set()
             and not self.interrupt_event.is_set()
             and target.name not in self._removed_targets
+            and not self._target_is_paused(target.name)
         ):
             self.storage.enforce_limit(self.config.max_cache_gb)
             usage = self._managed_usage_bytes() / (1024**3)
             self.config.video_dir.mkdir(parents=True, exist_ok=True)
             free_gb = shutil.disk_usage(self.config.video_dir).free / (1024**3)
-            if usage + peak <= self.config.max_cache_gb:
-                if free_gb >= peak + 1:
-                    if waiting_reported:
-                        self._set_target_status(target, "connecting", "缓存空间已释放，准备继续录制")
-                    return True
+            fits_budget = usage + peak <= self.config.max_cache_gb
+            fits_disk = free_gb >= peak + 1
+            if fits_disk and (fits_budget or self.config.cache_full_policy == "allow"):
+                if not fits_budget:
+                    self.logger.warning(
+                        "cache limit overridden for %s: used %.2f GB, peak %.2f GB, limit %s GB",
+                        target.name,
+                        usage,
+                        peak,
+                        self.config.max_cache_gb,
+                    )
+                if waiting_reported:
+                    self._set_target_status(target, "connecting", "缓存空间已释放，准备继续录制")
+                return True
+            if not fits_disk:
                 self.logger.warning(
                     "physical disk free space is too low for %s: free %.2f GB, need %.2f GB",
                     target.name,
@@ -972,7 +1007,11 @@ class RecorderService:
                     peak,
                     self.config.max_cache_gb,
                 )
-                self._set_target_status(target, "error", "缓存空间不足，无法开始下一段")
+                self._set_target_status(
+                    target,
+                    "error",
+                    "缓存空间不足：请重试/删除失败分段，或在设置中允许超限录制",
+                )
                 return False
             self._set_target_status(
                 target,
@@ -1046,6 +1085,13 @@ class RecorderService:
                 )
                 if rendered is not None:
                     return rendered
+            session.error = f"P{part_index:02d} 弹幕烧录失败或缺少弹幕文件，已保留源视频等待重试"
+            self.store.save(session)
+            self.logger.warning(
+                "danmaku burn failed or xml missing for %s, refusing to upload unbaked video",
+                source,
+            )
+            return None
         try:
             media = self.media.process_file(source, session_dir, part_index=part_index)
         except Exception as exc:  # noqa: BLE001
@@ -1264,6 +1310,13 @@ class RecorderService:
                 continue
             if part.cloud_status == "UPLOADED":
                 continue
+            if part.cloud_status == "UNAVAILABLE":
+                continue
+            if session.cloud_backup and (not part.path or not Path(part.path).exists()):
+                part.cloud_status = "UNAVAILABLE"
+                part.cloud_error = "本地文件已不存在，无法补传"
+                self.store.save(session)
+                continue
             self._queue_cloud_part(session, target, part)
 
     def _queue_cloud_part(
@@ -1277,6 +1330,8 @@ class RecorderService:
             or not target.cloud_remote.strip()
             or part.status in {"LOCAL_ONLY", "CANCELED", "DISCARDED"}
         ):
+            return None
+        if part.cloud_status == "UNAVAILABLE":
             return None
         if self._part_below_minimum(part):
             return None
@@ -1422,6 +1477,15 @@ class RecorderService:
     ) -> None:
         if part.status != "UPLOADED" or not self._part_cloud_complete(session, part):
             return
+        try:
+            latest = self.store.load(session.session_id)
+        except (KeyError, OSError, ValueError):
+            return
+        latest_part = next((item for item in latest.parts if item.index == part.index), None)
+        if latest_part is None or latest_part.status != "UPLOADED":
+            return
+        if latest.cloud_backup and latest_part.cloud_status != "UPLOADED":
+            return
         for value in (part.path, part.source_path, part.danmaku_path):
             if value:
                 Path(value).unlink(missing_ok=True)
@@ -1431,7 +1495,65 @@ class RecorderService:
         ):
             self._cleanup_uploaded_artifacts(session)
 
+    def cleanup_expired_failed_parts(self) -> dict[str, int]:
+        """Delete failed/canceled parts older than the user-chosen retention."""
+
+        days = max(0, int(self.config.failed_part_retention_days or 0))
+        if days <= 0:
+            return {"removed": 0, "freed_bytes": 0}
+        cutoff = time.time() - days * 86400
+        removed = 0
+        freed_bytes = 0
+        for session in self.store.all():
+            if session.status == SessionStatus.RECORDING:
+                continue
+            changed = False
+            for part in session.parts:
+                if part.status not in {"FAILED", "CANCELED", "DISCARDED", "LOCAL_ONLY"}:
+                    continue
+                if part.cloud_status == "UPLOADING":
+                    continue
+                existing = [
+                    Path(value)
+                    for value in (part.path, part.source_path, part.danmaku_path)
+                    if value and Path(value).exists()
+                ]
+                if not existing:
+                    continue
+                try:
+                    if any(path.stat().st_mtime > cutoff for path in existing):
+                        continue
+                except OSError:
+                    continue
+                for path in existing:
+                    try:
+                        size = path.stat().st_size
+                        path.unlink(missing_ok=True)
+                        freed_bytes += size
+                    except OSError:
+                        continue
+                part.path = ""
+                part.source_path = ""
+                part.danmaku_path = ""
+                note = f"本地文件已按保留策略（{days} 天）清理"
+                part.error = f"{part.error}；{note}" if part.error else note
+                if session.cloud_backup and part.cloud_status != "UPLOADED":
+                    part.cloud_status = "UNAVAILABLE"
+                    part.cloud_error = note + "，无法补传"
+                removed += 1
+                changed = True
+            if changed:
+                self.store.save(session)
+        if removed:
+            self.logger.info(
+                "cleaned %s expired failed parts, freed %.2f GB",
+                removed,
+                freed_bytes / (1024**3),
+            )
+        return {"removed": removed, "freed_bytes": freed_bytes}
+
     def cleanup_completed_parts(self) -> dict[str, int]:
+
         if not self.config.delete_after_upload:
             return {"removed": 0, "freed_bytes": 0}
         removed = 0
@@ -1779,6 +1901,8 @@ class RecorderService:
         )
         while not self.shutdown_event.is_set() and not self.interrupt_event.is_set():
             status = self._resolve_status(target)
+            if self._target_is_paused(target.name) or target.name in self._removed_targets:
+                return False
             if status is not None and status.live:
                 self._last_live_epoch[target.name] = int(time.time())
                 session.reconnect_count += 1
@@ -1827,8 +1951,11 @@ class RecorderService:
             "segment_time",
             "quality",
             "frame_rate",
+            "danmaku_encoder",
             "min_file_size_mb",
             "max_cache_gb",
+            "cache_full_policy",
+            "failed_part_retention_days",
             "keep_original_files",
             "video_dir",
             "late_threshold_minutes",
@@ -1851,6 +1978,9 @@ class RecorderService:
             "cloud_quark_cli",
             "cloud_baidu_cli",
             "cloud_quark_cookie_file",
+            "cloud_quark_sync_dir",
+            "cloud_quark_sync_remote_root",
+            "cloud_quark_sync_timeout_seconds",
             "bilibili_priority",
             "targets",
         ):
@@ -1896,10 +2026,11 @@ class RecorderService:
 
     def _probe_live_with_recorder(self, target: TargetConfig) -> bool:
         probe_dir = self.config.data_dir / "probes" / f"{int(time.time() * 1000)}"
+        probe_target = self._resolved_recording_target(target)
         probe_dir.mkdir(parents=True, exist_ok=True)
         try:
             attempt = self.recorder.record(
-                target,
+                probe_target,
                 probe_dir,
                 timeout_seconds=8,
                 allow_partials=True,
@@ -1910,6 +2041,13 @@ class RecorderService:
             return False
         finally:
             shutil.rmtree(probe_dir, ignore_errors=True)
+
+    def _resolved_recording_target(self, target: TargetConfig) -> TargetConfig:
+        status = self._resolve_status(target)
+        canonical_url = getattr(status, "canonical_url", "") if status is not None else ""
+        if canonical_url:
+            return replace(target, url=status.canonical_url)
+        return target
 
     def _upload_with_retries(self, session: SessionRecord) -> None:
         target = self._target_by_name(session.target_name)
@@ -2090,6 +2228,23 @@ class RecorderService:
         with self._target_control_lock:
             return name in self._paused_targets
 
+    def _register_recorder(self, name: str, process: RunningProcess) -> None:
+        with self._active_recorders_lock:
+            self._active_recorders[name] = process
+
+    def _unregister_recorder(self, name: str, process: RunningProcess) -> None:
+        with self._active_recorders_lock:
+            if self._active_recorders.get(name) is process:
+                self._active_recorders.pop(name, None)
+
+    def _terminate_active_recorder(self, name: str) -> None:
+        with self._active_recorders_lock:
+            process = self._active_recorders.pop(name, None)
+        if process is None:
+            return
+        self.logger.info("terminating recorder process for %s", name)
+        process.terminate()
+
     def _start_external_stop_watcher(self) -> None:
         stop_path = os.environ.get("DOUYIN_RECORDER_STOP_FILE", "").strip()
         if not stop_path:
@@ -2135,6 +2290,7 @@ class RecorderService:
                         if target is not None:
                             target.enabled = False
                             self._set_target_status(target, "paused", "该主播已单独暂停")
+                        self._terminate_active_recorder(name)
                     self.logger.info("target control request: %s %s", action, name)
 
         threading.Thread(target=watch, name="target-control-watcher", daemon=True).start()

@@ -13,11 +13,13 @@ from .driver import (
 )
 from .openlist import OpenListDriver
 from .quark import quark_factory
+from .quark_sync import quark_sync_factory
 from .rclone import RcloneDriver
 
 # Provider-specific CLIs win; OpenList is the standard local bridge; plain
 # rclone is the generic fallback.
 register_driver("quark", quark_factory, priority=10)
+register_driver("quark", quark_sync_factory, priority=20)
 register_driver("baidu", baidu_factory, priority=10)
 
 

@@ -1,12 +1,43 @@
 from __future__ import annotations
 
-from douyin_bili_recorder.douyin import DouyinResolver, extract_shared_url
+import pytest
+
+from douyin_bili_recorder.douyin import (
+    DouyinResolver,
+    extract_shared_url,
+    normalize_share_input,
+)
 
 
 def test_extract_shared_url_accepts_copy_text_and_markdown() -> None:
     text = "长按复制此条消息，打开抖音搜索，查看TA的更多作品。 [https://v.douyin.com/wd0JKyDUQ1A/](https://v.douyin.com/wd0JKyDUQ1A/)"
 
     assert extract_shared_url(text) == "https://v.douyin.com/wd0JKyDUQ1A/"
+
+
+def test_extract_shared_url_prefers_douyin_link_in_mixed_text() -> None:
+    text = (
+        "复制这条消息 https://example.com/help 打开抖音，"
+        "直播间地址 https://live.douyin.com/123456789?from=share 看看"
+    )
+
+    assert extract_shared_url(text) == "https://live.douyin.com/123456789?from=share"
+
+
+def test_normalize_share_input_accepts_profile_and_live_links() -> None:
+    assert normalize_share_input(
+        "主页：https://www.douyin.com/user/MS4wLjABAAAA?from_tab_name=main"
+    ) == "https://www.douyin.com/user/MS4wLjABAAAA?from_tab_name=main"
+    assert normalize_share_input(
+        "直播间 https://live.douyin.com/123 复制打开"
+    ) == "https://live.douyin.com/123"
+
+
+def test_normalize_share_input_rejects_non_douyin_text() -> None:
+    with pytest.raises(ValueError):
+        normalize_share_input("https://example.com/not-douyin")
+    with pytest.raises(ValueError):
+        normalize_share_input("完全没有链接的分享文案")
 
 
 def test_resolve_uses_live_alias_when_anchor_is_offline(monkeypatch) -> None:

@@ -157,6 +157,7 @@ def test_cleanup_during_recording_preserves_danmaku_workspace(tmp_path: Path) ->
         parts=[part],
     )
 
+    service.store.save(session)
     service._cleanup_part_if_ready(config.targets[0], session, part)
 
     assert not media.exists()

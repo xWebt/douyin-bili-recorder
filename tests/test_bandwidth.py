@@ -11,7 +11,7 @@ def test_bilibili_priority_throttles_cloud_only_while_uploading() -> None:
 
     assert scheduler.cloud_limit_kbps() == 0
     with scheduler.bilibili_upload():
-        assert scheduler.cloud_limit_kbps() == 2048
+        assert scheduler.cloud_limit_kbps() == 0
         assert scheduler.snapshot().bilibili_active == 1
     assert scheduler.cloud_limit_kbps() == 0
 

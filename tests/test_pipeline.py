@@ -638,6 +638,7 @@ record_danmaku = true
     service = RecorderService(config, logging.getLogger("test"))
     service.media = FakeMedia()  # type: ignore[assignment]
     session_dir = config.sessions_dir / "session"
+    service.danmaku = FakeDanmakuRenderer()  # type: ignore[assignment]
     session_dir.mkdir(parents=True)
     source = session_dir / "capture.flv"
     source.write_bytes(b"video")
@@ -657,6 +658,60 @@ record_danmaku = true
     assert part.danmaku_path.endswith(".xml")
     assert Path(part.danmaku_path).exists()
     assert not danmaku.exists()
+
+
+def test_prepare_part_refuses_unbaked_upload_when_danmaku_render_fails(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[app]
+data_dir = "data"
+
+[recording]
+min_file_size_mb = 0
+
+[storage]
+video_dir = "videos"
+
+[[targets]]
+name = "anchor"
+url = "https://live.douyin.com/123"
+record_danmaku = true
+""".strip(),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    service = RecorderService(config, logging.getLogger("test"))
+    session_dir = config.sessions_dir / "session"
+    session_dir.mkdir(parents=True)
+    source = session_dir / "capture.flv"
+    source.write_bytes(b"video")
+    danmaku = session_dir / "capture.xml"
+    danmaku.write_text("<i><d p=\"1,1,25,16777215\">hello</d></i>", encoding="utf-8")
+    session = SessionRecord(
+        session_id="session",
+        target_name="anchor",
+        target_url="https://live.douyin.com/123",
+        detected_start_epoch=1,
+        detected_start_iso="2026-09-26T00:00:00+08:00",
+    )
+
+    class FailingDanmaku:
+        def render(self, *_args, **_kwargs) -> int:
+            raise RuntimeError("burn failed")
+
+    class ExplodingMedia:
+        def process_file(self, *_args, **_kwargs):
+            raise AssertionError("unbaked media must not be processed")
+
+    service.danmaku = FailingDanmaku()  # type: ignore[assignment]
+    service.media = ExplodingMedia()  # type: ignore[assignment]
+
+    part = service._prepare_part(config.targets[0], session, session_dir, source, 1)
+
+    assert part is None
+    assert "弹幕烧录失败" in session.error
+    assert source.exists()
 
 
 def test_prepare_part_burns_danmaku_into_uploaded_mp4(tmp_path: Path) -> None:

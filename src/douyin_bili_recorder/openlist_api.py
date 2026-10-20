@@ -135,14 +135,14 @@ class OpenListApiClient:
         api_path = self.remote_to_api_path(remote_path)
         token = self._login()
         response = self._put_file(local_path, api_path, token, cancel_event)
-        if response.status_code == 401:
+        payload = self._response_payload(response)
+        if self._auth_expired(response, payload):
             self._token = ""
             token = self._login()
             response = self._put_file(local_path, api_path, token, cancel_event)
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise OpenListApiError(f"OpenList 上传返回非 JSON 响应：HTTP {response.status_code}") from exc
+            payload = self._response_payload(response)
+        if self._auth_expired(response, payload):
+            raise OpenListApiError("OpenList 登录状态已失效，重新登录后仍失败")
         if response.status_code != 200 or int(payload.get("code", 0)) != 200:
             message = str(payload.get("message") or f"HTTP {response.status_code}")
             raise OpenListApiError(f"OpenList 原生上传失败：{message}")
@@ -153,6 +153,24 @@ class OpenListApiClient:
             raise OpenListApiError("OpenList 远端路径与 rclone remote 不匹配")
         path = remote_path[len(prefix):]
         return path if path.startswith("/") else f"/{path}"
+
+    @staticmethod
+    def _response_payload(response: requests.Response) -> dict:
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise OpenListApiError(
+                f"OpenList 上传返回非 JSON 响应：HTTP {response.status_code}"
+            ) from exc
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _auth_expired(response: requests.Response, payload: dict) -> bool:
+        if response.status_code in {401, 403}:
+            return True
+        code = str(payload.get("code", ""))
+        message = str(payload.get("message") or payload.get("msg") or "").lower()
+        return code in {"401", "403"} or "token is expired" in message
 
     def _login(self) -> str:
         if self._token:

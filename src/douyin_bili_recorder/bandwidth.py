@@ -27,7 +27,7 @@ class BandwidthScheduler:
         self,
         *,
         cloud_limit_kbps: int = 0,
-        cloud_max_concurrency: int = 1,
+        cloud_max_concurrency: int = 2,
         bilibili_priority: bool = True,
     ) -> None:
         self._lock = threading.Lock()
@@ -81,15 +81,8 @@ class BandwidthScheduler:
 
     def cloud_limit_kbps(self) -> int:
         """Effective per-upload limit for cloud transfers."""
-
         with self._lock:
-            configured = self._cloud_limit_kbps
-            throttled = self._bilibili_priority and self._bilibili_active > 0
-        if throttled:
-            # While B站 is uploading, leave the cloud transfer a small slice
-            # unless the operator configured an explicit limit.
-            return configured if configured else 2048
-        return configured
+            return self._cloud_limit_kbps
 
     def snapshot(self) -> BandwidthSnapshot:
         with self._lock:

@@ -91,8 +91,11 @@ class AppConfig:
     min_upload_duration_seconds: int
     quality: str
     frame_rate: str
+    danmaku_encoder: str
     max_cache_gb: int
     keep_original_files: bool
+    cache_full_policy: str
+    failed_part_retention_days: int
     video_dir: Path
     late_threshold_minutes: int
     reconnect_grace_minutes: int
@@ -114,6 +117,9 @@ class AppConfig:
     cloud_quark_cli: str
     cloud_baidu_cli: str
     cloud_quark_cookie_file: Path
+    cloud_quark_sync_dir: str
+    cloud_quark_sync_remote_root: str
+    cloud_quark_sync_timeout_seconds: int
     bilibili_priority: bool
     launchd_label: str
     targets: list[TargetConfig]
@@ -166,8 +172,13 @@ def load_config(path: str | Path) -> AppConfig:
         min_upload_duration_seconds=int(recording.get("min_upload_duration_seconds", 60)),
         quality=str(recording.get("quality", "origin")),
         frame_rate=str(recording.get("frame_rate", "source")),
+        danmaku_encoder=str(recording.get("danmaku_encoder", "quality")),
         max_cache_gb=int(storage.get("max_cache_gb", 10)),
         keep_original_files=bool(recording.get("keep_original_files", True)),
+        cache_full_policy=str(storage.get("cache_full_policy", "wait")),
+        failed_part_retention_days=max(
+            0, int(storage.get("failed_part_retention_days", 0))
+        ),
         video_dir=_expand_path(
             storage.get("video_dir", "~/Movies/DouyinBiliRecorder"),
             base,
@@ -189,7 +200,7 @@ def load_config(path: str | Path) -> AppConfig:
         upload_submit_interval_seconds=max(0, int(upload.get("submit_interval_seconds", 180))),
         cloud_rclone_bin=resolve_executable(str(cloud.get("rclone_bin", "rclone")), base),
         cloud_upload_timeout_seconds=int(cloud.get("upload_timeout_seconds", 6 * 60 * 60)),
-        cloud_max_concurrency=max(1, int(cloud.get("max_concurrency", 1))),
+        cloud_max_concurrency=max(1, int(cloud.get("max_concurrency", 2))),
         cloud_bandwidth_limit_kbps=max(0, int(cloud.get("bandwidth_limit_kbps", 0))),
         cloud_chunk_size_mb=max(1, int(cloud.get("chunk_size_mb", 4))),
         cloud_quark_cli=resolve_executable(
@@ -198,6 +209,13 @@ def load_config(path: str | Path) -> AppConfig:
         cloud_baidu_cli=resolve_executable(str(cloud.get("baidu_cli", "bypy")), base),
         cloud_quark_cookie_file=_expand_path(
             cloud.get("quark_cookie_file", "quark-cookies.txt"), base
+        ),
+        cloud_quark_sync_dir=str(cloud.get("quark_sync_dir", "")).strip(),
+        cloud_quark_sync_remote_root=str(
+            cloud.get("quark_sync_remote_root", "")
+        ).strip(),
+        cloud_quark_sync_timeout_seconds=max(
+            60, int(cloud.get("quark_sync_timeout_seconds", 1800))
         ),
         bilibili_priority=bool(cloud.get("bilibili_priority", True)),
         launchd_label=str(launchd.get("label", "com.webt.douyin-bili-recorder")),
@@ -222,6 +240,13 @@ def _target(raw: dict[str, Any], *, default_public: bool = False) -> TargetConfi
     url = str(raw.get("url", "")).strip()
     if not name or not url:
         raise ConfigError("Every target requires name and url")
+    from .douyin import normalize_share_input
+
+    try:
+        url = normalize_share_input(url)
+    except ValueError as exc:
+        raise ConfigError(f"target {name}: {exc}") from exc
+
     return TargetConfig(
         name=name,
         url=url,
@@ -261,8 +286,12 @@ def _validate(config: AppConfig) -> None:
         raise ConfigError(f"quality is invalid: {config.quality}")
     if config.frame_rate not in {"source", "60", "30"}:
         raise ConfigError(f"frame_rate is invalid: {config.frame_rate}")
+    if config.danmaku_encoder not in {"quality", "speed"}:
+        raise ConfigError(f"danmaku_encoder is invalid: {config.danmaku_encoder}")
     if config.max_cache_gb < 1:
         raise ConfigError("max_cache_gb must be at least 1")
+    if config.cache_full_policy not in {"wait", "allow"}:
+        raise ConfigError("cache_full_policy must be wait or allow")
     if config.late_threshold_minutes < 0:
         raise ConfigError("late_threshold_minutes cannot be negative")
     if config.reconnect_grace_minutes < 0:
@@ -279,6 +308,12 @@ def _validate(config: AppConfig) -> None:
         raise ConfigError("cloud chunk_size_mb must be at least 1")
     if config.cloud_bandwidth_limit_kbps < 0:
         raise ConfigError("cloud bandwidth_limit_kbps cannot be negative")
+    if config.cloud_quark_sync_dir and not config.cloud_quark_sync_remote_root:
+        raise ConfigError(
+            "cloud quark_sync_dir requires quark_sync_remote_root"
+        )
+    if config.cloud_quark_sync_timeout_seconds < 60:
+        raise ConfigError("cloud quark_sync_timeout_seconds must be at least 60")
     for target in config.targets:
         if target.record_mode not in {"record", "monitor"}:
             raise ConfigError(f"target {target.name} has invalid record_mode: {target.record_mode}")

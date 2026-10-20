@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f7fb" />
     <title>DouyinBiliRecorder</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2.3.0" />
-    <link rel="stylesheet" href="/static/app-shell.css?v=2.3.0" />
-    <link rel="stylesheet" href="/static/sidebar.css?v=2.3.0" />
+    <link rel="stylesheet" href="/static/styles.css?v=2.3.1" />
+    <link rel="stylesheet" href="/static/app-shell.css?v=2.3.1" />
+    <link rel="stylesheet" href="/static/sidebar.css?v=2.3.1" />
   </head>
   <body>
     <div class="app-shell">
@@ -111,6 +111,10 @@
                 <option value="60">60 FPS</option>
                 <option value="30">30 FPS</option>
               </select></label>
+              <label class="select-row"><span>弹幕烧录</span><select id="danmakuEncoder">
+                <option value="quality">质量优先（推荐）</option>
+                <option value="speed">速度优先</option>
+              </select></label>
               <div class="encoding-estimate"><strong id="encodingEstimate">--</strong><small id="encodingHint">--</small></div>
             </div>
             <label class="switch-row">
@@ -125,6 +129,21 @@
               <span><strong>本地缓存总分配</strong><small id="cacheSettingHint">默认 10 GB</small></span>
               <span class="unit-input"><input type="number" id="maxCacheGb" min="1" max="2000" step="1" value="10" /><span>GB</span></span>
             </label>
+            <label class="select-row">
+              <span>缓存不足时</span>
+              <select id="cacheFullPolicy">
+                <option value="wait">等待上传释放空间</option>
+                <option value="allow">允许超限录制（磁盘有空间时）</option>
+              </select>
+            </label>
+            <label class="number-row">
+              <span><strong>失败分段保留</strong><small>0 = 永久保留；到期后仅在空间不足时清理</small></span>
+              <span class="unit-input"><input type="number" id="failedRetentionDays" min="0" max="365" step="1" value="0" /><span>天</span></span>
+            </label>
+            <label class="switch-row">
+              <span><strong>烧录后保留原始 FLV</strong><small>开启会占用额外空间；空间紧张时建议关闭</small></span>
+              <input type="checkbox" id="keepOriginalFiles" /><span class="switch-track"></span>
+            </label>
             <label class="field-row">
               <span><strong>视频根目录</strong><small>主播 / 日期 / 录像</small></span>
               <input id="videoDir" placeholder="~/Movies/DouyinBiliRecorder" />
@@ -132,6 +151,14 @@
             <label class="field-row">
               <span><strong>rclone 可执行文件</strong><small>网盘备份使用，默认从 PATH 查找 rclone</small></span>
               <input id="cloudRcloneBin" placeholder="rclone" />
+            </label>
+            <label class="field-row">
+              <span><strong>夸克官方同步目录</strong><small>真 VIP：留空回退 OpenList；需在夸克客户端开启同步</small></span>
+              <input id="quarkSyncDir" placeholder="~/Quark/同步空间" />
+            </label>
+            <label class="field-row">
+              <span><strong>同步远程根路径</strong><small>用于校验官方客户端是否上传完成</small></span>
+              <input id="quarkSyncRemoteRoot" placeholder="quark:/quark/DouyinBiliRecorder" />
             </label>
             <div class="split-fields">
               <label><span>迟到阈值</span><input type="number" id="lateThreshold" min="0" max="120" /><small>分钟</small></label>
@@ -327,6 +354,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="/static/vendor/lucide.min.js"></script>
-    <script src="/static/app.js?v=2.3.0"></script>
+    <script src="/static/app.js?v=2.3.1"></script>
   </body>
 </html>

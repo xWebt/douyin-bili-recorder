@@ -30,6 +30,9 @@ const els = {
   cacheBar: document.querySelector("#cacheBar"),
   maxCacheGb: document.querySelector("#maxCacheGb"),
   cacheSettingHint: document.querySelector("#cacheSettingHint"),
+  cacheFullPolicy: document.querySelector("#cacheFullPolicy"),
+  failedRetentionDays: document.querySelector("#failedRetentionDays"),
+  keepOriginalFiles: document.querySelector("#keepOriginalFiles"),
   targetCount: document.querySelector("#targetCount"),
   overviewRecording: document.querySelector("#overviewRecording"),
   overviewUploading: document.querySelector("#overviewUploading"),
@@ -49,11 +52,14 @@ const els = {
   defaultVisibility: document.querySelector("#defaultVisibility"),
   videoDir: document.querySelector("#videoDir"),
   cloudRcloneBin: document.querySelector("#cloudRcloneBin"),
+  quarkSyncDir: document.querySelector("#quarkSyncDir"),
+  quarkSyncRemoteRoot: document.querySelector("#quarkSyncRemoteRoot"),
   lateThreshold: document.querySelector("#lateThreshold"),
   reconnectGrace: document.querySelector("#reconnectGrace"),
   pollInterval: document.querySelector("#pollInterval"),
   quality: document.querySelector("#quality"),
   frameRate: document.querySelector("#frameRate"),
+  danmakuEncoder: document.querySelector("#danmakuEncoder"),
   encodingEstimate: document.querySelector("#encodingEstimate"),
   encodingHint: document.querySelector("#encodingHint"),
   uploadPanel: document.querySelector("#uploadPanel"),
@@ -514,13 +520,19 @@ function renderSettings() {
   els.deleteAfterUpload.checked = Boolean(state.config.delete_after_upload);
   els.maxCacheGb.value = state.config.max_cache_gb ?? 10;
   els.cacheSettingHint.textContent = `已保存分配 ${state.config.max_cache_gb ?? 10} GB`;
+  els.cacheFullPolicy.value = state.config.cache_full_policy || "wait";
+  els.failedRetentionDays.value = state.config.failed_part_retention_days ?? 0;
+  els.keepOriginalFiles.checked = Boolean(state.config.keep_original_files);
   els.videoDir.value = state.config.video_dir || "~/Movies/DouyinBiliRecorder";
   els.cloudRcloneBin.value = state.config.cloud_rclone_bin || "rclone";
+  els.quarkSyncDir.value = state.config.cloud_quark_sync_dir || "";
+  els.quarkSyncRemoteRoot.value = state.config.cloud_quark_sync_remote_root || "";
   els.lateThreshold.value = state.config.late_threshold_minutes ?? 5;
   els.reconnectGrace.value = state.config.reconnect_grace_minutes ?? 15;
   els.pollInterval.value = state.config.poll_interval_seconds ?? 30;
   els.quality.value = state.config.quality || "origin";
   els.frameRate.value = state.config.frame_rate || "source";
+  els.danmakuEncoder.value = state.config.danmaku_encoder || "quality";
   renderEncodingEstimate();
   for (const button of els.defaultVisibility.querySelectorAll("button")) {
     button.classList.toggle("active", button.dataset.value === (state.config.public ? "public" : "private"));
@@ -1158,7 +1170,7 @@ async function resolveTargetUrl() {
         public: Boolean(state.config.public),
         record_mode: "record",
         record_danmaku: false,
-        watch_mode: "manual",
+        watch_mode: "all_day",
         collection_name: resolvedName,
         collection_id: "",
         cloud_backup: false,
@@ -1169,7 +1181,7 @@ async function resolveTargetUrl() {
         tid: 171,
         copyright: 2,
         source: "",
-        schedule: [{ days: [1, 3, 5], start: "20:00", end: "23:00", enabled: true }],
+        schedule: [],
       };
       state.config.targets.push(target);
     } else {
@@ -1670,32 +1682,50 @@ els.clearLogButton.addEventListener("click", refreshLogs);
 els.autoRestart.addEventListener("change", () => { state.config.auto_restart = els.autoRestart.checked; });
 els.deleteAfterUpload.addEventListener("change", () => { state.config.delete_after_upload = els.deleteAfterUpload.checked; });
 els.maxCacheGb.addEventListener("input", () => { state.config.max_cache_gb = Math.max(1, Number(els.maxCacheGb.value) || 10); });
+els.cacheFullPolicy.addEventListener("change", () => { state.config.cache_full_policy = els.cacheFullPolicy.value; markDirty(); });
+els.failedRetentionDays.addEventListener("input", () => { state.config.failed_part_retention_days = Math.max(0, Number(els.failedRetentionDays.value) || 0); markDirty(); });
+els.keepOriginalFiles.addEventListener("change", () => { state.config.keep_original_files = els.keepOriginalFiles.checked; markDirty(); });
 els.videoDir.addEventListener("input", () => { state.config.video_dir = els.videoDir.value; });
+els.quarkSyncDir.addEventListener("input", () => { state.config.cloud_quark_sync_dir = els.quarkSyncDir.value; markDirty(); });
+els.quarkSyncRemoteRoot.addEventListener("input", () => { state.config.cloud_quark_sync_remote_root = els.quarkSyncRemoteRoot.value; markDirty(); });
 els.lateThreshold.addEventListener("input", () => { state.config.late_threshold_minutes = Math.max(0, Number(els.lateThreshold.value) || 0); });
   els.reconnectGrace.addEventListener("input", () => { state.config.reconnect_grace_minutes = Math.max(0, Number(els.reconnectGrace.value) || 0); });
 els.pollInterval.addEventListener("input", () => { state.config.poll_interval_seconds = Math.max(5, Number(els.pollInterval.value) || 30); });
 els.quality.addEventListener("change", () => { state.config.quality = els.quality.value; renderEncodingEstimate(); });
 els.frameRate.addEventListener("change", () => { state.config.frame_rate = els.frameRate.value; renderEncodingEstimate(); });
+els.danmakuEncoder.addEventListener("change", () => { state.config.danmaku_encoder = els.danmakuEncoder.value; markDirty(); });
 els.defaultVisibility.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-value]"); if (!button) return;
   state.config.public = button.dataset.value === "public"; renderSettings();
 });
-els.targetForm.addEventListener("submit", (event) => {
+els.targetForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const url = els.targetUrl.value.trim();
   const name = els.targetName.value.trim() || `主播-${state.config.targets.length + 1}`;
   if (!url) return;
+  let resolvedUrl = url;
+  let resolvedName = name;
+  try {
+    const result = await api("/api/targets/resolve", {
+      method: "POST",
+      body: JSON.stringify({url, check_live: false}),
+    });
+    resolvedUrl = result.canonical_url || url;
+    if (!els.targetName.value.trim() && result.anchor_name) resolvedName = result.anchor_name;
+  } catch (error) {
+    toast(`链接解析失败，将保存原始链接：${error.message}`, "error");
+  }
   state.config.targets.push({
-    id: Math.random().toString(16).slice(2, 12), name, url, enabled: true,
+    id: Math.random().toString(16).slice(2, 12), name: resolvedName, url: resolvedUrl, enabled: true,
     public: Boolean(state.config.public), record_mode: "record", collection_name: name, collection_id: "",
     record_danmaku: false,
-    watch_mode: "manual",
+    watch_mode: "all_day",
     cloud_backup: false,
     cloud_provider: "baidu",
     cloud_remote: "",
     title_template: "{name}｜{start_date} {start_time} 开播｜{room_title}",
     tags: ["直播录像", "抖音"], tid: 171, copyright: 2, source: "",
-    schedule: [{ days: [1, 3, 5], start: "20:00", end: "23:00", enabled: true }],
+    schedule: [],
   });
   saveState(`${name} 已添加并保存`).then((saved) => {
     if (saved) {

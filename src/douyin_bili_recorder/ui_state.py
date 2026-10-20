@@ -22,11 +22,15 @@ def _default_state(config: AppConfig) -> dict[str, Any]:
         "public": config.public,
         "max_cache_gb": config.max_cache_gb,
         "delete_after_upload": config.delete_after_upload,
+        "keep_original_files": config.keep_original_files,
+        "cache_full_policy": config.cache_full_policy,
+        "failed_part_retention_days": config.failed_part_retention_days,
         "auto_restart": True,
         "worker_running": False,
         "poll_interval_seconds": config.poll_interval_seconds,
         "quality": config.quality,
         "frame_rate": config.frame_rate,
+        "danmaku_encoder": config.danmaku_encoder,
         "video_dir": str(config.video_dir),
         "late_threshold_minutes": config.late_threshold_minutes,
         "reconnect_grace_minutes": config.reconnect_grace_minutes,
@@ -37,6 +41,9 @@ def _default_state(config: AppConfig) -> dict[str, Any]:
         "cloud_quark_cli": config.cloud_quark_cli,
         "cloud_baidu_cli": config.cloud_baidu_cli,
         "cloud_quark_cookie_file": str(config.cloud_quark_cookie_file),
+        "cloud_quark_sync_dir": config.cloud_quark_sync_dir,
+        "cloud_quark_sync_remote_root": config.cloud_quark_sync_remote_root,
+        "cloud_quark_sync_timeout_seconds": config.cloud_quark_sync_timeout_seconds,
         "bilibili_priority": config.bilibili_priority,
         "targets": [
             {
@@ -130,12 +137,15 @@ class UIStateStore:
             f'segment_time = {json.dumps(self.config.segment_time)}',
             f'quality = {json.dumps(quality)}',
             f'frame_rate = {json.dumps(frame_rate)}',
+            f'danmaku_encoder = {json.dumps(str(state.get("danmaku_encoder", self.config.danmaku_encoder)))}',
             f"min_file_size_mb = {self.config.min_file_size_mb}",
             f"min_upload_duration_seconds = {self.config.min_upload_duration_seconds}",
-            f"keep_original_files = {str(self.config.keep_original_files).lower()}",
+            f"keep_original_files = {str(bool(state.get('keep_original_files', self.config.keep_original_files))).lower()}",
             "",
             "[storage]",
             f"max_cache_gb = {int(state.get('max_cache_gb', self.config.max_cache_gb))}",
+            f"cache_full_policy = {json.dumps(str(state.get('cache_full_policy', self.config.cache_full_policy)))}",
+            f"failed_part_retention_days = {max(0, int(state.get('failed_part_retention_days', self.config.failed_part_retention_days) or 0))}",
             f'video_dir = {json.dumps(str(state.get("video_dir", self.config.video_dir)))}',
             f"late_threshold_minutes = {int(state.get('late_threshold_minutes', self.config.late_threshold_minutes))}",
             f"reconnect_grace_minutes = {int(state.get('reconnect_grace_minutes', self.config.reconnect_grace_minutes))}",
@@ -162,6 +172,9 @@ class UIStateStore:
             f'quark_cli = {json.dumps(str(state.get("cloud_quark_cli", self.config.cloud_quark_cli)), ensure_ascii=False)}',
             f'baidu_cli = {json.dumps(str(state.get("cloud_baidu_cli", self.config.cloud_baidu_cli)), ensure_ascii=False)}',
             f'quark_cookie_file = {json.dumps(str(state.get("cloud_quark_cookie_file", self.config.cloud_quark_cookie_file)))}',
+            f'quark_sync_dir = {json.dumps(str(state.get("cloud_quark_sync_dir", self.config.cloud_quark_sync_dir)))}',
+            f'quark_sync_remote_root = {json.dumps(str(state.get("cloud_quark_sync_remote_root", self.config.cloud_quark_sync_remote_root)))}',
+            f"quark_sync_timeout_seconds = {max(60, int(state.get('cloud_quark_sync_timeout_seconds', self.config.cloud_quark_sync_timeout_seconds)))}",
             "",
             "[launchd]",
             f'label = {json.dumps(self.config.launchd_label)}',
@@ -299,6 +312,24 @@ class UIStateStore:
             "public": bool(state.get("public", self.config.public)),
             "max_cache_gb": max(1, int(state.get("max_cache_gb", self.config.max_cache_gb))),
             "delete_after_upload": bool(state.get("delete_after_upload", self.config.delete_after_upload)),
+            "keep_original_files": bool(
+                state.get("keep_original_files", self.config.keep_original_files)
+            ),
+            "cache_full_policy": (
+                str(state.get("cache_full_policy", self.config.cache_full_policy))
+                if str(state.get("cache_full_policy", self.config.cache_full_policy)) in {"wait", "allow"}
+                else "wait"
+            ),
+            "failed_part_retention_days": max(
+                0,
+                int(
+                    state.get(
+                        "failed_part_retention_days",
+                        self.config.failed_part_retention_days,
+                    )
+                    or 0
+                ),
+            ),
             "auto_restart": bool(state.get("auto_restart", True)),
             "worker_running": bool(state.get("worker_running", False)),
             "poll_interval_seconds": max(
@@ -315,6 +346,11 @@ class UIStateStore:
                 if str(state.get("frame_rate", self.config.frame_rate)) in {"source", "60", "30"}
                 else self.config.frame_rate
             ),
+            "danmaku_encoder": (
+                str(state.get("danmaku_encoder", self.config.danmaku_encoder))
+                if str(state.get("danmaku_encoder", self.config.danmaku_encoder)) in {"quality", "speed"}
+                else self.config.danmaku_encoder
+            ),
             "video_dir": str(state.get("video_dir", self.config.video_dir)),
             "late_threshold_minutes": max(
                 0,
@@ -326,6 +362,55 @@ class UIStateStore:
             ),
             "cloud_rclone_bin": str(
                 state.get("cloud_rclone_bin", self.config.cloud_rclone_bin)
+            ),
+            "cloud_max_concurrency": max(
+                1,
+                int(state.get("cloud_max_concurrency", self.config.cloud_max_concurrency) or 2),
+            ),
+            "cloud_bandwidth_limit_kbps": max(
+                0,
+                int(
+                    state.get(
+                        "cloud_bandwidth_limit_kbps",
+                        self.config.cloud_bandwidth_limit_kbps,
+                    )
+                    or 0
+                ),
+            ),
+            "cloud_chunk_size_mb": max(
+                1,
+                int(state.get("cloud_chunk_size_mb", self.config.cloud_chunk_size_mb) or 4),
+            ),
+            "cloud_quark_cli": str(
+                state.get("cloud_quark_cli", self.config.cloud_quark_cli)
+            ),
+            "cloud_baidu_cli": str(
+                state.get("cloud_baidu_cli", self.config.cloud_baidu_cli)
+            ),
+            "cloud_quark_cookie_file": str(
+                state.get("cloud_quark_cookie_file", self.config.cloud_quark_cookie_file)
+            ),
+            "cloud_quark_sync_dir": str(
+                state.get("cloud_quark_sync_dir", self.config.cloud_quark_sync_dir)
+            ),
+            "cloud_quark_sync_remote_root": str(
+                state.get(
+                    "cloud_quark_sync_remote_root",
+                    self.config.cloud_quark_sync_remote_root,
+                )
+            ),
+            "cloud_quark_sync_timeout_seconds": max(
+                60,
+                int(
+                    state.get(
+                        "cloud_quark_sync_timeout_seconds",
+                        self.config.cloud_quark_sync_timeout_seconds,
+                    )
+                    or 1800
+                ),
+            ),
+            "bilibili_priority": bool(
+                state.get("bilibili_priority", self.config.bilibili_priority)
             ),
             "targets": targets,
         }

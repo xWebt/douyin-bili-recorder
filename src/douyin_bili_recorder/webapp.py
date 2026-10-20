@@ -455,6 +455,18 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.put("/api/state")
     async def put_state(payload: dict[str, Any]) -> dict[str, Any]:
+        from .douyin import normalize_share_input
+
+        for target in payload.get("targets", []) or []:
+            if not isinstance(target, dict):
+                continue
+            try:
+                target["url"] = normalize_share_input(str(target.get("url", "")))
+            except ValueError as exc:
+                name = str(target.get("name", "未命名主播"))
+                raise HTTPException(
+                    status_code=422, detail=f"主播 {name}：{exc}"
+                ) from exc
         state = state_store.save(payload)
         state_store.render_runtime_config(state)
         cloud_folders, cloud_warnings = _sync_cloud_anchor_folders(config, state)

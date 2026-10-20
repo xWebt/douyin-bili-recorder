@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -18,10 +19,33 @@ URL_TRAILING_CHARS = ".,;:!?，。；：！？、）)]}】》"
 
 
 def extract_shared_url(text: str) -> str:
-    match = URL_RE.search(text)
-    if match is None:
-        return text.strip()
-    return match.group(0).rstrip(URL_TRAILING_CHARS)
+    matches = [match.rstrip(URL_TRAILING_CHARS) for match in URL_RE.findall(text or "")]
+    if not matches:
+        return (text or "").strip()
+    douyin = [
+        item
+        for item in matches
+        if "douyin.com" in item.lower() or "iesdouyin.com" in item.lower()
+    ]
+    return (douyin or matches)[0]
+
+
+def normalize_share_input(value: str) -> str:
+    """Extract one Douyin URL from share text and reject non-URL input."""
+
+    candidate = extract_shared_url(value)
+    parsed = urlparse(candidate)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"http", "https"} or not host:
+        raise ValueError("分享内容中没有可识别的抖音链接")
+    if not (
+        host == "douyin.com"
+        or host.endswith(".douyin.com")
+        or host == "iesdouyin.com"
+        or host.endswith(".iesdouyin.com")
+    ):
+        raise ValueError("仅支持抖音主页、直播间或分享链接")
+    return candidate
 
 
 @dataclass(slots=True)
@@ -79,7 +103,7 @@ class DouyinResolver:
             return self.proxy_session.get(url, timeout=self.timeout, **kwargs)
 
     def resolve(self, url: str, *, check_live: bool = True) -> ResolvedTarget:
-        shared_url = extract_shared_url(url)
+        shared_url = normalize_share_input(url)
         final_url = self._follow_redirect(shared_url)
         share_room = self._resolve_webcast_share(final_url)
         if share_room:
@@ -138,7 +162,8 @@ class DouyinResolver:
         )
 
     def _follow_redirect(self, url: str) -> str:
-        if "v.douyin.com" not in url:
+        lowered = url.lower()
+        if "v.douyin.com" not in lowered and "iesdouyin.com" not in lowered:
             return url
         response = self._get(url, allow_redirects=True)
         return str(response.url)
@@ -206,6 +231,8 @@ class DouyinResolver:
             numeric_web_rid = owner.get("web_rid") or room.get("web_rid")
             if numeric_web_rid:
                 result["web_rid"] = str(numeric_web_rid)
+            if owner.get("unique_id") or owner.get("uniqueId"):
+                result["room_alias"] = str(owner.get("unique_id") or owner.get("uniqueId"))
             if room.get("id_str") or room.get("id"):
                 result["room_id"] = str(room.get("id_str") or room.get("id"))
             if owner.get("nickname"):
@@ -222,10 +249,11 @@ class DouyinResolver:
         try:
             text = self._get(url).text
             for key, pattern in (
-                ("web_rid", r'web_rid["\\:]+\s*["\']?(\d+)'),
-                ("room_id", r'room_id["\\:]+\s*["\']?(\d+)'),
+                ("web_rid", r'(?:web_rid|webRid|shortId)["\\:]+\s*["\']?([A-Za-z0-9_]+)'),
+                ("room_id", r'(?:room_id|roomId|id_str)["\\:]+\s*["\']?(\d+)'),
+                ("room_alias", r'(?:unique_id|uniqueId|short_id)["\\:]+\s*["\']([A-Za-z0-9_.-]+)'),
                 ("anchor_name", r'nickname["\\:]+\s*["\']([^"\']+)'),
-                ("room_title", r'room_title["\\:]+\s*["\']([^"\']+)'),
+                ("room_title", r'(?:room_title|roomTitle|title)["\\:]+\s*["\']([^"\']+)'),
             ):
                 value = self._first_match(text, pattern)
                 if value and not result.get(key):

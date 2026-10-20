@@ -72,3 +72,22 @@ def test_layout_uses_fixed_viewport_with_internal_scroll() -> None:
     assert ".app-view[data-view-panel=\"recording\"]" in css
     assert ".app-view[data-view-panel=\"analytics\"]" in css
     assert "scrollbar-gutter: stable" in css
+
+
+def test_new_targets_default_to_all_day_without_schedule() -> None:
+    js = _js()
+    assert js.count('watch_mode: "all_day"') >= 2
+    assert js.count("schedule: []") >= 2
+
+
+def test_storage_and_encoder_controls_exist() -> None:
+    html = _html()
+    for element_id in (
+        "cacheFullPolicy",
+        "failedRetentionDays",
+        "keepOriginalFiles",
+        "quarkSyncDir",
+        "quarkSyncRemoteRoot",
+        "danmakuEncoder",
+    ):
+        assert f'id="{element_id}"' in html

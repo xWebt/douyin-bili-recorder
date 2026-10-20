@@ -10,11 +10,16 @@ reconnect_backoff_seconds = 15
 segment_time = "1h"
 quality = "origin"
 frame_rate = "source"
+danmaku_encoder = "quality"
 min_file_size_mb = 10
 keep_original_files = true
 
 [storage]
 max_cache_gb = 10
+# wait: 空间不足时等待；allow: 磁盘仍有空间时允许超出缓存上限继续录制
+cache_full_policy = "wait"
+# 0 = 永久保留失败分段；>0 时只在空间不足时清理超过该天数的失败/取消分段
+failed_part_retention_days = 0
 video_dir = "~/Movies/DouyinBiliRecorder"
 late_threshold_minutes = 5
 reconnect_grace_minutes = 15
@@ -38,8 +43,12 @@ upload_timeout_seconds = 21600
 quark_cli = "quarkpan"
 baidu_cli = "bypy"
 quark_cookie_file = "quark-cookies.txt"
+# 真 VIP：填写夸克官方客户端开启的本地同步目录；留空则回退 OpenList
+quark_sync_dir = ""
+quark_sync_remote_root = "quark:/quark/DouyinBiliRecorder"
+quark_sync_timeout_seconds = 1800
 chunk_size_mb = 4
-max_concurrency = 1
+max_concurrency = 2
 # 0 表示不限速；B站上传进行中时网盘默认降到 2 Mbps
 bandwidth_limit_kbps = 0
 bilibili_priority = true

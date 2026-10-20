@@ -110,8 +110,10 @@ record_danmaku = true
     assert output.read_bytes() == b"burned"
     assert not output.with_suffix(".ass").exists()
     assert any("ass=" in item for item in runner.commands[0])
-    assert "h264_videotoolbox" in runner.commands[0]
-    assert "24000k" in runner.commands[0]
+    assert "libx264" in runner.commands[0]
+    assert "-crf" in runner.commands[0]
+    assert "18" in runner.commands[0]
+    assert "+faststart" in runner.commands[0]
     assert "-profile:v" in runner.commands[0]
     assert any("fontsdir=" in item and "douyin_bili_recorder/fonts" in item for item in runner.commands[0])
 
@@ -122,6 +124,9 @@ def test_renderer_falls_back_to_software_when_hardware_encoder_fails(tmp_path: P
         """
 [app]
 data_dir = "data"
+
+[recording]
+danmaku_encoder = "speed"
 
 [upload]
 ffmpeg_bin = "ffmpeg"
@@ -148,7 +153,8 @@ record_danmaku = true
     assert "h264_videotoolbox" in runner.commands[0]
     assert "libx264" in runner.commands[1]
     assert any("scale=1080:-2" in item for item in runner.commands[1])
-    assert "16000k" in runner.commands[1]
+    assert "-crf" in runner.commands[1]
+    assert "20" in runner.commands[1]
 
 
 def test_format_ass_text_replaces_unsupported_supplementary_glyphs() -> None:
