@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.3.1
+
+- Fixed share-text/profile link handling: both the normal add form and the resolver endpoint now extract the Douyin URL, resolve profile shares to a live room, and the recorder uses the resolved canonical live URL.
+- New anchors default to all-day monitoring with an empty schedule; the old hard-coded `[1,3,5]` schedule is gone.
+- Storage policy now supports `cache_full_policy=allow` and a user-chosen failed-part retention period; space errors are no longer overwritten by “未开播”.
+- Pausing/deleting a target now terminates its active recorder process; capacity/reconnect waits also honor pause/delete.
+- A failed danmaku burn no longer falls back to uploading the unbaked source; the raw video is retained for retry.
+- Danmaku burn quality mode uses libx264 CRF 18/20 with `-movflags +faststart`; the old fixed-bitrate VideoToolbox path is now the optional “speed” mode and uses the source bitrate as a floor.
+- OpenList now re-logs in on JSON code 401 / “token is expired”, not only HTTP 401.
+- Cloud cleanup marks parts without local files as `UNAVAILABLE` instead of retrying forever; final MP4 deletion re-checks the fresh database state.
+- Removed the implicit 2 Mbps cloud throttle during Bilibili uploads; cloud concurrency defaults to 2 and parallel uploads are no longer globally serialized.
+- Added a Quark official sync-folder driver for true VIP uploads (copies to the official client sync folder and verifies remote size); it is disabled until the sync folder is configured.
+
 ## v2.3.0
 
 - Replaced JSON session files with a SQLite source of truth (`recorder.sqlite3`, WAL) covering sessions, parts, upload jobs, anchors and monthly stats; `session.json` is now a debug/export snapshot and legacy data is imported automatically on first open.
