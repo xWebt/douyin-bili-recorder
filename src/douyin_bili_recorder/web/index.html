@@ -3,55 +3,78 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f5f7fb" />
-    <title>DouyinBiliRecorder</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2.3.1" />
-    <link rel="stylesheet" href="/static/app-shell.css?v=2.3.1" />
-    <link rel="stylesheet" href="/static/sidebar.css?v=2.3.1" />
+    <meta name="theme-color" content="#f1eee6" />
+    <title>录播工作台 · DouyinBiliRecorder</title>
+    <link rel="stylesheet" href="/static/styles.css?v=2.4.0" />
+    <link rel="stylesheet" href="/static/app-shell.css?v=2.4.0" />
+    <link rel="stylesheet" href="/static/sidebar.css?v=2.4.0" />
+    <link rel="stylesheet" href="/static/redesign.css?v=2.4.0" />
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-lockup">
-          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div>
-            <p class="eyebrow">BROADCAST OPERATIONS</p>
-            <h1>直播录制控制台</h1>
-          </div>
+      <aside class="app-sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-kicker"><span class="live-lamp"></span><span>ON AIR</span><span class="brand-kicker-dim">/ LOCAL</span></div>
+          <h1 class="brand-title"><span>录播</span><em>工作台</em></h1>
+          <p class="brand-sub">DOUYIN → BILIBILI / CLOUD</p>
+          <div class="brand-rule"></div>
         </div>
-        <nav class="topbar-actions app-nav" id="appNav" aria-label="应用导航">
-          <button class="ghost-button nav-button active" id="dashboardButton" data-view="dashboard" type="button">
-            <i data-lucide="layout-dashboard"></i><span>控制台</span>
-          </button>
-          <button class="ghost-button nav-button" id="targetsButton" data-view="targets" type="button">
-            <i data-lucide="radio-tower"></i><span>监视主播</span>
-          </button>
-          <button class="ghost-button nav-button" id="recordingButton" data-view="recording" type="button">
-            <i data-lucide="clapperboard"></i><span>录制状态</span>
-          </button>
-          <button class="ghost-button nav-button" id="submissionsButton" data-view="bilibili" type="button">
-            <i data-lucide="upload-cloud"></i><span>B站投稿</span>
-          </button>
-          <button class="ghost-button nav-button" id="cloudButton" data-view="cloud" type="button">
-            <i data-lucide="cloud-cog"></i><span>网盘备份</span>
-          </button>
-          <button class="ghost-button nav-button" id="videoLibraryButton" data-view="library" type="button">
-            <i data-lucide="folder-open"></i><span>视频库</span>
-          </button>
-          <button class="ghost-button nav-button" id="logsButton" data-view="logs" type="button">
-            <i data-lucide="scroll-text"></i><span>运行日志</span>
-          </button>
-          <button class="ghost-button nav-button" id="analyticsButton" data-view="analytics" type="button">
-            <i data-lucide="bar-chart-3"></i><span>统计与报告</span>
-          </button>
-          <button class="ghost-button" id="loginButton" type="button">
+        <nav class="app-nav" id="appNav" aria-label="应用导航">
+          <div class="nav-group">
+            <p class="nav-group-label">01 / MONITOR</p>
+            <button class="nav-button active" id="dashboardButton" data-view="dashboard" data-page-title="运行总览" data-view-index="01" type="button">
+              <span class="nav-index">01</span><i data-lucide="layout-dashboard"></i><span class="nav-copy"><strong>总览</strong><small>Overview</small></span>
+            </button>
+            <button class="nav-button" id="targetsButton" data-view="targets" data-page-title="监视主播" data-view-index="02" type="button">
+              <span class="nav-index">02</span><i data-lucide="radio-tower"></i><span class="nav-copy"><strong>监视主播</strong><small>Channels</small></span>
+            </button>
+            <button class="nav-button" id="recordingButton" data-view="recording" data-page-title="录制状态" data-view-index="03" type="button">
+              <span class="nav-index">03</span><i data-lucide="clapperboard"></i><span class="nav-copy"><strong>录制状态</strong><small>Recording</small></span>
+            </button>
+          </div>
+          <div class="nav-group">
+            <p class="nav-group-label">02 / DELIVER</p>
+            <button class="nav-button" id="submissionsButton" data-view="bilibili" data-page-title="B站投稿" data-view-index="04" type="button">
+              <span class="nav-index">04</span><i data-lucide="upload-cloud"></i><span class="nav-copy"><strong>B站投稿</strong><small>Delivery</small></span>
+            </button>
+            <button class="nav-button" id="cloudButton" data-view="cloud" data-page-title="网盘备份" data-view-index="05" type="button">
+              <span class="nav-index">05</span><i data-lucide="cloud-cog"></i><span class="nav-copy"><strong>网盘备份</strong><small>Cloud vault</small></span>
+            </button>
+          </div>
+          <div class="nav-group">
+            <p class="nav-group-label">03 / ARCHIVE</p>
+            <button class="nav-button" id="videoLibraryButton" data-view="library" data-page-title="视频库" data-view-index="06" type="button">
+              <span class="nav-index">06</span><i data-lucide="folder-open"></i><span class="nav-copy"><strong>视频库</strong><small>Library</small></span>
+            </button>
+            <button class="nav-button" id="analyticsButton" data-view="analytics" data-page-title="统计与报告" data-view-index="07" type="button">
+              <span class="nav-index">07</span><i data-lucide="bar-chart-3"></i><span class="nav-copy"><strong>统计与报告</strong><small>Analytics</small></span>
+            </button>
+            <button class="nav-button" id="logsButton" data-view="logs" data-page-title="运行日志" data-view-index="08" type="button">
+              <span class="nav-index">08</span><i data-lucide="scroll-text"></i><span class="nav-copy"><strong>运行日志</strong><small>Live feed</small></span>
+            </button>
+          </div>
+        </nav>
+        <div class="sidebar-footer">
+          <button class="sidebar-login" id="loginButton" type="button">
             <i data-lucide="scan-qr-code"></i><span id="loginLabel">B站登录</span>
           </button>
           <div class="connection-state" id="connectionState">
             <span class="status-dot"></span><span>正在连接</span>
           </div>
-        </nav>
-      </header>
+          <div class="sidebar-meta"><span>LOCAL CONSOLE</span><span>v2.4.0</span></div>
+        </div>
+      </aside>
+      <div class="app-main">
+        <header class="workbench-bar">
+          <div class="workbench-heading">
+            <p class="eyebrow">STUDIO CONTROL / <span id="viewIndex">01</span></p>
+            <h1 id="pageTitle">运行总览</h1>
+          </div>
+          <div class="workbench-status">
+            <div class="air-clock"><strong id="airClock">--:--:--</strong><small id="airDate">----</small></div>
+            <div class="workbench-chip"><span></span> LOCAL CONSOLE</div>
+          </div>
+        </header>
 
       <main class="view-stack">
         <section class="app-view active" data-view-panel="dashboard">
@@ -153,13 +176,24 @@
               <input id="cloudRcloneBin" placeholder="rclone" />
             </label>
             <label class="field-row">
-              <span><strong>夸克官方同步目录</strong><small>真 VIP：留空回退 OpenList；需在夸克客户端开启同步</small></span>
-              <input id="quarkSyncDir" placeholder="~/Quark/同步空间" />
+              <span><strong>夸克电脑备份目录</strong><small>先在夸克客户端“电脑备份”中添加该目录；留空则回退 OpenList</small></span>
+              <input id="quarkSyncDir" placeholder="~/Movies/DouyinBiliRecorder" />
             </label>
             <label class="field-row">
-              <span><strong>同步远程根路径</strong><small>用于校验官方客户端是否上传完成</small></span>
+              <span><strong>夸克校验远端</strong><small>rclone 必须能读取同一账号，用于确认官方客户端上传完成</small></span>
               <input id="quarkSyncRemoteRoot" placeholder="quark:/quark/DouyinBiliRecorder" />
             </label>
+            <div class="quark-test-row">
+              <div class="quark-test-actions">
+                <button class="secondary-button compact-action" id="quarkTestButton" type="button">
+                  <i data-lucide="shield-check"></i><span>测试官方 VIP 通道</span>
+                </button>
+                <button class="secondary-button compact-action" id="quarkOpenButton" type="button">
+                  <i data-lucide="external-link"></i><span>打开夸克</span>
+                </button>
+              </div>
+              <small id="quarkTestResult">尚未测试 · 探测文件会自动清理</small>
+            </div>
             <div class="split-fields">
               <label><span>迟到阈值</span><input type="number" id="lateThreshold" min="0" max="120" /><small>分钟</small></label>
               <label><span>断流宽限</span><input type="number" id="reconnectGrace" min="0" max="180" /><small>分钟</small></label>
@@ -300,6 +334,7 @@
         </section>
       </main>
     </div>
+  </div>
 
     <div class="modal-backdrop" id="loginModal" hidden>
       <section class="login-modal" role="dialog" aria-modal="true">
@@ -354,6 +389,6 @@
 
     <div class="toast-region" id="toastRegion" aria-live="polite"></div>
     <script src="/static/vendor/lucide.min.js"></script>
-    <script src="/static/app.js?v=2.3.1"></script>
+    <script src="/static/app.js?v=2.4.0"></script>
   </body>
 </html>

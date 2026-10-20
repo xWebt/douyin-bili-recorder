@@ -91,3 +91,22 @@ def test_storage_and_encoder_controls_exist() -> None:
         "danmakuEncoder",
     ):
         assert f'id="{element_id}"' in html
+
+
+def test_quark_official_client_test_controls_exist() -> None:
+    html = _html()
+    css = (WEB_ROOT / "redesign.css").read_text(encoding="utf-8")
+    assert 'id="quarkTestButton"' in html
+    assert 'id="quarkOpenButton"' in html
+    assert "夸克电脑备份目录" in html
+    assert ".quark-test-actions" in css
+
+
+def test_recording_and_analytics_helpers_stay_top_level() -> None:
+    js = _js()
+    start = js.index("async function openAnalytics(name)")
+    next_helper = js.index("function recordingStateMeta(session)", start)
+    open_analytics = js[start:next_helper]
+    assert open_analytics.count("{") == open_analytics.count("}")
+    assert "function renderRecordingStatus()" in js[next_helper:]
+    assert "async function openAnalyticsView(" in js[next_helper:]

@@ -79,6 +79,8 @@ xattr -cr "$APP" 2>/dev/null || true
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 ditto "$APP" "$DIST_APP"
+xattr -cr "$DIST_APP" 2>/dev/null || true
+codesign --verify --deep --strict --verbose=2 "$DIST_APP"
 ditto -c -k --norsrc --keepParent "$DIST_APP" "$ZIP"
 VERIFY_ROOT="$BUILD_ROOT/verify"
 mkdir -p "$VERIFY_ROOT"

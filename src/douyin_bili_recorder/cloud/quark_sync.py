@@ -7,6 +7,11 @@ import threading
 import time
 from pathlib import Path
 
+from ..quark_official import (
+    QuarkOfficialClientError,
+    ensure_official_backup_directory,
+)
+
 from .driver import (
     CloudDriverError,
     DriverCapabilities,
@@ -17,7 +22,7 @@ from .driver import (
 
 
 class QuarkSyncFolderDriver:
-    """Uploads through the official Quark client's sync folder (VIP channel).
+    """Uploads through the official Quark client's computer-backup folder.
 
     The recorder never talks to Quark's upload API in this mode. It atomically
     copies the finished MP4 into the folder watched by the official client,
@@ -32,7 +37,7 @@ class QuarkSyncFolderDriver:
         concurrent_parts=1,
         direct_api=False,
         bandwidth_limit=False,
-        notes="Quark 官方客户端同步目录（真 VIP 通道）",
+        notes="夸克官方客户端电脑备份（真 VIP 通道）",
     )
 
     def __init__(self, remote: str, context: DriverContext) -> None:
@@ -42,7 +47,11 @@ class QuarkSyncFolderDriver:
         self.remote_root = context.config.cloud_quark_sync_remote_root.rstrip("/")
         self.timeout_seconds = context.config.cloud_quark_sync_timeout_seconds
         if not self.sync_dir or not self.remote_root:
-            raise CloudDriverError("夸克官方同步目录未配置")
+            raise CloudDriverError("夸克电脑备份目录未配置")
+        try:
+            ensure_official_backup_directory(self.sync_dir)
+        except QuarkOfficialClientError as exc:
+            raise CloudDriverError(str(exc)) from exc
 
     def _relative_remote(self, remote_path: str) -> str:
         path = remote_path.rstrip("/")

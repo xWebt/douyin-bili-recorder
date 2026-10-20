@@ -5,8 +5,11 @@ import logging
 import threading
 from pathlib import Path
 
+import pytest
+
 from douyin_bili_recorder.cloud import create_driver
-from douyin_bili_recorder.cloud.driver import DriverContext
+from douyin_bili_recorder.cloud.driver import CloudDriverError, DriverContext
+from douyin_bili_recorder.quark_official import QuarkOfficialClientError
 from douyin_bili_recorder.config import load_config
 from douyin_bili_recorder.process import ProcessResult
 
@@ -51,9 +54,13 @@ cloud_remote = "quark:/quark/DouyinBiliRecorder"
     return load_config(config_path)
 
 
-def test_sync_folder_driver_copies_and_verifies(tmp_path: Path) -> None:
+def test_sync_folder_driver_copies_and_verifies(tmp_path: Path, monkeypatch) -> None:
     sync_dir = tmp_path / "QuarkSync"
     sync_dir.mkdir()
+    monkeypatch.setattr(
+        "douyin_bili_recorder.cloud.quark_sync.ensure_official_backup_directory",
+        lambda _path: {"task": {"path": str(sync_dir)}},
+    )
     config = _config(tmp_path, sync_dir)
     media = tmp_path / "part.mp4"
     media.write_bytes(b"video")
@@ -71,6 +78,30 @@ def test_sync_folder_driver_copies_and_verifies(tmp_path: Path) -> None:
     copied = sync_dir / "anchor/2026-10-20/part.mp4"
     assert copied.read_bytes() == b"video"
     assert runner.commands[-1][1:2] == ["size"]
+
+
+def test_sync_folder_driver_rejects_missing_official_backup_task(
+    tmp_path: Path, monkeypatch
+) -> None:
+    sync_dir = tmp_path / "QuarkSync"
+    sync_dir.mkdir()
+    config = _config(tmp_path, sync_dir)
+    context = DriverContext(
+        config=config,
+        runner=FakeRunner(1),
+        logger=logging.getLogger("test"),
+    )
+
+    def missing_task(_path):
+        raise QuarkOfficialClientError("没有电脑备份任务")
+
+    monkeypatch.setattr(
+        "douyin_bili_recorder.cloud.quark_sync.ensure_official_backup_directory",
+        missing_task,
+    )
+
+    with pytest.raises(CloudDriverError, match="电脑备份"):
+        create_driver("quark", "quark:/quark/DouyinBiliRecorder", context)
 
 
 def test_sync_folder_driver_is_disabled_when_dir_empty(tmp_path: Path) -> None:

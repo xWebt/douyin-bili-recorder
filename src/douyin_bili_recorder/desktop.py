@@ -75,12 +75,12 @@ def _run_desktop(config: AppConfig, *, debug: bool = False) -> None:
     signal.signal(signal.SIGINT, stop)
 
     webview.create_window(
-        "抖音直播录制器",
+        "录播工作台 · DouyinBiliRecorder",
         f"http://127.0.0.1:{port}/",
         width=1440,
         height=920,
         min_size=(980, 680),
-        background_color="#0e1412",
+        background_color="#e8ebe5",
         text_select=True,
     )
     try:

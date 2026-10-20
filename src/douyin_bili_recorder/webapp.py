@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import json
 import shutil
 from contextlib import asynccontextmanager
@@ -28,6 +29,11 @@ from .reports import ReportGenerator
 from .state import SessionStore
 from .models import SessionRecord, SessionStatus
 from .openlist import OpenListManager
+from .quark_official import (
+    QuarkOfficialClientError,
+    open_official_client,
+    test_official_channel,
+)
 from .upload_progress import UploadProgressStore
 
 WEB_ROOT = Path(__file__).with_name("web")
@@ -585,6 +591,25 @@ def create_app(config: AppConfig) -> FastAPI:
     async def test_cloud_remote(payload: dict[str, Any]) -> dict[str, Any]:
         remote = str(payload.get("remote", "")).strip()
         return _test_cloud_remote(config, remote)
+
+    @app.post("/api/cloud/quark/test")
+    async def test_quark_official(payload: dict[str, Any]) -> dict[str, Any]:
+        sync_dir = str(
+            payload.get("sync_dir") or config.cloud_quark_sync_dir
+        ).strip()
+        remote_root = str(
+            payload.get("remote_root") or config.cloud_quark_sync_remote_root
+        ).strip()
+        return await asyncio.to_thread(
+            test_official_channel, config, sync_dir, remote_root
+        )
+
+    @app.post("/api/cloud/quark/open")
+    async def open_quark_client() -> dict[str, Any]:
+        try:
+            return await asyncio.to_thread(open_official_client)
+        except QuarkOfficialClientError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/cloud/retry")
     async def retry_cloud(target: str | None = None) -> dict[str, Any]:

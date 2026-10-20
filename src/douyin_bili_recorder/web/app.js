@@ -21,6 +21,13 @@ const state = {
 
 const els = {
   connectionState: document.querySelector("#connectionState"),
+  pageTitle: document.querySelector("#pageTitle"),
+  viewIndex: document.querySelector("#viewIndex"),
+  airClock: document.querySelector("#airClock"),
+  airDate: document.querySelector("#airDate"),
+  quarkTestButton: document.querySelector("#quarkTestButton"),
+  quarkOpenButton: document.querySelector("#quarkOpenButton"),
+  quarkTestResult: document.querySelector("#quarkTestResult"),
   workerState: document.querySelector("#workerState"),
   workerPid: document.querySelector("#workerPid"),
   workerUptime: document.querySelector("#workerUptime"),
@@ -167,6 +174,9 @@ function setView(view) {
   for (const button of els.appNav?.querySelectorAll("[data-view]") || []) {
     button.classList.toggle("active", button.dataset.view === state.activeView);
   }
+  const activeButton = els.appNav?.querySelector("[data-view].active");
+  if (els.pageTitle) els.pageTitle.textContent = activeButton?.dataset.pageTitle || "运行总览";
+  if (els.viewIndex) els.viewIndex.textContent = activeButton?.dataset.viewIndex || "01";
   document.body.dataset.activeView = state.activeView;
   const baseView = ["targets", "logs"].includes(state.activeView) ? "dashboard" : state.activeView;
   for (const panel of els.viewPanels || []) {
@@ -721,6 +731,71 @@ function formatClock(epochSeconds) {
   });
 }
 
+function updateAirClock() {
+  const now = new Date();
+  const weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  if (els.airClock) {
+    els.airClock.textContent = now.toLocaleTimeString("zh-CN", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+  if (els.airDate) {
+    const date = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
+    els.airDate.textContent = `${date} / ${weekdays[now.getDay()]}`;
+  }
+}
+
+async function testQuarkOfficialChannel() {
+  if (!els.quarkTestButton || !els.quarkTestResult) return;
+  els.quarkTestButton.disabled = true;
+  els.quarkOpenButton?.setAttribute("disabled", "");
+  els.quarkTestResult.className = "";
+  els.quarkTestResult.textContent = "正在写入探测文件，等待夸克官方客户端同步…";
+  try {
+    const result = await api("/api/cloud/quark/test", {
+      method: "POST",
+      body: JSON.stringify({
+        sync_dir: els.quarkSyncDir.value.trim(),
+        remote_root: els.quarkSyncRemoteRoot.value.trim(),
+      }),
+    });
+    els.quarkTestResult.className = result.ok ? "success" : "error";
+    els.quarkTestResult.textContent = result.message;
+    toast(result.message, result.ok ? "success" : "error");
+  } catch (error) {
+    els.quarkTestResult.className = "error";
+    els.quarkTestResult.textContent = `测试失败：${error.message}`;
+    toast(`夸克通道测试失败：${error.message}`, "error");
+  } finally {
+    els.quarkTestButton.disabled = false;
+    els.quarkOpenButton?.removeAttribute("disabled");
+  }
+}
+
+async function openQuarkOfficialClient() {
+  if (!els.quarkOpenButton) return;
+  els.quarkOpenButton.disabled = true;
+  try {
+    const result = await api("/api/cloud/quark/open", { method: "POST" });
+    if (els.quarkTestResult) {
+      els.quarkTestResult.className = "";
+      els.quarkTestResult.textContent = result.message;
+    }
+    toast(result.message);
+  } catch (error) {
+    if (els.quarkTestResult) {
+      els.quarkTestResult.className = "error";
+      els.quarkTestResult.textContent = error.message;
+    }
+    toast(`打开夸克客户端失败：${error.message}`, "error");
+  } finally {
+    els.quarkOpenButton.disabled = false;
+  }
+}
+
 function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecordingTarget, usageBytes) {
   const row = document.createElement("article");
   row.className = "target-row";
@@ -833,7 +908,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   const provider = document.createElement("select");
   provider.className = "cloud-provider";
   provider.dataset.field = "cloud_provider";
-  for (const [value, label] of [["baidu", "百度网盘（OpenList）"], ["quark", "夸克网盘（OpenList）"], ["custom", "其他 rclone remote"]]) {
+  for (const [value, label] of [["baidu", "百度网盘（OpenList）"], ["quark", "夸克网盘（官方电脑备份）"], ["custom", "其他 rclone remote"]]) {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = label;
@@ -855,7 +930,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   });
   remote.addEventListener("input", () => { target.cloud_remote = remote.value.trim(); });
   const cloudHint = document.createElement("small");
-  cloudHint.textContent = "保存时会创建该主播目录；如果 remote 指向 OpenList 的 /dav 根，路径需包含挂载名，例如 quark:/quark/DouyinBiliRecorder。";
+  cloudHint.textContent = "夸克配置电脑备份后走官方客户端；未配置时回退 OpenList。保存时会创建该主播目录。";
   const testButton = document.createElement("button");
   testButton.type = "button";
   testButton.className = "secondary-button compact-action";
@@ -1203,6 +1278,17 @@ async function resolveTargetUrl() {
 }
 
 async function openAnalytics(name) {
+  state.analyticsTarget = name;
+  els.analyticsTitle.textContent = `${name} · 本月数据`;
+  els.analyticsModal.hidden = false;
+  try {
+    const data = await api(`/api/targets/${encodeURIComponent(name)}/analytics`);
+    renderAnalytics(data);
+  } catch (error) {
+    toast(`统计数据读取失败：${error.message}`, "error");
+  }
+}
+
 function recordingStateMeta(session) {
   const status = String(session.status || "").toUpperCase();
   if (status === "RECORDING") return { label: "录制中", tone: "recording" };
@@ -1325,16 +1411,6 @@ function renderAnalyticsView(target, month, data, force = false) {
   if (els.analyticsViewNote) {
     const monthText = month || "全部月份";
     els.analyticsViewNote.textContent = `${target} · ${monthText} · 共 ${rows.length} 场；本月未结束时请使用“本月月报”，报告会标注截至日期。`;
-  }
-}
-  state.analyticsTarget = name;
-  els.analyticsTitle.textContent = `${name} · 本月数据`;
-  els.analyticsModal.hidden = false;
-  try {
-    const data = await api(`/api/targets/${encodeURIComponent(name)}/analytics`);
-    renderAnalytics(data);
-  } catch (error) {
-    toast(`统计数据读取失败：${error.message}`, "error");
   }
 }
 
@@ -1554,7 +1630,7 @@ function renderCloudUploads() {
     const testButton = document.createElement("button");
     testButton.type = "button";
     testButton.className = "secondary-button compact-action";
-    testButton.append(icon("cloud-check"), document.createTextNode("测试网盘"));
+    testButton.append(icon("cloud-upload"), document.createTextNode("测试网盘"));
     testButton.disabled = !target.cloud_backup || !target.cloud_remote;
     testButton.addEventListener("click", () => testCloudTarget(target));
     const retryButton = cloudRetryButton(target.name);
@@ -1744,6 +1820,8 @@ for (const button of els.appNav?.querySelectorAll("[data-view]") || []) {
   button.addEventListener("click", () => setView(button.dataset.view));
 }
 els.submissionsRefreshButton?.addEventListener("click", openSubmissions);
+els.quarkTestButton?.addEventListener("click", testQuarkOfficialChannel);
+els.quarkOpenButton?.addEventListener("click", openQuarkOfficialClient);
 els.analyticsRefreshButton?.addEventListener("click", () => openAnalyticsView(true));
 els.analyticsTargetSelect?.addEventListener("change", () => {
   state.analyticsTarget = els.analyticsTargetSelect.value;
@@ -1786,6 +1864,8 @@ if (globalControlRail) {
 }
 
 loadState(true);
+updateAirClock();
+window.setInterval(updateAirClock, 1000);
 setView("dashboard");
 refreshLogs();
 window.setInterval(refreshService, 3000);
