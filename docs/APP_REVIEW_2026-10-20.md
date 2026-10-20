@@ -7,10 +7,10 @@
 ## 审阅范围与证据
 
 - 代码：仓库 `main`，HEAD `8839fa2`（v2.3.0 改动已完成，但**尚未打包部署**）。
-- 审阅当时实机：`/Users/webt/Applications/DouyinBiliRecorder.app` 为 **v2.2.68**（10 月 3 日构建）；这是历史快照，不是 v2.4.0 的当前状态。
+- 审阅当时实机：`~/Applications/DouyinBiliRecorder.app` 为 **v2.2.68**（10 月 3 日构建）；这是历史快照，不是 v2.4.0 的当前状态。
 - 运行日志：`data/logs/recorder.log`（24,583 行，截至 2026-10-20 13:40）。
 - 运行配置：`data/ui/runtime-config.toml`（max_cache_gb=30，delete_after_upload=true，keep_original_files=true）。
-- 当前视频占用：`imxiaoxin` 目录 20 GB；其中 P01 MP4 8.6 GB、P01 FLV 6.6 GB、P02 FLV 4.4 GB。
+- 当前视频占用：`example-anchor` 目录 20 GB；其中 P01 MP4 8.6 GB、P01 FLV 6.6 GB、P02 FLV 4.4 GB。
 - 云端实测：rclone remote `quark` 为 `type=webdav`，指向 `http://127.0.0.1:5244/dav`（OpenList），并非夸克官方通道。
 
 ## 结论摘要
@@ -35,7 +35,7 @@
 **实机证据**
 
 - 日志 13:39:41–13:40:52 连续输出：
-  `waiting for uploads to free space for 7JIA九芊岁: used 19.67 GB, need 18.14 GB`
+  `waiting for uploads to free space for example-anchor-2: used 19.67 GB, need 18.14 GB`
 - `max_cache_gb = 30`，19.67 + 18.14 = **37.81 GB > 30 GB**，所以新主播永远无法开始下一段。
 - 这 19.6 GB 来自一场上传失败后保留的本地文件：P01 MP4 8.6 GB + P01 FLV 6.6 GB + P02 FLV 4.4 GB；上传失败后系统按规则保留文件，但没有自动清理/重试闭环。
 - 更严重的是：**默认缓存 10 GB 小于 18.14 GB 的单段预留**。只要开启“录制并烧录”+原画，默认配置下从 0 开始也永远无法录制。
@@ -240,7 +240,7 @@
 
 **实机样本**
 
-- `imxiaoxin P01`：源 FLV 1080p60、18.4 Mbps、3672 秒；输出 MP4 1080p60、20.1 Mbps、3601 秒。
+- `example-anchor P01`：源 FLV 1080p60、18.4 Mbps、3672 秒；输出 MP4 1080p60、20.1 Mbps、3601 秒。
 - 输出码率并不低于源，说明这次“糊”更可能是：
   1. VideoToolbox 二次编码的纹理损失；
   2. B站转码后的播放清晰度；

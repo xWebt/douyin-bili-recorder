@@ -1,40 +1,145 @@
+# macOS / editor metadata
 .DS_Store
+._*
+.AppleDouble
+.Spotlight-V100/
+.Trashes/
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.history/
+.idea/
+.vscode/
+*.code-workspace
 
-# Local runtimes and caches
+# Local runtimes, dependencies and caches
 .venv/
 .uv-cache/
-.pyinstaller/
 .uv-python/
+.pyinstaller/
 .tools/
+node_modules/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv*/
 
-# Credentials and runtime data
+# Credentials, keys and local account configuration
+.env
+.env.*
+!.env.example
 cookies.json
+cookies*.json
+cookies*.txt
+*cookie*.json
+*cookie*.txt
+rclone.conf
+rclone.conf.*
+.netrc
+.npmrc
+.pypirc
+.ssh/
+id_rsa*
+id_ed25519*
+id_ecdsa*
+credentials.json
+credentials.toml
+auth.json
+token.json
+secrets.json
+secrets.toml
+*.secret
+*.kdbx
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.keychain
+*.mobileprovision
+*.provisionprofile
+*.ovpn
+qrcode.png
 config.toml
 config.local.toml
-qrcode.png
-*.cookie
-*.token
-.env
-logs/
+config.*.toml
+!config.example.toml
+
+# Runtime state, logs and databases
+.codex/
 data/
+logs/
+sessions/
 work/
 outputs/
-download.log
+exports/
+reports/
+recordings/
+videos/
+tmp/
+temp/
+.local/
+*.log
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.pid
+*.lock
+*.sock
+*.part
+*.tmp
+session.json
+state.json
+runtime.json
+upload-progress.json
+.danmaku-runtime/
 
-# Recorded media
+# Recorded media and validation captures
 poc/session-*/
-*.ts
+poc/**/*.ts
+data/**/*.ts
+recordings/**/*.ts
+videos/**/*.ts
 *.flv
 *.mkv
 *.mp4
+*.m4v
+*.mov
+*.webm
+*.wav
+*.aac
+*.har
+*.pcap
+*.pcapng
+*.trace
+*.prof
+*.dump
 
-# Python
-__pycache__/
-*.py[cod]
-.pytest_cache/
+# Python and test artifacts
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
-*.egg-info/
+*.bak
+*.orig
+*.rej
+
+# Packaging artifacts
 dist/
 build/
 *.spec
+*.app/
+*.dmg
+*.pkg

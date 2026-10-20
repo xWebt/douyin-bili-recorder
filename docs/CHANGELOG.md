@@ -265,7 +265,7 @@
 ## v2.2.18
 
 - Per-anchor usage now uses the current saved UI target list rather than the base config target list, so orphaned completed files in active anchor folders are counted correctly.
-- Verified that reopening the app resumes `RECORDED`, `UPLOADING`, and `UPLOAD_FAILED` sessions; a pending 7JIA P01 upload resumed automatically and completed with a BVID.
+- Verified that reopening the app resumes `RECORDED`, `UPLOADING`, and `UPLOAD_FAILED` sessions; a pending example-anchor-2 P01 upload resumed automatically and completed with a BVID.
 
 ## v2.2.17
 
@@ -296,7 +296,7 @@
 
 ## v2.2.13
 
-- Offline targets are now rejected before the cache-budget wait, preventing non-live anchors such as `7JIA九芊岁` from spamming `need space` while offline.
+- Offline targets are now rejected before the cache-budget wait, preventing non-live anchors such as `example-anchor-2` from spamming `need space` while offline.
 - Deleting an anchor now persists immediately instead of only removing the row from the browser; the dynamic service then stops that target worker.
 - Added a cross-process filesystem lock per session part around Bilibili upload, preventing a restarted or manually stopped service from uploading the same P twice.
 
@@ -318,13 +318,13 @@
 ## v2.2.10
 
 - Accepts the full Douyin share copy text and Markdown link syntax, extracting the first URL instead of passing the surrounding Chinese text to HTTP.
-- Offline profile shares now resolve to a stable room alias such as `https://live.douyin.com/223yuu`; live rooms still upgrade to the numeric `room.owner.web_rid`.
+- Offline profile shares now resolve to a stable room alias such as `https://live.douyin.com/<room-id>`; live rooms still upgrade to the numeric `room.owner.web_rid`.
 - Fixed alphanumeric room aliases being incorrectly truncated at the first non-digit character.
 
 
 ## v2.2.9
 
-- Fixed Douyin profile and short-link resolution so it prefers the numeric `room.owner.web_rid` and live status returned by the reflow API instead of treating a user unique ID such as `XiaoXinFps` as a live room.
+- Fixed Douyin profile and short-link resolution so it prefers the numeric `room.owner.web_rid` and live status returned by the reflow API instead of treating a user unique ID such as `example-user` as a live room.
 - This prevents live anchors linked by profile URL from being polled as `stream is offline`.
 
 
@@ -369,7 +369,7 @@
 - Fixed the PDF summary layout so metric cards, chart titles, charts, and the statistics note no longer overlap.
 - Added a per-anchor report button with explicit choices for the current week through today, the previous complete week, and the previous complete month.
 - Monthly reports are no longer generated for an incomplete current month; the report API rejects incomplete months and incomplete weeks unless current-week partial generation is explicitly requested.
-- Corrected凡晨's local September analytics to two real sessions: `2026-09-24 00:48` and `2026-09-25 00:52`, removing the `00:52` offline ghost record.
+- Corrected example-anchor's local September analytics to two real sessions: `2026-09-24 00:48` and `2026-09-25 00:52`, removing the `00:52` offline ghost record.
 
 ## v2.2.3
 
@@ -398,7 +398,7 @@
 - Added configured-allocation and physical free-space guards before each segment; recording pauses rather than overrunning the budget.
 - Added a serialized background upload queue so the next hour records while the previous part uploads.
 - Added live upload progress to the main control deck with part, bytes, percent, speed, ETA, stage, and BVID.
-- Validated direct FLV submission with a private Bilibili test upload (`BV1nPhZ6yEwT`).
+- Validated direct FLV submission with a private Bilibili test upload (`BV_REDACTED`).
 
 ## v2.1.5
 

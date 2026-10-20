@@ -11,33 +11,33 @@
 - 当前源码提交：
   - 以 `git log -1` 为准；本文不把旧提交号当作当前状态。
 - 本地源码目录：
-  - `/Users/webt/Documents/Codex/2026-09-23/files-mentioned-by-the-user-douyin`
+  - `<repo>`
 
 ## 2. 本地地址
 
 - 当前成品：
-  - `/Users/webt/Documents/Codex/2026-09-23/files-mentioned-by-the-user-douyin/dist/DouyinBiliRecorder.app`
+  - `<repo>/dist/DouyinBiliRecorder.app`
 - 当前安装位置：
-  - `/Users/webt/Applications/DouyinBiliRecorder.app`（v2.4.0，已通过严格验签）
+  - `~/Applications/DouyinBiliRecorder.app`（v2.4.0，已通过严格验签）
 - 旧版本处理：
   - v2.2.68 已移入废纸篓，不再占用 Applications 安装位置。
 - 控制台端口：
   - 每次重新打开应用都会变化；历史记录中的 `63878` 不能证明当前正在运行。
 - 应用运行数据：
-  - `/Users/webt/Library/Application Support/DouyinBiliRecorder`
+  - `~/Library/Application Support/DouyinBiliRecorder`
 - 运行配置：
-  - `/Users/webt/Library/Application Support/DouyinBiliRecorder/data/ui/runtime-config.toml`
+  - `~/Library/Application Support/DouyinBiliRecorder/data/ui/runtime-config.toml`
 - 会话状态：
-  - `/Users/webt/Library/Application Support/DouyinBiliRecorder/data/sessions`
+  - `~/Library/Application Support/DouyinBiliRecorder/data/sessions`
 - 日志目录：
-  - `/Users/webt/Library/Application Support/DouyinBiliRecorder/data/logs`
+  - `~/Library/Application Support/DouyinBiliRecorder/data/logs`
 - 主要日志：
-  - `/Users/webt/Library/Application Support/DouyinBiliRecorder/data/logs/recorder.log`
-  - `/Users/webt/Library/Application Support/DouyinBiliRecorder/data/logs/ui-worker.log`
+  - `~/Library/Application Support/DouyinBiliRecorder/data/logs/recorder.log`
+  - `~/Library/Application Support/DouyinBiliRecorder/data/logs/ui-worker.log`
 - 视频目录：
-  - `/Users/webt/Movies/DouyinBiliRecorder`
+  - `~/Movies/DouyinBiliRecorder`
 - OpenList 数据：
-  - `/Users/webt/Library/Application Support/DouyinBiliRecorder/openlist-data`
+  - `~/Library/Application Support/DouyinBiliRecorder/openlist-data`
 - 本地 OpenList 服务：
   - http://127.0.0.1:5244/
 

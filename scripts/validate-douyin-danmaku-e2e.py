@@ -19,6 +19,18 @@ from douyin_bili_recorder.recorder import BiliupRecorder
 from douyin_bili_recorder.uploader import BiliupUploader
 
 
+DEFAULT_APP_RUNTIME_BIN = (
+    Path.home()
+    / "Applications"
+    / "DouyinBiliRecorder.app"
+    / "Contents"
+    / "Resources"
+    / "runtime"
+    / "_internal"
+    / "bin"
+)
+
+
 def ass_time(seconds: float) -> str:
     seconds = max(0.0, seconds)
     hours = int(seconds // 3600)
@@ -305,12 +317,12 @@ def main() -> int:
     parser.add_argument(
         "--ffmpeg",
         type=Path,
-        default=Path("/Users/webt/Applications/DouyinBiliRecorder.app/Contents/Resources/runtime/_internal/bin/ffmpeg"),
+        default=DEFAULT_APP_RUNTIME_BIN / "ffmpeg",
     )
     parser.add_argument(
         "--ffprobe",
         type=Path,
-        default=Path("/Users/webt/Applications/DouyinBiliRecorder.app/Contents/Resources/runtime/_internal/bin/ffprobe"),
+        default=DEFAULT_APP_RUNTIME_BIN / "ffprobe",
     )
     args = parser.parse_args()
     args.title = args.title or f"{args.name}｜抖音弹幕录制验证｜{datetime.now():%Y-%m-%d %H:%M}"
