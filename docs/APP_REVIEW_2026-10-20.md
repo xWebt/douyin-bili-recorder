@@ -1,11 +1,13 @@
 # 全量审阅：抖音直播录制器（2026-10-20）
 
-> 修复状态：v2.3.1 已按 `docs/FIX_CHECKLIST.md` 完成 P0/P1/P2 代码修复；本文件保留审阅快照、证据与两处审阅更正。
+> 修复状态：v2.3.1 已按 `docs/FIX_CHECKLIST.md` 完成 P0/P1/P2 代码修复；v2.4.0 完成窗口重设计、录制/统计页面作用域修复和夸克官方客户端诊断。本文件保留最初审阅快照、证据与后续更正。
+
+> 运行状态更正（2026-10-20）：最初材料中的“本地服务正在运行”来自 `recorder.log`、`runtime-config.toml` 和会话目录，只能证明历史活动；用户随后确认近期没有使用 App。没有当前进程级证据时，不应据此声称应用正在运行。
 
 ## 审阅范围与证据
 
 - 代码：仓库 `main`，HEAD `8839fa2`（v2.3.0 改动已完成，但**尚未打包部署**）。
-- 实机：`/Users/webt/Applications/DouyinBiliRecorder.app` 仍为 **v2.2.68**（10 月 3 日构建）。
+- 审阅当时实机：`/Users/webt/Applications/DouyinBiliRecorder.app` 为 **v2.2.68**（10 月 3 日构建）；这是历史快照，不是 v2.4.0 的当前状态。
 - 运行日志：`data/logs/recorder.log`（24,583 行，截至 2026-10-20 13:40）。
 - 运行配置：`data/ui/runtime-config.toml`（max_cache_gb=30，delete_after_upload=true，keep_original_files=true）。
 - 当前视频占用：`imxiaoxin` 目录 20 GB；其中 P01 MP4 8.6 GB、P01 FLV 6.6 GB、P02 FLV 4.4 GB。
@@ -131,7 +133,8 @@
 
 - `~/.config/rclone/rclone.conf`：`[quark] type=webdav url=http://127.0.0.1:5244/dav`。
 - `openlist_api.py`：实际走 OpenList `/api/fs/put`，单连接、非分片。
-- 本机 `quarkpan`、`kuake-pipe`、`bypy`、`quarkclouddrive` **全部未安装**。（进行安装，解决上传的问题
+- 审阅当时 `quarkpan`、`kuake-pipe`、`bypy`、`quarkclouddrive` 均未安装。2026-10-20 v2.4.0 复核时夸克官方客户端已安装为 `7.4.0.818`，但 `backup.db` 中电脑备份任务数为 0。
+- v2.4.0 已使用官方客户端电脑备份目录，并增加客户端/任务/远端三项诊断；不会再以 OpenList 冒充快速通道。
 - v2.3.0 新增的 `QuarkCliDriver` 只是调用外部 CLI；CLI 不存在时会回退 OpenList（`cloud/quark.py:124-129`）。
 
 **结论**
@@ -266,7 +269,7 @@
 ### P2-4 测试与部署
 
 - 仓库：`171 passed, 1 failed`（唯一失败是沙箱禁止 socket bind，非代码缺陷）。
-- 实机仍是 v2.2.68；v2.3.0 的 SQLite、进程回收、云端驱动、UI 修复**都没有上线**。
+- 审阅当时实机仍为 v2.2.68；该结论是历史快照。v2.3.1 和 v2.4.0 已重新打包，当前交付看 `dist/DouyinBiliRecorder.app`。
 - 在重新打包并重启前，用户看到的所有问题都来自 v2.2.68 行为。
 
 ---

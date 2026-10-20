@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.4.0
+
+- Rebuilt the desktop control window as a responsive broadcast workbench with a dedicated left navigation rail, live clock, full-height views, internal scrolling, and desktop/narrow-window layouts.
+- Fixed the recording-status and analytics views after a JavaScript scope regression made their handlers unavailable; all eight views now switch without console errors.
+- Added read-only detection for the installed Quark official client and its `电脑备份` tasks, plus `POST /api/cloud/quark/test`, a probe-and-rclone verification flow, and an in-app diagnostic action.
+- The Quark sync-folder driver now fails fast when the official client is missing, the backup directory does not exist, or no matching `电脑备份` task covers it; it no longer waits for a timeout after copying into an unmanaged folder.
+- Added `打开夸克` UI/API actions and clarified that `rclone` is used only to verify the official client result, not as a fake fast-upload path.
+- Hardened the macOS build script to remove Finder/provenance xattrs from the copied app and re-run strict code-sign verification before creating the release zip.
+- Verification: `196 passed`; source and packaged UI checks cover all eight views at 1440px, 1024px, and 390px; packaged `v2.4.0` app/zip pass strict signature verification.
+- Real Quark client detection: installed `7.4.0.818`; current `电脑备份` task count is `0`, so the true end-to-end VIP upload remains pending until the client-side backup task is added.
 ## v2.3.1
 
 - Fixed share-text/profile link handling: both the normal add form and the resolver endpoint now extract the Douyin URL, resolve profile shares to a live room, and the recorder uses the resolved canonical live URL.

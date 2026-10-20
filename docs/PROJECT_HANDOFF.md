@@ -7,20 +7,20 @@
 - 当前主分支：
   - `main`
 - 当前版本：
-  - `v2.2.68`
+  - `v2.4.0`（2026-10-20 构建）
 - 当前源码提交：
-  - `448e25a chore: release v2.2.68`
+  - 以 `git log -1` 为准；本文不把旧提交号当作当前状态。
 - 本地源码目录：
   - `/Users/webt/Documents/Codex/2026-09-23/files-mentioned-by-the-user-douyin`
 
 ## 2. 本地地址
 
-- 本地应用：
-  - `/Users/webt/Applications/DouyinBiliRecorder.app`
-- 当前本地控制台：
-  - http://127.0.0.1:63878/
+- 当前成品：
+  - `/Users/webt/Documents/Codex/2026-09-23/files-mentioned-by-the-user-douyin/dist/DouyinBiliRecorder.app`
+- 历史安装位置：
+  - `/Users/webt/Applications/DouyinBiliRecorder.app`（审阅时为 v2.2.68）
 - 控制台端口：
-  - 每次重新打开应用可能变化。以应用启动后实际显示的地址或当前监听端口为准。
+  - 每次重新打开应用都会变化；历史记录中的 `63878` 不能证明当前正在运行。
 - 应用运行数据：
   - `/Users/webt/Library/Application Support/DouyinBiliRecorder`
 - 运行配置：
@@ -125,46 +125,35 @@
 ## 6. 构建与测试
 
 - 构建命令：
-  - `APP_VERSION=2.2.68 scripts/build-macos-app.sh`
+  - `APP_VERSION=2.4.0 scripts/build-macos-app.sh`
 - 测试命令：
   - `PYTHONPYCACHEPREFIX=/private/tmp/douyin-pycache .venv/bin/pytest -q`
 - 最近测试结果：
-  - `125 passed`
+  - `196 passed`；源码与打包 UI 均完成桌面/窄窗口视觉回归
 - 应用签名校验：
-  - `codesign --verify --deep --strict /Users/webt/Applications/DouyinBiliRecorder.app`
+  - `codesign --verify --deep --strict dist/DouyinBiliRecorder.app`
 - 打包产物：
   - `dist/DouyinBiliRecorder.app`
   - `dist/DouyinBiliRecorder-macos-arm64.zip`
 
 ## 7. 当前运行状态
 
-- 本地服务正在运行。
-- 当前 worker 正在录制或处理上传任务。
-- 当前控制台：
-  - http://127.0.0.1:63878/
-- 当前本地占用和限额以控制台显示为准。
-- 如果重新启动应用，控制台端口可能变化，应以新窗口地址为准。
+- 本次没有把历史日志当作当前进程证据；用户也确认近期未使用 App。
+- `recorder.log`、`runtime-config.toml` 和会话目录只能证明过去发生过录制/配置变更，不能证明当前仍在运行。
+- 沙箱禁止 `ps`/`pgrep`，因此不在这里断言当前 worker 状态。
+- 实际状态以打开 App 后的控制台、锁文件和运行时状态为准。
 
 ## 8. 已知问题
 
-- 夸克网盘通过 OpenList 上传时速度较慢。
-- 当前链路：
-  - 录制程序
-  - 本机 OpenList
-  - 夸克私有 API
-  - 夸克网盘
-- rclone remote 当前是 WebDAV 类型，实际仍由 OpenList 转发上传。
-- 夸克会员是否加速官方客户端，不等于第三方 OpenList API 会加速。
-- 当前实测 P02 网盘上传约为 14.5 Mbps，B站上传约为 24.7 Mbps。
-- 后续优先调研：
-  - 夸克私有 API 分片并发上传。
-  - 支持多分片并发的夸克 SDK 或 CLI。
-  - 官方客户端上传目录与自动化的配合方案。
-  - 其他支持并行上传且稳定的网盘后端。
+- 夸克官方客户端已确认安装，版本 `7.4.0.818`。
+- 当前客户端 `电脑备份` 任务数为 0；应用会快速返回配置缺失，而不是假装 OpenList 是快速通道。
+- 用户需要在夸克客户端添加电脑备份目录，然后在应用里运行“测试官方 VIP 通道”。
+- OpenList 保留为百度后端和夸克未配置官方通道时的兼容回退。
 
 ## 9. 版本管理
 
 - 重要版本：
+  - `v2.4.0`
   - `v2.2.60`
   - `v2.2.61`
   - `v2.2.62`
