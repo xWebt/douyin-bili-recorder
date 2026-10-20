@@ -17,8 +17,10 @@
 
 - 当前成品：
   - `/Users/webt/Documents/Codex/2026-09-23/files-mentioned-by-the-user-douyin/dist/DouyinBiliRecorder.app`
-- 历史安装位置：
-  - `/Users/webt/Applications/DouyinBiliRecorder.app`（审阅时为 v2.2.68）
+- 当前安装位置：
+  - `/Users/webt/Applications/DouyinBiliRecorder.app`（v2.4.0，已通过严格验签）
+- 旧版本处理：
+  - v2.2.68 已移入废纸篓，不再占用 Applications 安装位置。
 - 控制台端口：
   - 每次重新打开应用都会变化；历史记录中的 `63878` 不能证明当前正在运行。
 - 应用运行数据：
