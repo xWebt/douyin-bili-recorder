@@ -1070,7 +1070,7 @@ async function saveState(message = "") {
     state.dirty = false;
     state.config = payload.config;
     render();
-    let saveMessage = message || (payload.restart_required ? "设置已保存；缓存将在下一分段或重启后生效" : "设置已保存");
+    let saveMessage = message || "设置已保存；当前分段继续使用旧参数，下一段将应用新设置";
     const folders = Array.isArray(payload.cloud_folders) ? payload.cloud_folders : [];
     const warnings = Array.isArray(payload.cloud_warnings) ? payload.cloud_warnings : [];
     if (folders.length) saveMessage += `；已同步 ${folders.length} 个云盘主播目录`;
