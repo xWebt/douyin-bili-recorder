@@ -2,6 +2,7 @@
 
 ## v2.4.0
 
+- Replaced the macOS app icon with the new camera/recording artwork and regenerated the complete 16px through 1024px `.icns` set.
 - Rebuilt the desktop control window as a responsive broadcast workbench with a dedicated left navigation rail, live clock, full-height views, internal scrolling, and desktop/narrow-window layouts.
 - Fixed the recording-status and analytics views after a JavaScript scope regression made their handlers unavailable; all eight views now switch without console errors.
 - Added read-only detection for the installed Quark official client and its `电脑备份` tasks, plus `POST /api/cloud/quark/test`, a probe-and-rclone verification flow, and an in-app diagnostic action.

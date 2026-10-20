@@ -1,11 +1,16 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect x="72" y="72" width="880" height="880" rx="224" fill="#0E1412"/>
-  <rect x="96" y="96" width="832" height="832" rx="202" fill="#141F1A"/>
-  <path d="M170 512C292 304 732 304 854 512C732 720 292 720 170 512Z"
-        fill="none" stroke="#74E5A5" stroke-width="72" stroke-linejoin="round"/>
-  <circle cx="512" cy="512" r="142" fill="#0B100E" stroke="#9AF3BE" stroke-width="34"/>
-  <circle cx="512" cy="512" r="108" fill="none" stroke="#FF625D" stroke-opacity="0.34" stroke-width="18"/>
-  <circle cx="512" cy="512" r="78" fill="#FF625D"/>
-  <circle cx="482" cy="482" r="19" fill="#FFF4F2" fill-opacity="0.92"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>Camera Capture</title>
+  <desc>Original flat camera app icon with a geometric recording accent.</desc>
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="#171923"/>
+  <!-- Camera body -->
+  <path d="M119 177C119 159.3 133.3 145 151 145H184L207 119H269L292 145H325C342.7 145 357 159.3 357 177V333C357 350.7 342.7 365 325 365H151C133.3 365 119 350.7 119 333V177Z" fill="#F7F8FC"/>
+  <!-- Lens -->
+  <circle cx="238" cy="256" r="72" fill="#252A3A"/>
+  <circle cx="238" cy="256" r="48" stroke="#68738D" stroke-width="8"/>
+  <circle cx="222" cy="239" r="10" fill="#F7F8FC"/>
+  <!-- Abstract recording/play accent: deliberately not a music-note logo -->
+  <path d="M367 198C367 186 380 179 390 185L424 205C433 210 433 223 424 228L390 248C380 254 367 247 367 235V198Z" fill="#35D8D2"/>
+  <path d="M367 257C367 245 380 238 390 244L424 264C433 269 433 282 424 287L390 307C380 313 367 306 367 294V257Z" fill="#F04476"/>
+  <!-- Small record indicator -->
+  <circle cx="336" cy="345" r="13" fill="#F04476"/>
 </svg>
