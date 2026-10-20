@@ -1,7 +1,7 @@
 # 修复与测试进度清单（实时更新）
 
-最后更新：2026-10-20 14:25（P0/P1/P2 代码修复完成，实机回归进行中）
-当前版本：v2.3.1（未打包部署）
+最后更新：2026-10-20 14:35（v2.3.1 修复完成，构建与实机回归完成；GitHub 推送受阻）
+当前版本：v2.3.1（已构建，未替换本地 v2.2.68 App）
 
 图例：`[ ]` 未开始 · `[~]` 进行中 · `[x]` 已完成并验证 · `[!]` 受阻（需要外部条件）
 
@@ -47,11 +47,18 @@
 - [x] T5 B站实机上传：使用真实 cookie 私密上传 120 秒样片成功，BVID `BV1Zbnw6XELy`，`--is-only-self 1`；测试稿仍处于私密/审核中（删除接口要求验证码，需手动删除）。
 - [x] T6a 云盘实机：OpenList 原生链路真实上传 1 MiB 文件成功，远程大小校验 1048576 字节并已删除临时文件。
 - [!] T6b 夸克真 VIP：阻塞于本机未安装夸克官方客户端；驱动与单元测试已完成，安装后需按 `quark_sync_dir` / `quark_sync_remote_root` 配置做真机验证。
-- [~] T7 打包 App：需执行 `APP_VERSION=2.3.1 scripts/build-macos-app.sh`，安装到暂存目录后做 UI 冒烟与退出子进程检查。
-- [~] T8 Git 历史：修复代码待提交；提交后推送 GitHub（网络已授权）。
+- [x] T7 打包 App：`APP_VERSION=2.3.1 scripts/build-macos-app.sh` 成功；zip 解压到 `/private/tmp` 后 `codesign --verify --deep --strict` 通过，内部 CLI 版本 2.3.1，首页 20,521 字节含新设置项。pywebview 窗口视觉走查待做。
+- [~] T8 Git 历史：本地已提交 `e4f91f8` / `a4f5e72` / `e8f8a59`（main 领先 origin 8 个提交）；`git push` 失败于 github.com:443（SSL_ERROR_SYSCALL，api.github.com 可访问），需要用户环境推送。
 
 ## 当前阻塞/注意事项
 
 - 夸克官方客户端未安装：真 VIP 通道无法在本机做最终实测。
 - B站测试稿 `BV1Zbnw6XELy` 是私密测试，删除 API 需要验证码；请手动在 B站创作中心删除，或保留作为回归记录。
 - 实机测试使用了临时配置和 `/private/tmp` 目录，不影响正在使用的应用数据；原 App 仍是 v2.2.68，需重新打包升级才会应用这些修复。
+
+## 2026-10-20 额外回归结果
+
+- 真实直播录制（imxiaoxin）：1 分钟分段 + 弹幕服务成功；P01 烧录输出 1080p60 / 23.5 Mbps / 62 秒，抽帧清晰。
+- 真实 B站私密上传：`BV1Zbnw6XELy`，测试稿待手动删除。
+- 真实 OpenList 上传：1 MiB 文件成功并清理。
+- 打包产物：`dist/DouyinBiliRecorder.app` 与 `dist/DouyinBiliRecorder-macos-arm64.zip`（v2.3.1）。
