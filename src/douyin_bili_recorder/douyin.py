@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 
@@ -125,21 +125,29 @@ class DouyinResolver:
         room_alias = ""
         anchor_name = ""
         room_title = ""
-        room_id = ""
+        room_id = self._extract_reflow_room_id(final_url)
         profile_live: bool | None = None
 
         if sec_uid and not web_rid:
-            profile = self._resolve_profile(final_url)
+            profile = self._resolve_profile(
+                f"https://www.douyin.com/user/{sec_uid}"
+            )
             web_rid = str(profile.get("web_rid") or "")
             room_alias = str(profile.get("room_alias") or "")
-            room_id = str(profile.get("room_id") or "")
+            room_id = str(profile.get("room_id") or room_id)
             anchor_name = str(profile.get("anchor_name") or "")
             room_title = str(profile.get("room_title") or "")
             if "live" in profile:
                 profile_live = bool(profile["live"])
 
-        if web_rid and (not anchor_name or not room_id or (check_live and profile_live is None)):
-            status = self._room_status(web_rid)
+        canonical_room = web_rid or room_alias
+        if canonical_room and check_live and (
+            profile_live is None
+            or not profile_live
+            or not anchor_name
+            or not room_id
+        ):
+            status = self._room_status(canonical_room)
             web_rid = str(status.get("web_rid") or web_rid)
             room_id = str(status.get("room_id") or room_id)
             anchor_name = str(status.get("anchor_name") or anchor_name)
@@ -148,7 +156,6 @@ class DouyinResolver:
         else:
             live = bool(profile_live)
 
-        canonical_room = web_rid or room_alias
         canonical_url = f"https://live.douyin.com/{canonical_room}" if canonical_room else final_url
         return ResolvedTarget(
             input_url=url,
@@ -239,7 +246,8 @@ class DouyinResolver:
                 result["anchor_name"] = str(owner.get("nickname"))
             if room.get("title"):
                 result["room_title"] = str(room.get("title"))
-            result["live"] = int(room.get("status") or 0) == 2
+            if room.get("status") is not None:
+                result["live"] = int(room.get("status") or 0) == 2
         except (requests.RequestException, ValueError, AttributeError, TypeError):
             pass
 
@@ -346,8 +354,17 @@ class DouyinResolver:
     def _extract_sec_uid(url: str) -> str:
         match = re.search(r"/user/([^/?#]+)", url)
         if match:
-            return match.group(1)
-        match = re.search(r"[?&]sec_uid=([^&#]+)", url)
+            return unquote(match.group(1))
+        query = parse_qs(urlparse(url).query)
+        for key in ("sec_uid", "sec_user_id"):
+            value = query.get(key, [""])[0]
+            if value:
+                return unquote(value)
+        return ""
+
+    @staticmethod
+    def _extract_reflow_room_id(url: str) -> str:
+        match = re.search(r"/reflow/(\d+)", url)
         return match.group(1) if match else ""
 
     @staticmethod

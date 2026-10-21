@@ -2,6 +2,7 @@
 
 ## v2.4.0
 
+- Offline live-share and profile-share text now both resolve to the same stable `live.douyin.com/<alias>` URL; current reflow links contribute `sec_user_id` and room ID even when the room is no longer live.
 - Replaced the macOS app icon with the new camera/recording artwork and regenerated the complete 16px through 1024px `.icns` set.
 - Rebuilt the desktop control window as a responsive broadcast workbench with a dedicated left navigation rail, live clock, full-height views, internal scrolling, and desktop/narrow-window layouts.
 - Fixed the recording-status and analytics views after a JavaScript scope regression made their handlers unavailable; all eight views now switch without console errors.

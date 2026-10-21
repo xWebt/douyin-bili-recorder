@@ -15,6 +15,21 @@ def test_extract_shared_url_accepts_copy_text_and_markdown() -> None:
     assert extract_shared_url(text) == "https://v.douyin.com/wd0JKyDUQ1A/"
 
 
+def test_extract_shared_url_handles_current_live_and_profile_share_noise() -> None:
+    live_text = (
+        "#在抖音，记录美好生活#【测试主播】正在直播，来和我一起支持Ta吧。"
+        "复制下方链接，打开【抖音】，直接观看直播！ "
+        "https://v.douyin.com/LIVE123/\u00a00@5.com :4pm"
+    )
+    profile_text = (
+        "长按复制此条消息，打开抖音搜索，查看TA的更多作品。 "
+        "[https://v.douyin.com/PROFILE123/](https://v.douyin.com/PROFILE123/) 4@0.com :1pm"
+    )
+
+    assert extract_shared_url(live_text) == "https://v.douyin.com/LIVE123/"
+    assert extract_shared_url(profile_text) == "https://v.douyin.com/PROFILE123/"
+
+
 def test_extract_shared_url_prefers_douyin_link_in_mixed_text() -> None:
     text = (
         "复制这条消息 https://example.com/help 打开抖音，"
@@ -56,6 +71,86 @@ def test_resolve_uses_live_alias_when_anchor_is_offline(monkeypatch) -> None:
 
     assert result.canonical_url == "https://live.douyin.com/223yuu"
     assert result.anchor_name == "阿尔萨鱼"
+    assert result.live is False
+
+
+def test_offline_webcast_share_uses_profile_alias(monkeypatch) -> None:
+    resolver = DouyinResolver()
+    reflow_url = (
+        "https://webcast.amemv.com/douyin/webcast/reflow/7698957329181838080"
+        "?sec_user_id=TEST_SEC_UID&share_platform=copy"
+    )
+    calls: dict[str, str] = {}
+
+    monkeypatch.setattr(resolver, "_follow_redirect", lambda _url: reflow_url)
+    monkeypatch.setattr(resolver, "_resolve_webcast_share", lambda _url: {})
+
+    def resolve_profile(url: str) -> dict[str, object]:
+        calls["profile"] = url
+        return {
+            "room_alias": "offline-anchor",
+            "anchor_name": "Offline Anchor",
+        }
+
+    def room_status(room: str) -> dict[str, object]:
+        calls["status"] = room
+        return {
+            "web_rid": "offline-anchor",
+            "room_id": "7698957329181838080",
+            "anchor_name": "Offline Anchor",
+            "room_title": "",
+            "live": False,
+        }
+
+    monkeypatch.setattr(resolver, "_resolve_profile", resolve_profile)
+    monkeypatch.setattr(resolver, "_room_status", room_status)
+
+    result = resolver.resolve(
+        "正在直播，复制下方链接 https://v.douyin.com/LIVE123/ 0@5.com :4pm",
+        check_live=True,
+    )
+
+    assert calls["profile"] == "https://www.douyin.com/user/TEST_SEC_UID"
+    assert calls["status"] == "offline-anchor"
+    assert result.canonical_url == "https://live.douyin.com/offline-anchor"
+    assert result.anchor_name == "Offline Anchor"
+    assert result.room_id == "7698957329181838080"
+    assert result.live is False
+
+
+def test_offline_webcast_share_can_skip_live_check(monkeypatch) -> None:
+    resolver = DouyinResolver()
+
+    monkeypatch.setattr(
+        resolver,
+        "_follow_redirect",
+        lambda _url: (
+            "https://webcast.amemv.com/douyin/webcast/reflow/7698957329181838080"
+            "?sec_user_id=TEST_SEC_UID"
+        ),
+    )
+    monkeypatch.setattr(resolver, "_resolve_webcast_share", lambda _url: {})
+    monkeypatch.setattr(
+        resolver,
+        "_resolve_profile",
+        lambda _url: {
+            "room_alias": "offline-anchor",
+            "anchor_name": "Offline Anchor",
+        },
+    )
+    monkeypatch.setattr(
+        resolver,
+        "_room_status",
+        lambda _room: (_ for _ in ()).throw(AssertionError("status should not be checked")),
+    )
+
+    result = resolver.resolve(
+        "主页分享 https://v.douyin.com/PROFILE123/ 4@0.com :1pm",
+        check_live=False,
+    )
+
+    assert result.canonical_url == "https://live.douyin.com/offline-anchor"
+    assert result.sec_uid == "TEST_SEC_UID"
     assert result.live is False
 
 
