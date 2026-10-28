@@ -1631,8 +1631,9 @@ function renderCloudUploads() {
     if (!latestByTarget.has(session.target_name)) latestByTarget.set(session.target_name, session);
   }
   const statusByTarget = state.service?.target_statuses || {};
+  const backupTargets = (state.config.targets || []).filter((target) => Boolean(target.cloud_backup));
   const signature = JSON.stringify({
-    targets: (state.config.targets || []).map((target) => ({ name: target.name, backup: target.cloud_backup, remote: target.cloud_remote })),
+    targets: backupTargets.map((target) => ({ name: target.name, remote: target.cloud_remote })),
     statuses: statusByTarget,
     sessions: (state.service?.sessions || []).slice(0, 20).map((session) => ({ target: session.target_name, title: session.title, parts: session.parts, cloud: session.cloud_status })),
     retry: state.cloudRetry,
@@ -1640,7 +1641,7 @@ function renderCloudUploads() {
   });
   if (state.cloudSignature === signature) return;
   state.cloudSignature = signature;
-  const rows = (state.config.targets || []).map((target) => {
+  const rows = backupTargets.map((target) => {
     const latest = latestByTarget.get(target.name);
     const status = statusByTarget[target.name] || {};
     const stateName = String(status.cloud_state || latest?.cloud_status || "").toLowerCase();
@@ -1682,7 +1683,7 @@ function renderCloudUploads() {
   if (!rows.length) {
     const empty = document.createElement("div");
     empty.className = "submission-empty";
-    empty.textContent = "还没有监控主播。";
+    empty.textContent = "还没有开启独立网盘备份的主播。";
     rows.push(empty);
   }
   els.cloudList.replaceChildren(...rows);

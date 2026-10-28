@@ -129,6 +129,12 @@ def test_target_add_has_duplicate_guard_and_request_lock() -> None:
     assert "未添加主播" in js
 
 
+def test_cloud_view_only_lists_enabled_backups() -> None:
+    js = _js()
+    assert "backupTargets" in js
+    assert "还没有开启独立网盘备份的主播" in js
+
+
 def test_toast_notifications_are_prominent_and_accessible() -> None:
     js = _js()
     css = (WEB_ROOT / "redesign.css").read_text(encoding="utf-8")
