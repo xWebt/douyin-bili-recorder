@@ -7,6 +7,7 @@ import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 import subprocess
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
@@ -176,11 +177,42 @@ def _sync_cloud_anchor_folders(
         remote = str(target.get("cloud_remote", "")).strip()
         if not remote:
             continue
+        if not bool(target.get("cloud_backup", False)):
+            continue
         try:
             folders.append(_ensure_cloud_anchor_folder(config, current, target))
         except ValueError as exc:
             warnings.append({"target": name or "未命名主播", "message": str(exc)})
     return folders, warnings
+
+
+def _target_url_key(value: str) -> str:
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return f"{host}{parsed.path.rstrip('/')}"
+
+
+def _deduplicate_targets(targets: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    unique: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    seen_urls: set[str] = set()
+    removed = 0
+    for target in targets:
+        name = str(target.get("name", "")).strip()
+        url = str(target.get("url", "")).strip()
+        name_key = name.casefold()
+        url_key = _target_url_key(url)
+        if not name or not url or name_key in seen_names or url_key in seen_urls:
+            removed += 1
+            continue
+        target["name"] = name
+        target["url"] = url
+        unique.append(target)
+        seen_names.add(name_key)
+        seen_urls.add(url_key)
+    return unique, removed
 
 
 def _test_cloud_remote(config: AppConfig, remote: str) -> dict[str, Any]:
@@ -473,11 +505,19 @@ def create_app(config: AppConfig) -> FastAPI:
                 raise HTTPException(
                     status_code=422, detail=f"主播 {name}：{exc}"
                 ) from exc
+        targets = [
+            target for target in payload.get("targets", []) if isinstance(target, dict)
+        ]
+        targets, duplicates_removed = _deduplicate_targets(targets)
+        if not targets:
+            raise HTTPException(status_code=422, detail="至少添加一个监视主播")
+        payload["targets"] = targets
         state = state_store.save(payload)
         state_store.render_runtime_config(state)
         cloud_folders, cloud_warnings = _sync_cloud_anchor_folders(config, state)
         return {
             "config": state,
+            "duplicates_removed": duplicates_removed,
             "restart_required": True,
             "cloud_folders": cloud_folders,
             "cloud_warnings": cloud_warnings,

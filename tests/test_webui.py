@@ -110,3 +110,29 @@ def test_recording_and_analytics_helpers_stay_top_level() -> None:
     assert open_analytics.count("{") == open_analytics.count("}")
     assert "function renderRecordingStatus()" in js[next_helper:]
     assert "async function openAnalyticsView(" in js[next_helper:]
+
+
+def test_schedule_editor_is_visible_and_has_visible_add_action() -> None:
+    js = _js()
+    css = (WEB_ROOT / "redesign.css").read_text(encoding="utf-8")
+    assert "schedule-editor-heading" in js
+    assert "添加时段" in js
+    assert "details" not in js[js.index("if (target.watch_mode === \"scheduled\")") : js.index("function buildScheduleList", js.index("if (target.watch_mode === \"scheduled\")"))]
+    assert ".schedule-editor-heading" in css
+
+
+def test_target_add_has_duplicate_guard_and_request_lock() -> None:
+    js = _js()
+    assert "targetSubmitPending" in js
+    assert "targetIdentity" in js
+    assert "已经在监控列表中" in js
+    assert "未添加主播" in js
+
+
+def test_toast_notifications_are_prominent_and_accessible() -> None:
+    js = _js()
+    css = (WEB_ROOT / "redesign.css").read_text(encoding="utf-8")
+    assert 'node.setAttribute("role", type === "error" ? "alert" : "status")' in js
+    assert "toast-copy" in js
+    assert "toast.error > i" in css
+    assert "top: 18px" in css

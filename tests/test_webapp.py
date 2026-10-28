@@ -6,8 +6,15 @@ from douyin_bili_recorder.config import load_config
 from douyin_bili_recorder.paths import target_key
 from douyin_bili_recorder.models import SessionPart, SessionRecord
 from douyin_bili_recorder.state import SessionStore
+from douyin_bili_recorder.ui_state import UIStateStore
 from douyin_bili_recorder.upload_progress import UploadProgressStore
-from douyin_bili_recorder.webapp import _ensure_service_running, _request_upload_control, _start_target, _sync_cloud_anchor_folders
+from douyin_bili_recorder.webapp import (
+    _deduplicate_targets,
+    _ensure_service_running,
+    _request_upload_control,
+    _start_target,
+    _sync_cloud_anchor_folders,
+)
 
 
 class FakeStateStore:
@@ -97,7 +104,7 @@ def test_sync_cloud_anchor_folders_creates_configured_anchor(tmp_path: Path, mon
             {
                 "id": "anchor-id",
                 "name": "凡晨",
-                "cloud_backup": False,
+                "cloud_backup": True,
                 "cloud_remote": "quark:/DouyinBiliRecorder",
             }
         ],
@@ -136,6 +143,56 @@ def test_sync_cloud_anchor_folders_skips_anchor_without_remote(tmp_path: Path, m
     assert folders == []
     assert warnings == []
     assert calls == []
+
+
+def test_sync_cloud_anchor_folders_skips_disabled_backup(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    calls = []
+
+    monkeypatch.setattr(
+        "douyin_bili_recorder.webapp.subprocess.run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+    target = {
+        "id": "anchor-id",
+        "name": "凡晨",
+        "cloud_backup": False,
+        "cloud_remote": "quark:/DouyinBiliRecorder",
+    }
+
+    folders, warnings = _sync_cloud_anchor_folders(config, {"targets": [target]})
+
+    assert folders == []
+    assert warnings == []
+    assert calls == []
+
+
+def test_deduplicate_targets_removes_repeated_url_and_name(tmp_path: Path) -> None:
+    targets = [
+        {"name": "anchor", "url": "https://live.douyin.com/100/"},
+        {"name": "anchor-copy", "url": "https://www.live.douyin.com/100?from=share"},
+        {"name": "ANCHOR", "url": "https://live.douyin.com/200"},
+        {"name": "second", "url": "https://live.douyin.com/300"},
+    ]
+
+    unique, removed = _deduplicate_targets(targets)
+
+    assert [item["name"] for item in unique] == ["anchor", "second"]
+    assert removed == 2
+
+
+def test_ui_state_store_removes_existing_duplicate_targets(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    store = UIStateStore(config)
+    state = store.load()
+    first = dict(state["targets"][0])
+    state["targets"].append({**first, "id": "duplicate-id", "url": "https://live.douyin.com/1/?from=share"})
+    state["targets"].append({**first, "id": "duplicate-name", "name": "ANCHOR", "url": "https://live.douyin.com/2"})
+
+    saved = store.save(state)
+
+    assert len(saved["targets"]) == 1
+    assert saved["targets"][0]["id"] == first["id"]
 
 
 def test_delete_upload_control_removes_local_media(tmp_path: Path) -> None:

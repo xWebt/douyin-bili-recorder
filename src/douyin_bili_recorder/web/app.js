@@ -17,6 +17,7 @@ const state = {
   dashboardSignature: "",
   recordSignature: "",
   analyticsSignature: "",
+  targetSubmitPending: false,
 };
 
 const els = {
@@ -206,11 +207,30 @@ function markDirty() {
 }
 
 function toast(message, type = "info") {
+  const variants = {
+    success: { icon: "circle-check", title: "操作成功" },
+    error: { icon: "circle-alert", title: "操作失败" },
+    warning: { icon: "triangle-alert", title: "请注意" },
+    info: { icon: "info", title: "系统提示" },
+  };
+  const variant = variants[type] || variants.info;
   const node = document.createElement("div");
   node.className = `toast ${type}`;
-  node.textContent = message;
+  node.setAttribute("role", type === "error" ? "alert" : "status");
+  const iconNode = icon(variant.icon);
+  const body = document.createElement("div");
+  body.className = "toast-copy";
+  const title = document.createElement("strong");
+  title.textContent = variant.title;
+  const copy = document.createElement("span");
+  copy.textContent = message;
+  body.append(title, copy);
+  const close = actionButton("x", "关闭提示", () => node.remove());
+  close.classList.add("toast-close");
+  node.append(iconNode, body, close);
   els.toastRegion.append(node);
-  window.setTimeout(() => node.remove(), 4200);
+  renderIcons();
+  window.setTimeout(() => node.remove(), type === "error" ? 8000 : 6000);
 }
 
 async function loadState(showErrors = false) {
@@ -453,7 +473,7 @@ async function uploadControl(action, key, successMessage, failureMessage) {
   if (!match) return;
   try {
     await api(`/api/uploads/${encodeURIComponent(match[1])}/${match[2]}/${action}`, { method: "POST" });
-    toast(successMessage);
+    toast(successMessage, "success");
     await refreshService();
   } catch (error) {
     toast(`${failureMessage}：${error.message}`, "error");
@@ -784,7 +804,7 @@ async function openQuarkOfficialClient() {
       els.quarkTestResult.className = "";
       els.quarkTestResult.textContent = result.message;
     }
-    toast(result.message);
+    toast(result.message, "success");
   } catch (error) {
     if (els.quarkTestResult) {
       els.quarkTestResult.className = "error";
@@ -930,7 +950,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   });
   remote.addEventListener("input", () => { target.cloud_remote = remote.value.trim(); });
   const cloudHint = document.createElement("small");
-  cloudHint.textContent = "夸克配置电脑备份后走官方客户端；未配置时回退 OpenList。保存时会创建该主播目录。";
+  cloudHint.textContent = "启用独立备份并保存后才会创建该主播目录；其他未启用备份的主播不会被同步。";
   const testButton = document.createElement("button");
   testButton.type = "button";
   testButton.className = "secondary-button compact-action";
@@ -949,11 +969,12 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
   const modePanel = document.createElement("div");
   modePanel.className = "watch-mode-panel";
   if (target.watch_mode === "scheduled") {
-    const schedule = document.createElement("details");
+    const schedule = document.createElement("section");
     schedule.className = "schedule-editor";
-    const summary = document.createElement("summary");
-    summary.textContent = `固定排班 · ${(target.schedule || []).length} 个时段`;
-    schedule.append(summary, buildScheduleList(target));
+    const heading = document.createElement("div");
+    heading.className = "schedule-editor-heading";
+    heading.append(icon("calendar-clock"), document.createTextNode(`固定排班 · ${(target.schedule || []).length} 个时段`));
+    schedule.append(heading, buildScheduleList(target));
     modePanel.append(schedule);
   } else {
     const modeHint = document.createElement("div");
@@ -977,7 +998,7 @@ function buildTargetRow(target, latest, runtimeStatus, activeUpload, isRecording
 async function manualStartTarget(name) {
   try {
     await api(`/api/targets/${encodeURIComponent(name)}/manual-start`, { method: "POST" });
-    toast(`${name} 已单独启动`);
+    toast(`${name} 已单独启动`, "success");
     await loadState(true);
     window.setTimeout(refreshLogs, 800);
   } catch (error) {
@@ -989,7 +1010,7 @@ async function pauseTarget(target) {
   try {
     await api(`/api/targets/${encodeURIComponent(target.name)}/pause`, { method: "POST" });
     await loadState(true);
-    toast(`${target.name} 已单独暂停`);
+    toast(`${target.name} 已单独暂停`, "warning");
     window.setTimeout(refreshLogs, 800);
   } catch (error) {
     toast(`暂停失败：${error.message}`, "error");
@@ -1002,6 +1023,17 @@ function cloudProviderDefault(provider) {
   return "baidu:/baidu/DouyinBiliRecorder";
 }
 
+function targetIdentity(url) {
+  try {
+    const parsed = new URL(String(url || "").trim());
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const path = parsed.pathname.replace(/\/+$/, "");
+    return `${host}${path}`;
+  } catch {
+    return String(url || "").trim().replace(/\/+$/, "").toLowerCase();
+  }
+}
+
 async function testCloudTarget(target) {
   const remote = String(target.cloud_remote || "").trim();
   if (!remote) return toast("先填写网盘远端路径", "error");
@@ -1010,7 +1042,7 @@ async function testCloudTarget(target) {
       method: "POST",
       body: JSON.stringify({ remote }),
     });
-    toast(result.message || "网盘远端可访问");
+    toast(result.message || "网盘远端可访问", "success");
   } catch (error) {
     toast(`网盘测试失败：${error.message}`, "error");
   }
@@ -1047,11 +1079,16 @@ function buildScheduleList(target) {
     line.append(remove);
     wrapper.append(line);
   });
-  wrapper.append(actionButton("plus", "添加时段", () => {
+  const addSlot = document.createElement("button");
+  addSlot.type = "button";
+  addSlot.className = "secondary-button compact-action schedule-add";
+  addSlot.append(icon("plus"), document.createTextNode("添加时段"));
+  addSlot.addEventListener("click", () => {
     slots.push({ days: [1, 2, 3, 4, 5, 6, 7], start: "20:00", end: "23:00", enabled: true });
     markDirty();
     renderTargets();
-  }));
+  });
+  wrapper.append(addSlot);
   return wrapper;
 }
 
@@ -1149,11 +1186,13 @@ async function saveState(message = "") {
     const folders = Array.isArray(payload.cloud_folders) ? payload.cloud_folders : [];
     const warnings = Array.isArray(payload.cloud_warnings) ? payload.cloud_warnings : [];
     if (folders.length) saveMessage += `；已同步 ${folders.length} 个云盘主播目录`;
+    const duplicatesRemoved = Number(payload.duplicates_removed || 0);
+    if (duplicatesRemoved > 0) saveMessage += `；已自动移除 ${duplicatesRemoved} 个重复主播`;
     if (warnings.length) {
       saveMessage += `；云盘目录失败：${warnings.map((item) => `${item.target} ${item.message}`).join("；")}`;
       toast(saveMessage, "error");
     } else {
-      toast(saveMessage);
+      toast(saveMessage, duplicatesRemoved > 0 ? "warning" : "success");
     }
     return true;
   } catch (error) {
@@ -1217,7 +1256,8 @@ async function serviceAction(action, mode = "upload") {
       : mode === "discard"
         ? "已停止全部任务，正在删除当前录像"
         : "已暂停并保留本地内容";
-    toast(action === "start" ? "录制服务已启动" : action === "stop" ? stopMessage : "录制服务已重启");
+    const toastType = action === "start" ? "success" : action === "stop" ? "warning" : "info";
+    toast(action === "start" ? "录制服务已启动" : action === "stop" ? stopMessage : "录制服务已重启", toastType);
     window.setTimeout(refreshLogs, 800);
   } catch (error) {
     toast(`操作失败：${error.message}`, "error");
@@ -1777,39 +1817,72 @@ els.defaultVisibility.addEventListener("click", (event) => {
 els.targetForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const url = els.targetUrl.value.trim();
-  const name = els.targetName.value.trim() || `主播-${state.config.targets.length + 1}`;
   if (!url) return;
-  let resolvedUrl = url;
-  let resolvedName = name;
+  if (state.targetSubmitPending) return;
+  const targetId = Math.random().toString(16).slice(2, 12);
+  const name = els.targetName.value.trim() || `主播-${state.config.targets.length + 1}`;
+  const submitButton = els.targetForm.querySelector("button[type='submit']");
+  const submitLabel = submitButton?.querySelector("span");
+  const originalLabel = submitLabel?.textContent || "添加主播";
+  state.targetSubmitPending = true;
+  if (submitButton) submitButton.disabled = true;
+  els.resolveButton.disabled = true;
+  if (submitLabel) submitLabel.textContent = "正在解析并添加…";
   try {
-    const result = await api("/api/targets/resolve", {
-      method: "POST",
-      body: JSON.stringify({url, check_live: false}),
+    let result;
+    try {
+      result = await api("/api/targets/resolve", {
+        method: "POST",
+        body: JSON.stringify({url, check_live: false}),
+      });
+    } catch (error) {
+      toast(`链接解析失败，未添加主播：${error.message}`, "error");
+      return;
+    }
+    const resolvedUrl = String(result.canonical_url || "").trim();
+    const resolvedName = (els.targetName.value.trim() || result.anchor_name || name).trim();
+    if (!/^https:\/\/live\.douyin\.com\//i.test(resolvedUrl)) {
+      toast("没有解析出稳定的抖音直播间地址，未添加主播", "error");
+      return;
+    }
+    const identity = targetIdentity(resolvedUrl);
+    const duplicateUrl = state.config.targets.find((target) => targetIdentity(target.url) === identity);
+    if (duplicateUrl) {
+      toast(`“${duplicateUrl.name}”已经在监控列表中，未重复添加`, "warning");
+      return;
+    }
+    const nameKey = resolvedName.toLocaleLowerCase();
+    const duplicateName = state.config.targets.find((target) => String(target.name || "").trim().toLocaleLowerCase() === nameKey);
+    if (duplicateName) {
+      toast(`主播名称“${resolvedName}”已存在，请使用不同名称`, "warning");
+      return;
+    }
+    state.config.targets.push({
+      id: targetId, name: resolvedName, url: resolvedUrl, enabled: true,
+      public: Boolean(state.config.public), record_mode: "record", collection_name: resolvedName, collection_id: "",
+      record_danmaku: false,
+      watch_mode: "all_day",
+      cloud_backup: false,
+      cloud_provider: "baidu",
+      cloud_remote: "",
+      title_template: "{name}｜{start_date} {start_time} 开播｜{room_title}",
+      tags: ["直播录像", "抖音"], tid: 171, copyright: 2, source: "",
+      schedule: [],
     });
-    resolvedUrl = result.canonical_url || url;
-    if (!els.targetName.value.trim() && result.anchor_name) resolvedName = result.anchor_name;
-  } catch (error) {
-    toast(`链接解析失败，将保存原始链接：${error.message}`, "error");
-  }
-  state.config.targets.push({
-    id: Math.random().toString(16).slice(2, 12), name: resolvedName, url: resolvedUrl, enabled: true,
-    public: Boolean(state.config.public), record_mode: "record", collection_name: name, collection_id: "",
-    record_danmaku: false,
-    watch_mode: "all_day",
-    cloud_backup: false,
-    cloud_provider: "baidu",
-    cloud_remote: "",
-    title_template: "{name}｜{start_date} {start_time} 开播｜{room_title}",
-    tags: ["直播录像", "抖音"], tid: 171, copyright: 2, source: "",
-    schedule: [],
-  });
-  saveState(`${name} 已添加并保存`).then((saved) => {
+    const saved = await saveState(`${resolvedName} 已添加并保存`);
     if (saved) {
       els.targetForm.reset();
       renderTargets();
       renderSettings();
+    } else {
+      state.config.targets = state.config.targets.filter((target) => target.id !== targetId);
     }
-  });
+  } finally {
+    state.targetSubmitPending = false;
+    if (submitButton) submitButton.disabled = false;
+    els.resolveButton.disabled = false;
+    if (submitLabel) submitLabel.textContent = originalLabel;
+  }
 });
 els.loginButton.addEventListener("click", openLogin);
 els.closeLoginButton.addEventListener("click", closeLogin);

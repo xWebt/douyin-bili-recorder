@@ -2,6 +2,10 @@
 
 ## v2.4.0
 
+- Restored an always-visible schedule editor when `固定排班` is selected, with visible time inputs and an explicit `添加时段` action.
+- Saving settings now creates cloud anchor folders only for anchors with independent backup enabled; disabled anchors no longer get unrelated remote directories.
+- Upgraded operation feedback to prominent top-center notifications with icon, severity, accessible role, and longer display time for errors.
+- Prevented duplicate anchors in both UI and backend: submissions are locked while resolving, URLs/names are compared, and persisted legacy duplicates are normalized on load/save.
 - Offline live-share and profile-share text now both resolve to the same stable `live.douyin.com/<alias>` URL; current reflow links contribute `sec_user_id` and room ID even when the room is no longer live.
 - Replaced the macOS app icon with the new camera/recording artwork and regenerated the complete 16px through 1024px `.icns` set.
 - Rebuilt the desktop control window as a responsive broadcast workbench with a dedicated left navigation rail, live clock, full-height views, internal scrolling, and desktop/narrow-window layouts.

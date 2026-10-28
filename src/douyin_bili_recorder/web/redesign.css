@@ -89,6 +89,12 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+  transform: none;
+}
+
 /* scrollbars */
 
 * {
@@ -1492,6 +1498,27 @@ label {
   border: 1px solid var(--line);
 }
 
+.schedule-editor-heading {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  padding: 2px 0 9px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+
+.schedule-editor-heading i {
+  width: 15px;
+  height: 15px;
+  color: var(--signal);
+}
+
+.schedule-add {
+  margin-top: 8px;
+}
+
 .schedule-precheck,
 .schedule-empty,
 .watch-mode-hint {
@@ -2178,23 +2205,72 @@ tbody tr:last-child td {
 
 .toast-region {
   position: fixed;
-  right: 22px;
-  bottom: 22px;
+  top: 18px;
+  left: 50%;
   z-index: 80;
   display: flex;
   flex-direction: column;
   gap: 7px;
-  width: min(360px, calc(100vw - 44px));
+  align-items: center;
+  width: min(620px, calc(100vw - 44px));
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 .toast {
   padding: 10px 12px;
   color: var(--paper);
-  font-size: 11px;
-  line-height: 1.5;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 26px;
+  gap: 11px;
+  align-items: start;
+  width: 100%;
+  padding: 14px 14px 14px 15px;
+  font-size: 13px;
+  line-height: 1.45;
   background: var(--ink);
-  border-left: 3px solid var(--green);
-  box-shadow: var(--shadow-hard);
+  border: 1px solid #3b443c;
+  border-left: 5px solid var(--green);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 50px rgba(12, 16, 12, 0.34);
+  pointer-events: auto;
+  animation: toast-in 180ms ease both;
+}
+
+.toast > i {
+  width: 22px;
+  height: 22px;
+  color: #84d5a2;
+  stroke-width: 2;
+}
+
+.toast-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toast-copy strong {
+  color: #f3efe4;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toast-copy span {
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  width: 26px;
+  height: 26px;
+  color: #b9c1b8;
+  border-color: #4a554b;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .toast.error {
@@ -2203,6 +2279,18 @@ tbody tr:last-child td {
 
 .toast.success {
   border-left-color: var(--green);
+}
+
+.toast.error > i {
+  color: #ff9b82;
+}
+
+.toast.warning {
+  border-left-color: var(--amber);
+}
+
+.toast.warning > i {
+  color: #f0c36b;
 }
 
 /* utility + legacy overrides */

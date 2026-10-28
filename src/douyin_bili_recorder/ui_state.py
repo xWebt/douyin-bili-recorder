@@ -8,8 +8,17 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .config import AppConfig, resolve_executable
+
+
+def _target_url_key(value: str) -> str:
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return f"{host}{parsed.path.rstrip('/')}"
 
 
 def _target_id() -> str:
@@ -238,6 +247,8 @@ class UIStateStore:
     def _normalize(self, state: dict[str, Any]) -> dict[str, Any]:
         targets: list[dict[str, Any]] = []
         seen: set[str] = set()
+        seen_names: set[str] = set()
+        seen_urls: set[str] = set()
         for item in state.get("targets", []):
             if not isinstance(item, dict):
                 continue
@@ -245,10 +256,16 @@ class UIStateStore:
             url = str(item.get("url", "")).strip()
             if not name or not url:
                 continue
+            name_key = name.casefold()
+            url_key = _target_url_key(url)
+            if name_key in seen_names or url_key in seen_urls:
+                continue
             target_id = str(item.get("id") or _target_id())
             if target_id in seen:
                 target_id = _target_id()
             seen.add(target_id)
+            seen_names.add(name_key)
+            seen_urls.add(url_key)
             target_schedule = []
             for slot in item.get("schedule", []):
                 if not isinstance(slot, dict):
